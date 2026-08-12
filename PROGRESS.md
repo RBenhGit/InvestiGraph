@@ -153,6 +153,47 @@ existing declarations tolerate, e.g. it would drop `gross_margin` for
 yfinance since bank samples lack a clean gross-profit line — a pre-existing
 imprecision, not something to silently fix as a side effect of Task 16).
 
+## Trailing-TTM historical charts (Market Cap, P/E, Dividend Yield, ROE)
+
+Done. These four were the only charts in the catalog still reading `.points[-1]`
+for a single "KPI" stat-tile value instead of a historical series — P/E labeled
+itself "Trailing" but was really price over one period's EPS (annual or a single
+quarter's, whichever `--period` fetched). All four are now historical line charts
+of trailing-twelve-month values, sampled daily against price where price is a
+meaningful driver:
+
+- New `template/trailing.py`, a sibling of `template/derived.py`: `ttm_series()`
+  turns a flow metric (EPS, net income, dividends paid) into a rolling
+  trailing-twelve-month view — identity under `Period.ANNUAL` (an annual figure
+  already *is* trailing-twelve-months at its fiscal date), a gap-guarded rolling
+  4-quarter sum under `Period.QUARTERLY` (a window spanning >330 days is missing
+  a quarter and is skipped rather than silently understated).
+  `TrailingMetric`/`resolve_trailing()` then join a daily driver series (`price`)
+  against other inputs *as of* each driver date — the most recent statement value
+  known on or before that date, via `bisect`, never a future one (no lookahead).
+  ROE has no natural daily driver, so its `TrailingMetric.driver=None` and it
+  stays at statement cadence instead of manufacturing a false daily density.
+- The four `charts/builtins/*.py` files and their `web/chart_data.py` shapers now
+  do zero math — they resolve the shared `PE_RATIO_TTM`/`MARKET_CAP`/
+  `DIVIDEND_YIELD_TTM`/`ROE_TTM` constants and draw the result, removing them
+  from the web/matplotlib duplication list below (only valuation's nearest-price
+  join and price's SMA overlay remain hand-duplicated).
+- The now-unused KPI stat-tile surface was removed as dead code created by this
+  change: `render_kpi_value`/`format_compact_number` (`charts/base.py`),
+  `KpiChartSpec`, and the `.stat-tile` CSS/JS branch in `index.html`.
+- **Fixed during review**: a per-date compute failure (a loss year's
+  non-positive TTM EPS, a zero-equity/zero-price date) was being dropped from
+  the point list entirely, which let the line renderer draw a straight
+  segment connecting the surrounding valid points *through* the undefined
+  date — e.g. P/E gliding smoothly across an entire loss year instead of
+  showing no value for it. `resolve_trailing` now emits `float("nan")` for
+  that date instead (the same break-the-line convention the price chart's
+  SMA warm-up already relies on); a series where *every* date fails still
+  collapses to `available=False`/"No Data", unchanged from before.
+- Not done, flagged as a natural follow-up: `valuation.py`'s hand-rolled
+  nearest-price join could move onto the same as-of join `resolve_trailing` now
+  provides, instead of its own bespoke `_nearest_price`.
+
 ## Remaining work
 
 No known gaps. Nothing half-done — safe to stop or resume at any point.

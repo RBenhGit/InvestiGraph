@@ -81,8 +81,6 @@
   .card { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; background: var(--surface); }
   .card h3 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--ink-secondary); }
   .card .plot { width: 100%; height: 260px; }
-  .stat-tile { display: flex; align-items: center; justify-content: center; height: 260px; }
-  .stat-value { font-size: 2rem; font-weight: 700; }
   .no-data { display: flex; align-items: center; justify-content: center; height: 260px; color: var(--ink-muted); }
   .limits { margin-top: 1.5rem; color: var(--error); }
   .error-banner { color: var(--error); font-size: 1rem; padding: 0.75rem 0; }
@@ -265,15 +263,7 @@
   }
 
   function fillCard(card, spec) {
-    if (spec.kind === 'kpi') {
-      var tile = document.createElement('div');
-      tile.className = 'stat-tile';
-      var value = document.createElement('div');
-      value.className = 'stat-value';
-      value.textContent = spec.value_text;
-      tile.appendChild(value);
-      card.appendChild(tile);
-    } else if (spec.kind === 'no_data') {
+    if (spec.kind === 'no_data') {
       var empty = document.createElement('div');
       empty.className = 'no-data';
       empty.textContent = 'No data';

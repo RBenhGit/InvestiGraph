@@ -8,8 +8,6 @@ import matplotlib.pyplot as plt
 
 from financial_charts.charts.base import (
     currency_symbol,
-    format_compact_number,
-    render_kpi_value,
     render_or_no_data,
     render_percentage_line,
 )
@@ -79,23 +77,4 @@ def test_render_percentage_line_scales_ratios_to_percent():
     line = ax.get_lines()[0]
     assert line.get_label() == "Gross Margin"
     assert list(line.get_ydata()) == [40.0, 45.0]
-    plt.close(fig)
-
-
-def test_format_compact_number_picks_the_largest_fitting_suffix():
-    assert format_compact_number(4_900_000_000_000) == "4.9T"
-    assert format_compact_number(450_500_000_000) == "450.5B"
-    assert format_compact_number(12_300_000) == "12.3M"
-    assert format_compact_number(1_500) == "1.5K"
-    assert format_compact_number(42) == "42.0"
-
-
-def test_render_kpi_value_draws_the_text_with_no_axes():
-    fig, ax = plt.subplots()
-
-    render_kpi_value(ax, "34.6x")
-
-    texts = [t.get_text() for t in ax.texts]
-    assert "34.6x" in texts
-    assert ax.get_xticks().size == 0
     plt.close(fig)

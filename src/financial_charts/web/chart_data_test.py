@@ -297,10 +297,10 @@ def test_price_sma_warmup_nan_launders_to_json_null():
     assert sma_50["values"][0] is None
 
 
-def test_market_cap_kpi():
+def test_market_cap_is_a_daily_line_of_price_times_as_of_shares():
     fundamentals = _fundamentals_with(
         {
-            "price": _money_series("price", [(_D, 50)]),
+            "price": _money_series("price", [(_D, 50), (date(2020, 1, 2), 60)]),
             "shares_outstanding": _float_series(
                 "shares_outstanding", [(_D, 1_000_000)]
             ),
@@ -309,15 +309,18 @@ def test_market_cap_kpi():
 
     [spec] = _specs_for(["market_cap"], fundamentals)
 
-    assert spec == {
-        "kind": "kpi",
-        "name": "market_cap",
-        "title": "Market Cap",
-        "value_text": "$50.0M",
-    }
+    assert spec["kind"] == "line"
+    assert spec["series"] == [
+        {
+            "label": "Market Cap",
+            "dates": [_D, date(2020, 1, 2)],
+            "values": [50_000_000.0, 60_000_000.0],
+            "markers": False,
+        }
+    ]
 
 
-def test_pe_ratio_kpi():
+def test_pe_ratio_line():
     fundamentals = _fundamentals_with(
         {
             "price": _money_series("price", [(_D, 20)]),
@@ -327,7 +330,9 @@ def test_pe_ratio_kpi():
 
     [spec] = _specs_for(["pe_ratio"], fundamentals)
 
-    assert spec["value_text"] == "10.0x"
+    assert spec["kind"] == "line"
+    assert spec["series"][0]["values"] == [10.0]
+    assert spec["series"][0]["markers"] is False
 
 
 def test_pe_ratio_zero_eps_is_no_data():
@@ -343,7 +348,7 @@ def test_pe_ratio_zero_eps_is_no_data():
     assert spec["kind"] == "no_data"
 
 
-def test_dividend_yield_kpi():
+def test_dividend_yield_line():
     fundamentals = _fundamentals_with(
         {
             "price": _money_series("price", [(_D, 100)]),
@@ -354,10 +359,11 @@ def test_dividend_yield_kpi():
 
     [spec] = _specs_for(["dividend_yield"], fundamentals)
 
-    assert spec["value_text"] == "2.00%"
+    assert spec["kind"] == "line"
+    assert spec["series"][0]["values"] == [2.0]
 
 
-def test_return_on_equity_kpi():
+def test_return_on_equity_line():
     fundamentals = _fundamentals_with(
         {
             "net_income": _money_series("net_income", [(_D, 15)], scale=Unit.MILLIONS),
@@ -369,7 +375,8 @@ def test_return_on_equity_kpi():
 
     [spec] = _specs_for(["return_on_equity"], fundamentals)
 
-    assert spec["value_text"] == "7.5%"
+    assert spec["kind"] == "line"
+    assert spec["series"][0]["values"] == [7.5]
 
 
 def test_every_catalog_chart_has_a_shaper_and_does_not_crash():
@@ -381,7 +388,7 @@ def test_every_catalog_chart_has_a_shaper_and_does_not_crash():
 
     assert len(specs) == len(available_charts())
     for spec in specs:
-        assert spec["kind"] in {"bar", "line", "kpi", "no_data"}
+        assert spec["kind"] in {"bar", "line", "no_data"}
 
 
 def test_chart_data_response_round_trips_every_kind():

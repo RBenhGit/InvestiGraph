@@ -1,11 +1,8 @@
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import (
-    currency_symbol,
-    format_compact_number,
-    render_kpi_value,
-)
+from financial_charts.charts.base import currency_symbol, draw_no_data
 from financial_charts.template.models import CompanyFundamentals
+from financial_charts.template.trailing import MARKET_CAP, resolve_trailing
 
 
 class MarketCapChart:
@@ -14,9 +11,12 @@ class MarketCapChart:
     required_metrics = ["price", "shares_outstanding"]
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
-        price = fundamentals.series["price"].points[-1].value
-        shares = fundamentals.series["shares_outstanding"].points[-1].value
-        market_cap = price.as_base_units() * shares
-        render_kpi_value(
-            ax, f"{currency_symbol(fundamentals)}{format_compact_number(market_cap)}"
-        )
+        series = resolve_trailing(fundamentals, MARKET_CAP)
+        if not series.available:
+            draw_no_data(ax)
+            return
+        dates = [p.date for p in series.points]
+        values = [p.value.as_base_units() for p in series.points]
+        ax.plot(dates, values, label="Market Cap", linewidth=1)
+        ax.set_ylabel(f"Market Cap ({currency_symbol(fundamentals)})")
+        ax.legend(fontsize=7, loc="upper left")

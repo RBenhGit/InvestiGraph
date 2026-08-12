@@ -1,23 +1,22 @@
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import draw_no_data, render_kpi_value
-from financial_charts.template.derived import ratio
+from financial_charts.charts.base import draw_no_data, render_ratio_line
 from financial_charts.template.models import CompanyFundamentals
+from financial_charts.template.trailing import PE_RATIO_TTM, resolve_trailing
 
 
 class PERatioChart:
     name = "pe_ratio"
-    title = "P/E (Trailing)"
+    title = "P/E (TTM)"
     required_metrics = ["price", "eps"]
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
-        price = fundamentals.series["price"].points[-1].value
-        eps = fundamentals.series["eps"].points[-1].value
-        try:
-            pe = ratio(price, eps)
-        except (ZeroDivisionError, ValueError):
-            # Zero trailing EPS, or a currency mismatch between the price and
-            # financial statement currencies — not a crash, just no P/E to show.
+        series = resolve_trailing(fundamentals, PE_RATIO_TTM)
+        if not series.available:
             draw_no_data(ax)
             return
-        render_kpi_value(ax, f"{pe:.1f}x")
+        dates = [p.date for p in series.points]
+        values = [p.value for p in series.points]
+        render_ratio_line(ax, dates, values, "P/E", markers=False)
+        ax.set_ylabel("P/E (x)")
+        ax.legend(fontsize=7, loc="upper left")

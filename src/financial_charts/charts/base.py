@@ -85,12 +85,16 @@ def render_ratio_line(
     values: list[float],
     label: str,
     color: str | None = None,
+    markers: bool = True,
 ) -> None:
     """Shared line-plot rendering for dimensionless ratio metrics (e.g. current ratio,
     debt/equity) — plotted at face value, unlike `render_percentage_line`.
+
+    `markers=False` drops the per-point marker for daily-density series (e.g. a
+    price-driven ratio with ~250 points/year), where markers only add noise.
     """
     kwargs = {"color": color} if color else {}
-    ax.plot(dates, values, marker="o", label=label, **kwargs)
+    ax.plot(dates, values, marker="o" if markers else None, label=label, **kwargs)
 
 
 def render_percentage_line(
@@ -99,12 +103,13 @@ def render_percentage_line(
     values: list[float],
     label: str,
     color: str | None = None,
+    markers: bool = True,
 ) -> None:
     """Shared line-plot rendering for ratio-valued metrics (margins, FCF margin).
 
     `values` are the raw ratios (e.g. 0.4 for 40%); this scales to percent.
     """
-    render_ratio_line(ax, dates, [v * 100 for v in values], label, color)
+    render_ratio_line(ax, dates, [v * 100 for v in values], label, color, markers)
 
 
 def render_money_line(
@@ -140,33 +145,3 @@ def render_float_bar(
         [p.date for p in points], [p.value for p in points], width=60, color="steelblue"
     )
     ax.set_ylabel(ylabel)
-
-
-def format_compact_number(value: float) -> str:
-    """Format a large number with a K/M/B/T suffix, e.g. 4.9e12 -> "4.9T"."""
-    magnitude = abs(value)
-    for threshold, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")):
-        if magnitude >= threshold:
-            return f"{value / threshold:.1f}{suffix}"
-    return f"{value:.1f}"
-
-
-def render_kpi_value(ax: Axes, value_text: str) -> None:
-    """Shared "big number" rendering for a KPI card — no axes, no gridlines,
-    just the value centered on the card (the title is drawn separately by
-    `render_or_no_data`, same as every other chart).
-    """
-    ax.text(
-        0.5,
-        0.5,
-        value_text,
-        ha="center",
-        va="center",
-        transform=ax.transAxes,
-        fontsize=26,
-        fontweight="bold",
-    )
-    ax.set_xticks([])
-    ax.set_yticks([])
-    for spine in ax.spines.values():
-        spine.set_visible(False)

@@ -2,12 +2,13 @@
 
 Independent of matplotlib and of every `charts/builtins/*.py` file: each chart's
 *data prep* (as opposed to its matplotlib drawing) is re-derived here from the
-template, reusing only published functions (`charts.base.currency_symbol`/
-`format_compact_number`, `template.derived.resolve`/`ratio`/the `DerivedMetric`
-constants). A handful of charts (market cap, P/E, dividend yield, ROE, the
-valuation nearest-price join, price's SMA overlay) have their small inline math
-re-implemented here rather than imported, since it isn't externalized from its
-chart file today — see PROGRESS.md for the accepted duplication/drift trade-off.
+template, reusing only published functions (`charts.base.currency_symbol`,
+`template.derived.resolve`/the `DerivedMetric` constants,
+`template.trailing.resolve_trailing`/the `TrailingMetric` constants). Two charts
+(the valuation nearest-price join, price's SMA overlay) have their small inline
+math re-implemented here rather than imported, since it isn't externalized from
+its chart file today — see PROGRESS.md for the accepted duplication/drift
+trade-off.
 
 Values are laundered through Pydantic (`ChartDataResponse.model_dump_json()`),
 never `flask.jsonify()`: `jsonify` reproduces raw `NaN` tokens (invalid JSON),
@@ -22,7 +23,7 @@ from typing import Annotated, Callable, Literal
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from financial_charts.charts.base import currency_symbol, format_compact_number
+from financial_charts.charts.base import currency_symbol
 from financial_charts.charts.registry import get_chart_set
 from financial_charts.template.derived import (
     BOOK_VALUE_PER_SHARE,
@@ -32,10 +33,17 @@ from financial_charts.template.derived import (
     ROCE,
     ROIC,
     DerivedMetric,
-    ratio,
     resolve,
 )
 from financial_charts.template.models import CompanyFundamentals, Point
+from financial_charts.template.trailing import (
+    DIVIDEND_YIELD_TTM,
+    MARKET_CAP,
+    PE_RATIO_TTM,
+    ROE_TTM,
+    TrailingMetric,
+    resolve_trailing,
+)
 
 
 class SeriesSpec(BaseModel):
@@ -65,17 +73,12 @@ class LineChartSpec(_ChartSpecBase):
     series: list[SeriesSpec]
 
 
-class KpiChartSpec(_ChartSpecBase):
-    kind: Literal["kpi"] = "kpi"
-    value_text: str
-
-
 class NoDataChartSpec(_ChartSpecBase):
     kind: Literal["no_data"] = "no_data"
 
 
 ChartSpec = Annotated[
-    BarChartSpec | LineChartSpec | KpiChartSpec | NoDataChartSpec,
+    BarChartSpec | LineChartSpec | NoDataChartSpec,
     Field(discriminator="kind"),
 ]
 
@@ -317,47 +320,68 @@ def _price(fundamentals: CompanyFundamentals) -> dict:
     }
 
 
-def _market_cap(fundamentals: CompanyFundamentals) -> dict:
-    price = fundamentals.series["price"].points[-1].value
-    shares = fundamentals.series["shares_outstanding"].points[-1].value
-    market_cap = price.as_base_units() * shares
+def _trailing_ratio_line(
+    metric: TrailingMetric, label: str, y_label: str, markers: bool = True
+) -> Callable[[CompanyFundamentals], dict | None]:
+    def shaper(fundamentals: CompanyFundamentals) -> dict | None:
+        series = resolve_trailing(fundamentals, metric)
+        if not series.available:
+            return None
+        return {
+            "kind": "line",
+            "y_label": y_label,
+            "series": [
+                {
+                    "label": label,
+                    "dates": [p.date for p in series.points],
+                    "values": [p.value for p in series.points],
+                    "markers": markers,
+                }
+            ],
+        }
+
+    return shaper
+
+
+def _trailing_percentage_line(
+    metric: TrailingMetric, label: str, y_label: str, markers: bool = True
+) -> Callable[[CompanyFundamentals], dict | None]:
+    def shaper(fundamentals: CompanyFundamentals) -> dict | None:
+        series = resolve_trailing(fundamentals, metric)
+        if not series.available:
+            return None
+        return {
+            "kind": "line",
+            "y_label": y_label,
+            "series": [
+                {
+                    "label": label,
+                    "dates": [p.date for p in series.points],
+                    "values": [p.value * 100 for p in series.points],
+                    "markers": markers,
+                }
+            ],
+        }
+
+    return shaper
+
+
+def _market_cap(fundamentals: CompanyFundamentals) -> dict | None:
+    series = resolve_trailing(fundamentals, MARKET_CAP)
+    if not series.available:
+        return None
     return {
-        "kind": "kpi",
-        "value_text": f"{currency_symbol(fundamentals)}{format_compact_number(market_cap)}",
+        "kind": "line",
+        "y_label": f"Market Cap ({currency_symbol(fundamentals)})",
+        "series": [
+            {
+                "label": "Market Cap",
+                "dates": [p.date for p in series.points],
+                "values": [p.value.as_base_units() for p in series.points],
+                "markers": False,
+            }
+        ],
     }
-
-
-def _pe_ratio(fundamentals: CompanyFundamentals) -> dict | None:
-    price = fundamentals.series["price"].points[-1].value
-    eps = fundamentals.series["eps"].points[-1].value
-    try:
-        pe = ratio(price, eps)
-    except (ZeroDivisionError, ValueError):
-        return None
-    return {"kind": "kpi", "value_text": f"{pe:.1f}x"}
-
-
-def _dividend_yield(fundamentals: CompanyFundamentals) -> dict | None:
-    price = fundamentals.series["price"].points[-1].value
-    dividends = fundamentals.series["dividends_paid"].points[-1].value
-    shares = fundamentals.series["shares_outstanding"].points[-1].value
-    try:
-        price.require_same_currency(dividends)
-        dividend_per_share = dividends.as_base_units() / shares
-        dividend_yield = dividend_per_share / price.as_base_units() * 100
-    except (ZeroDivisionError, ValueError):
-        return None
-    return {"kind": "kpi", "value_text": f"{dividend_yield:.2f}%"}
-
-
-def _return_on_equity(fundamentals: CompanyFundamentals) -> dict | None:
-    net_income = fundamentals.series["net_income"].points[-1].value
-    equity = fundamentals.series["total_equity"].points[-1].value
-    try:
-        roe = ratio(net_income, equity) * 100
-    except (ZeroDivisionError, ValueError):
-        return None
-    return {"kind": "kpi", "value_text": f"{roe:.1f}%"}
 
 
 _SHAPERS: dict[str, Callable[[CompanyFundamentals], dict | None]] = {
@@ -394,7 +418,9 @@ _SHAPERS: dict[str, Callable[[CompanyFundamentals], dict | None]] = {
     "return_on_capital": _return_on_capital,
     "valuation": _valuation,
     "market_cap": _market_cap,
-    "pe_ratio": _pe_ratio,
-    "dividend_yield": _dividend_yield,
-    "return_on_equity": _return_on_equity,
+    "pe_ratio": _trailing_ratio_line(PE_RATIO_TTM, "P/E", "P/E (x)", markers=False),
+    "dividend_yield": _trailing_percentage_line(
+        DIVIDEND_YIELD_TTM, "Dividend Yield", "Dividend Yield (%)", markers=False
+    ),
+    "return_on_equity": _trailing_percentage_line(ROE_TTM, "ROE", "ROE (%)"),
 }
