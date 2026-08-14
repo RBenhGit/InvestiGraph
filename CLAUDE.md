@@ -36,8 +36,8 @@
 
 ## Verification policy
 
-- Every change ends with its check passing: run `{{TEST_CMD}}` (or the relevant single test)
-  and show the output. If you can't verify it, don't call it done.
+- Every change ends with its check passing: run the test command from **Commands** above
+  (or the relevant single test) and show the output. If you can't verify it, don't call it done.
 - Fix root causes. Never suppress an error, skip a test, or weaken an assertion to get green.
 - For bug fixes: write a failing test that reproduces the issue first, then fix it.
 - Performance work needs a stated budget and a measurement before any change (`perf-investigator`).
