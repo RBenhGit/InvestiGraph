@@ -57,12 +57,22 @@
   touches input handling, auth, files, shell, or dependencies.
 - Commit with a descriptive message after each completed unit of work.
 
+## Session log
+
+`CURRENT_WORK.md` is the running work log for this project: what's done, what's in flight,
+known problems, what's next. **Read it at the start of every session, before doing anything
+else** — that's how continuity across sessions works without re-explaining context each time.
+Update it whenever you plan, execute, or hit a problem: after finishing a unit of work, before
+ending a session, and any time state changes enough that the next session would be misled by
+a stale file. Never leave "In flight" pointing at something already finished or abandoned.
+
 ## Multi-session projects
 
-Start every session with `/orient`: read git log + PROGRESS.md, verify the baseline is green,
-pick ONE feature, state the finish line. A red baseline is the session's work — don't build on it.
-Complete one feature at a time. Leave the code mergeable — no half-done work without a note in
-PROGRESS.md. Run `/harness` once at the start of a project that will span many sessions.
+Start every session with `/orient`: read git log + CURRENT_WORK.md, verify the baseline is
+green, pick ONE feature, state the finish line. A red baseline is the session's work — don't
+build on it. Complete one feature at a time. Leave the code mergeable — no half-done work
+without a note in CURRENT_WORK.md. Run `/harness` once at the start of a project that will
+span many sessions.
 
 ## Repository etiquette
 
