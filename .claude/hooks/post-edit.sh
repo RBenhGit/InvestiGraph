@@ -8,8 +8,8 @@
 # blocks the turn. Trim this list to the extensions your linter actually understands.
 # Formatters are usually multi-format, so FORMAT_CMD runs on everything.
 
-FORMAT_CMD=""
-LINT_CMD=""
+FORMAT_CMD="npx prettier --write"
+LINT_CMD="npx eslint --max-warnings 0"
 LINT_EXTENSIONS="ts tsx js jsx mjs cjs py rb go rs java kt swift php cs"
 
 INPUT=$(cat)   # always drain stdin, even on the early exits below

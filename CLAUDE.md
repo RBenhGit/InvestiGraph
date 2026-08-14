@@ -2,12 +2,12 @@
 
 ## Commands
 
-- Build: `TBD — no code committed yet; fill in once the stack is chosen`
-- Test (all): `TBD`
-- Test (single): `TBD`
-- Lint: `TBD`
-- Format: `TBD`
-- Run locally: `TBD`
+- Build: `npm run build` (`tsc -p tsconfig.json`)
+- Test (all): `npm test` (`vitest run`)
+- Test (single): `npx vitest run <path>`
+- Lint: `npm run lint` (`eslint .`)
+- Format: `npm run format` (`prettier --write .`)
+- Run locally: `npm run cli -- TICKER` (e.g. `npm run cli -- AAPL`), `npm run web` (Fastify on `PORT`, default 3000)
 
 ## Principles
 

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fair Value Ledger — EPS Evaluation</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="topbar">
+        <div class="wordmark">Fair Value Ledger <small>EPS × MULTIPLE</small></div>
+        <div class="method-key">
+          <span><span class="dot" style="background: var(--accent-a)"></span>Lynch</span>
+          <span><span class="dot" style="background: var(--accent-b)"></span>Rule #1</span>
+        </div>
+      </div>
+
+      <div class="hero">
+        <h1>What's this stock actually worth?</h1>
+        <p class="lede">
+          Enter a ticker, pick a growth-rate source, and compare two EPS-growth × multiple fair
+          value estimates side by side. No cash-flow modeling — just growth and a multiple.
+        </p>
+        <form id="valuate-form" class="searchrow">
+          <input
+            id="ticker-input"
+            class="ticker-input"
+            type="text"
+            placeholder="TICKER"
+            autocomplete="off"
+            required
+          />
+          <button id="go-btn" class="go-btn" type="submit">Value it</button>
+        </form>
+
+        <div class="searchrow" style="margin-top: 1rem">
+          <label class="assumption">
+            Growth %
+            <input id="growth-input" class="assumption-input" type="number" step="0.1" />
+          </label>
+          <label class="assumption">
+            Exit P/E
+            <input id="exit-pe-input" class="assumption-input" type="number" step="0.1" value="15" />
+          </label>
+          <label class="assumption">
+            Req. return %
+            <input
+              id="required-return-input"
+              class="assumption-input"
+              type="number"
+              step="0.1"
+              value="15"
+            />
+          </label>
+          <label class="assumption">
+            Years
+            <input id="years-input" class="assumption-input" type="number" step="1" value="10" />
+          </label>
+        </div>
+
+        <div id="growth-chips" class="chips"></div>
+      </div>
+
+      <div id="stat-strip" class="stat-strip" hidden></div>
+
+      <div id="error-card" class="card" hidden></div>
+
+      <div id="cards" class="cards" hidden>
+        <div class="card a">
+          <div class="card-eyebrow">Method A</div>
+          <h2>Lynch</h2>
+          <p class="method-desc">FairValue = EPS(ttm) × growth rate. No discounting.</p>
+          <div id="lynch-fair-value" class="fair-value">—</div>
+          <div id="lynch-verdict" class="verdict"></div>
+          <div id="lynch-inputs" class="inputs-used"></div>
+        </div>
+        <div class="card b">
+          <div class="card-eyebrow">Method B</div>
+          <h2>Rule #1</h2>
+          <p class="method-desc">
+            Project EPS forward, apply an exit P/E, discount back at the required return.
+          </p>
+          <div id="rule-one-fair-value" class="fair-value">—</div>
+          <div id="rule-one-verdict" class="verdict"></div>
+          <div id="rule-one-inputs" class="inputs-used"></div>
+        </div>
+      </div>
+
+      <div id="reference-strip" class="stat-strip" hidden></div>
+
+      <footer>
+        Reference figures are informational only and are never fed into either valuation method.
+      </footer>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -4,7 +4,7 @@
 # 8 consecutive blocks, so a genuinely stuck run still terminates.
 # Example: TEST_CMD="npm test --silent"   TEST_CMD="pytest -q"
 
-TEST_CMD=""
+TEST_CMD="npx vitest run"
 
 INPUT=$(cat)   # always drain stdin, even on the early exits below
 
