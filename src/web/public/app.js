@@ -1,4 +1,4 @@
-// Plain script, no bundler/framework. Talks to POST /api/valuate only — no valuation math here,
+// Plain script, no bundler/framework. Talks to POST /api/valuate only -- no valuation math here,
 // that would reimplement the formulas the same way the base design doc forbids in the CLI.
 
 const tickerInput = document.getElementById('ticker-input');
@@ -8,10 +8,14 @@ const exitPeInput = document.getElementById('exit-pe-input');
 const requiredReturnInput = document.getElementById('required-return-input');
 const yearsInput = document.getElementById('years-input');
 const growthChips = document.getElementById('growth-chips');
-const statStrip = document.getElementById('stat-strip');
 const errorCard = document.getElementById('error-card');
+const result = document.getElementById('result');
 const cards = document.getElementById('cards');
-const referenceStrip = document.getElementById('reference-strip');
+const priceValueEl = document.getElementById('price-value');
+const priceMetaEl = document.getElementById('price-meta');
+const priceDeltasEl = document.getElementById('price-deltas');
+const growthTableEl = document.getElementById('growth-table');
+const multiplesTableEl = document.getElementById('multiples-table');
 
 /** Mirrors cli/index.ts's formatStockDataError, for display purposes only. */
 function formatStockDataError(error) {
@@ -35,15 +39,17 @@ function fmt(value) {
   return value === null || value === undefined ? 'n/a' : Number(value).toFixed(2);
 }
 
+function fmtPercent(value) {
+  return value === null || value === undefined ? 'n/a' : `${Number(value).toFixed(2)}%`;
+}
+
 function setLoading(isLoading) {
   goBtn.disabled = isLoading;
-  cards.style.opacity = isLoading ? '0.5' : '1';
+  result.style.opacity = isLoading ? '0.5' : '1';
 }
 
 function showError(message) {
-  statStrip.hidden = true;
-  cards.hidden = true;
-  referenceStrip.hidden = true;
+  result.hidden = true;
   errorCard.hidden = false;
   errorCard.textContent = message;
 }
@@ -52,38 +58,84 @@ function clearError() {
   errorCard.hidden = true;
 }
 
-function statBlock(label, value) {
+/** Current price vs. one fair-value estimate: upside/downside % and a verdict pill. */
+function renderPriceDelta(label, fairValue, currentPrice, dotColorVar) {
   const div = document.createElement('div');
+  div.className = 'price-delta';
+
   const labelDiv = document.createElement('div');
-  labelDiv.className = 'stat-label';
-  labelDiv.textContent = label;
+  labelDiv.className = 'price-delta-label';
+  labelDiv.innerHTML = `<span class="dot" style="background: var(${dotColorVar})"></span>${label}`;
+
   const valueDiv = document.createElement('div');
-  valueDiv.className = 'stat-value';
-  valueDiv.textContent = value;
+  valueDiv.className = 'price-delta-value';
+
+  if (fairValue === null || fairValue === undefined || Number.isNaN(fairValue)) {
+    valueDiv.textContent = 'n/a';
+  } else {
+    const diffPercent = (fairValue / currentPrice - 1) * 100;
+    const undervalued = diffPercent > 0;
+    valueDiv.innerHTML = `<b>${fmt(fairValue)}</b> <span class="${undervalued ? 'good' : 'bad'}">${undervalued ? '+' : ''}${fmt(diffPercent)}%</span>`;
+  }
+
   div.append(labelDiv, valueDiv);
   return div;
 }
 
-function renderStatStrip(data, growthUsed) {
-  statStrip.innerHTML = '';
-  statStrip.append(
-    statBlock('Ticker', data.ticker),
-    statBlock('Current price', `${fmt(data.currentPrice)} ${data.currency}`),
-    statBlock('EPS (TTM)', fmt(data.epsTtm)),
-    statBlock('Growth rate used', `${fmt(growthUsed)}%`),
+function renderPriceBanner(data, lynch, ruleOne) {
+  priceValueEl.textContent = `${fmt(data.currentPrice)} ${data.currency}`;
+  priceMetaEl.textContent = `${data.ticker} \u00b7 EPS (TTM) ${fmt(data.epsTtm)} \u00b7 as of ${data.asOf}`;
+
+  priceDeltasEl.innerHTML = '';
+  priceDeltasEl.append(
+    renderPriceDelta('Lynch fair value', lynch.ok ? lynch.fairValue : null, data.currentPrice, '--accent-a'),
+    renderPriceDelta('Rule #1 fair value', ruleOne.ok ? ruleOne.fairValue : null, data.currentPrice, '--accent-b'),
   );
-  statStrip.hidden = false;
 }
 
-function renderReference(data) {
-  referenceStrip.innerHTML = '';
-  referenceStrip.append(
-    statBlock('Hist. P/E 1y', fmt(data.historicalPe.avg1y)),
-    statBlock('Hist. P/E 3y', fmt(data.historicalPe.avg3y)),
-    statBlock('Hist. P/E 5y', fmt(data.historicalPe.avg5y)),
-    statBlock('Trailing P/E · PEG (reference only)', `${fmt(data.providerReference.trailingPe)} · ${fmt(data.providerReference.pegRatio)}`),
+/** Small label/value row for the growth-sources and multiples panels. */
+function tableRow(label, value, opts) {
+  const row = document.createElement('div');
+  row.className = 'mini-row';
+  const labelDiv = document.createElement('div');
+  labelDiv.className = 'mini-label';
+  labelDiv.textContent = label;
+  const valueDiv = document.createElement('div');
+  valueDiv.className = 'mini-value';
+  valueDiv.textContent = value;
+  row.append(labelDiv, valueDiv);
+  if (opts && opts.highlight) row.classList.add('mini-row-active');
+  return row;
+}
+
+/** Every EPS growth-rate source side by side, with the one currently in use highlighted --
+ * replaces the old chip-only display, where picking a source hid the others. */
+function renderGrowthTable(growth, growthUsed) {
+  growthTableEl.innerHTML = '';
+  const sources = [
+    { key: 'historical1yPercent', label: 'Historical, 1Y' },
+    { key: 'historical3yPercent', label: 'Historical, 3Y CAGR' },
+    { key: 'historical5yPercent', label: 'Historical, 5Y' },
+    { key: 'analystEstimate5yPercent', label: 'Analyst estimate, 5Y' },
+  ];
+  for (const source of sources) {
+    const value = growth[source.key];
+    const isActive = value !== null && value !== undefined && value === growthUsed;
+    growthTableEl.append(tableRow(source.label, fmtPercent(value), { highlight: isActive }));
+  }
+}
+
+/** Historical average P/E (1y/3y/5y, computed locally) plus the provider's own point-in-time
+ * trailing P/E and PEG -- grouped together since they all answer "is this multiple rich?". */
+function renderMultiplesTable(data) {
+  multiplesTableEl.innerHTML = '';
+  multiplesTableEl.append(
+    tableRow('Avg. P/E, 1Y', fmt(data.historicalPe.avg1y)),
+    tableRow('Avg. P/E, 3Y', fmt(data.historicalPe.avg3y)),
+    tableRow('Avg. P/E, 5Y', fmt(data.historicalPe.avg5y)),
+    tableRow('Trailing P/E (current)', fmt(data.providerReference.trailingPe)),
+    tableRow('PEG ratio', fmt(data.providerReference.pegRatio)),
   );
-  referenceStrip.hidden = false;
 }
 
 /** Growth-source chips: up to 4, one per non-null growth figure. Clicking one overwrites the
@@ -173,6 +225,7 @@ async function handleSubmit(event) {
 
     const { data, lynch, ruleOne } = body;
 
+    let effectiveGrowth = growthRatePercent;
     if (growthInput.value === '') {
       const seed =
         data.growth.analystEstimate5yPercent ??
@@ -180,11 +233,13 @@ async function handleSubmit(event) {
         data.growth.historical1yPercent ??
         '';
       growthInput.value = seed;
+      effectiveGrowth = seed === '' ? null : seed;
     }
 
     renderGrowthChips(data.growth);
-    renderStatStrip(data, growthRatePercent);
-    renderReference(data);
+    renderPriceBanner(data, lynch, ruleOne);
+    renderGrowthTable(data.growth, effectiveGrowth);
+    renderMultiplesTable(data);
 
     renderMethodCard('lynch', lynch, data.currentPrice);
     renderMethodCard('rule-one', ruleOne, data.currentPrice, [
@@ -193,7 +248,7 @@ async function handleSubmit(event) {
       ['years', years],
     ]);
 
-    cards.hidden = false;
+    result.hidden = false;
   } catch (err) {
     showError(`Request failed: ${err instanceof Error ? err.message : String(err)}`);
   } finally {

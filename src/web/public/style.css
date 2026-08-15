@@ -110,3 +110,36 @@ footer { margin-top: 2.5rem; font-size: 0.78rem; color: var(--ink-soft); font-fa
   transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 .assumption-input:focus { border-color: var(--brand); box-shadow: 0 0 0 4px rgba(255, 184, 0, 0.22); }
 #error-card { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); font-weight: 600; }
+
+/* Redesign additions — price banner (current price + fair-value deltas up front), and the
+   growth-sources / valuation-multiples panels that replace the old flat stat strips. */
+.price-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 1.5rem; background: var(--brand-soft); border-radius: 0.9rem; padding: 1.4rem 1.6rem; margin: 2rem 0 1.25rem; }
+.price-banner-main .stat-label { margin-bottom: 0.2rem; }
+.price-value { font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-variant-numeric: tabular-nums; font-weight: 800; font-size: clamp(1.8rem, 4vw, 2.4rem); line-height: 1; }
+.price-meta { font-size: 0.78rem; color: var(--ink-soft); margin-top: 0.4rem; }
+.price-banner-deltas { display: flex; gap: 1.75rem; flex-wrap: wrap; }
+.price-delta-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin-bottom: 0.3rem; }
+.price-delta-value { font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-variant-numeric: tabular-nums; font-size: 1.05rem; }
+.price-delta-value b { font-weight: 800; }
+.price-delta-value .good { color: var(--good); font-weight: 700; }
+.price-delta-value .bad { color: var(--bad); font-weight: 700; }
+
+.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+@media (max-width: 42rem) { .panels { grid-template-columns: 1fr; } }
+.panel { border: 1.5px solid var(--line); border-radius: 0.9rem; padding: 1.1rem 1.3rem; background: var(--surface); }
+.panel-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--ink-soft); margin-bottom: 0.7rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+.panel-note { font-size: 0.68rem; font-weight: 500; text-transform: none; letter-spacing: 0; opacity: 0.75; }
+.mini-table { display: flex; flex-direction: column; }
+.mini-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
+.mini-row:last-child { border-bottom: none; }
+.mini-label { font-size: 0.85rem; color: var(--ink-soft); }
+.mini-value { font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.9rem; }
+.mini-row-active { background: var(--brand-soft); margin: 0 -0.5rem; padding: 0.45rem 0.5rem; border-radius: 0.5rem; border-bottom-color: transparent; }
+.mini-row-active .mini-label { color: var(--ink); font-weight: 600; }
