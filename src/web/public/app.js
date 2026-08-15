@@ -89,7 +89,7 @@ function renderPriceBanner(data, lynch, ruleOne) {
 
   priceDeltasEl.innerHTML = '';
   priceDeltasEl.append(
-    renderPriceDelta('Lynch fair value', lynch.ok ? lynch.fairValue : null, data.currentPrice, '--accent-a'),
+    renderPriceDelta('Peter Lynch fair value', lynch.ok ? lynch.fairValue : null, data.currentPrice, '--accent-a'),
     renderPriceDelta('Rule #1 fair value', ruleOne.ok ? ruleOne.fairValue : null, data.currentPrice, '--accent-b'),
   );
 }

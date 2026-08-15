@@ -1,8 +1,8 @@
 :root {
   --bg: #FFFDFA; --surface: #FFFFFF; --surface-2: #F4F1FA;
   --ink: #16122A; --ink-soft: #5C5678; --line: #E7E2F2;
-  --accent-a: #FF2E7E; --accent-a-soft: #FFE7F1;
-  --accent-b: #00B39A; --accent-b-soft: #DFF9F3;
+  --accent-a: #2E5EFF; --accent-a-soft: #E8EDFF;
+  --accent-b: #7C3AED; --accent-b-soft: #F0E9FE;
   --brand: #FFB800; --brand-soft: #FFF3D2;
   --good: #1B8F4C; --good-soft: #E4F6EA;
   --bad: #D8394A; --bad-soft: #FCE7E7;
@@ -12,8 +12,8 @@
   :root:not([data-theme="light"]) {
     --bg: #120F22; --surface: #1C1834; --surface-2: #241F40;
     --ink: #F4F2FF; --ink-soft: #B6AFD6; --line: #332D57;
-    --accent-a: #FF5C9A; --accent-a-soft: #3A1830;
-    --accent-b: #2FE3C7; --accent-b-soft: #123330;
+    --accent-a: #6C8EFF; --accent-a-soft: #1C2547;
+    --accent-b: #A97BFF; --accent-b-soft: #2A1F47;
     --brand: #FFC93C; --brand-soft: #3A2E0E;
     --good: #3DDC84; --good-soft: #123322;
     --bad: #FF6B6E; --bad-soft: #3A1519;
@@ -23,8 +23,8 @@
 :root[data-theme="dark"] {
   --bg: #120F22; --surface: #1C1834; --surface-2: #241F40;
   --ink: #F4F2FF; --ink-soft: #B6AFD6; --line: #332D57;
-  --accent-a: #FF5C9A; --accent-a-soft: #3A1830;
-  --accent-b: #2FE3C7; --accent-b-soft: #123330;
+  --accent-a: #6C8EFF; --accent-a-soft: #1C2547;
+  --accent-b: #A97BFF; --accent-b-soft: #2A1F47;
   --brand: #FFC93C; --brand-soft: #3A2E0E;
   --good: #3DDC84; --good-soft: #123322;
   --bad: #FF6B6E; --bad-soft: #3A1519;
