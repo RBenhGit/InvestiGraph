@@ -22,8 +22,8 @@ import {
 } from './normalize';
 import { computeHistoricalPeAverages } from './historicalPe';
 import type {
+  AnnualEpsPoint,
   MonthlyClosePoint,
-  QuarterlyEpsPoint,
   StockData,
   StockDataError,
   StockDataResult,
@@ -126,19 +126,29 @@ export async function fetchStockData(ticker: string): Promise<StockDataResult> {
       annualEps.length >= 2 ? calculateCagrPercent(annualEps[0], annualEps[1], 1) : null;
     const historical3yPercent =
       annualEps.length >= 4 ? calculateCagrPercent(annualEps[0], annualEps[3], 3) : null;
+    // Locally-computed 5-annual-period CAGR — same shape as historical1y/historical3y above,
+    // needs index 5 (6 annual entries), which fetchAnnualIncomeStatement's outputsize=6 covers.
+    const historical5yLocalPercent =
+      annualEps.length >= 6 ? calculateCagrPercent(annualEps[0], annualEps[5], 5) : null;
 
-    const historical5yPercent = toPercent(growthEstimates?.growth_estimates.past_5_years_pa);
+    // Prefer the provider's real analyst-aggregated 5y figure when growth_estimates is
+    // reachable (not plan-gated); otherwise fall back to the local annual-EPS CAGR above rather
+    // than leaving this permanently null on a non-Enterprise key.
+    const historical5yPercent =
+      toPercent(growthEstimates?.growth_estimates.past_5_years_pa) ?? historical5yLocalPercent;
     const analystEstimate5yPercent = toPercent(growthEstimates?.growth_estimates.next_5_years_pa);
 
-    const quarterlyEpsPoints: QuarterlyEpsPoint[] = quarterlyEntries
+    // historicalPe now derives from annual EPS, not quarterly — see historicalPe.ts's file
+    // comment for why the quarterly endpoint's plan-tier cap makes that the only viable input.
+    const annualEpsPoints: AnnualEpsPoint[] = annualIncome.income_statement
       .map((entry) => ({ periodEnd: entry.fiscal_date, dilutedEps: parsedEps(entry) }))
-      .filter((point): point is QuarterlyEpsPoint => point.dilutedEps !== null);
+      .filter((point): point is AnnualEpsPoint => point.dilutedEps !== null);
 
     const monthlyClosePoints: MonthlyClosePoint[] = monthlyTimeSeries.values
       .map((value) => ({ date: value.datetime, close: parseNumber(value.close) }))
       .filter((point): point is MonthlyClosePoint => point.close !== null);
 
-    const historicalPe = computeHistoricalPeAverages(quarterlyEpsPoints, monthlyClosePoints);
+    const historicalPe = computeHistoricalPeAverages(annualEpsPoints, monthlyClosePoints);
 
     const trailingPe = epsTtm > 0 ? currentPrice / epsTtm : null;
 

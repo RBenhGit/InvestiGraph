@@ -39,8 +39,9 @@ function quarterlyIncome(count = 4) {
   };
 }
 
-/** 4 annual diluted-EPS entries (most-recent-first) chosen so both the 1y and 3y CAGR windows
- * land on exactly 10%: 1.21 * 1.1 = 1.331, and 1.0 * 1.1^3 = 1.331. */
+/** 6 annual diluted-EPS entries (most-recent-first) chosen so the 1y and 3y CAGR windows land
+ * on exactly 10% (1.21 * 1.1 = 1.331, and 1.0 * 1.1^3 = 1.331), plus 2 older years at a
+ * constant 1.0 so a 5y CAGR and all three historicalPe windows have enough history to compute. */
 function annualIncome() {
   return {
     income_statement: [
@@ -48,16 +49,24 @@ function annualIncome() {
       { fiscal_date: '2024-12-31', eps_diluted: 1.21, diluted_shares_outstanding: 1_000_000_000 },
       { fiscal_date: '2023-12-31', eps_diluted: 1.1, diluted_shares_outstanding: 1_000_000_000 },
       { fiscal_date: '2022-12-31', eps_diluted: 1.0, diluted_shares_outstanding: 1_000_000_000 },
+      { fiscal_date: '2021-12-31', eps_diluted: 1.0, diluted_shares_outstanding: 1_000_000_000 },
+      { fiscal_date: '2020-12-31', eps_diluted: 1.0, diluted_shares_outstanding: 1_000_000_000 },
     ],
   };
 }
 
+/** Month-end closes covering every annualIncome() fiscal year-end, all at a constant 250 so
+ * every historicalPe P/E point is 250/eps and easy to hand-verify. */
 function monthlyTimeSeries(currency = 'USD') {
   return {
     meta: { currency },
     values: [
       { datetime: '2025-12-31', close: '250' },
-      { datetime: '2025-09-30', close: '240' },
+      { datetime: '2024-12-31', close: '250' },
+      { datetime: '2023-12-31', close: '250' },
+      { datetime: '2022-12-31', close: '250' },
+      { datetime: '2021-12-31', close: '250' },
+      { datetime: '2020-12-31', close: '250' },
     ],
   };
 }
@@ -112,11 +121,15 @@ describe('fetchStockData', () => {
     expect(result.data.trailingPe).toBe(10);
     expect(result.data.growth.historical1yPercent).toBeCloseTo(10, 10);
     expect(result.data.growth.historical3yPercent).toBeCloseTo(10, 10);
+    // growth_estimates is present in this fixture, so historical5yPercent prefers its
+    // past_5_years_pa (8%) over the locally-computed fallback CAGR.
     expect(result.data.growth.historical5yPercent).toBeCloseTo(8, 10);
     expect(result.data.growth.analystEstimate5yPercent).toBeCloseTo(10, 10);
-    // Only 4 quarters of income data — one computable trailing-P/E point, short of the
-    // 4/12/20-point windows avg1y/avg3y/avg5y each require.
-    expect(result.data.historicalPe).toEqual({ avg1y: null, avg3y: null, avg5y: null });
+    // 6 years of annual EPS/price, all P/E points = 250/eps. avg1y = 250/1.331 ≈ 187.83;
+    // avg3y/avg5y are medians over the 3/5 most recent annual P/E points.
+    expect(result.data.historicalPe.avg1y).toBeCloseTo(250 / 1.331, 10);
+    expect(result.data.historicalPe.avg3y).not.toBeNull();
+    expect(result.data.historicalPe.avg5y).not.toBeNull();
   });
 
   it('maps a thrown client error to API_ERROR by default', async () => {
@@ -159,7 +172,7 @@ describe('fetchStockData', () => {
     expect(result.error.type).toBe('INVALID_CURRENCY_UNIT');
   });
 
-  it('still succeeds with null growth_estimates fields when that endpoint is unavailable (e.g. plan-gated 403)', async () => {
+  it('falls back to a locally-computed 5y CAGR when growth_estimates is unavailable (e.g. plan-gated 403)', async () => {
     mockAllSuccess();
     vi.mocked(fetchGrowthEstimates).mockRejectedValue(
       new TwelveDataResponseError(
@@ -176,7 +189,10 @@ describe('fetchStockData', () => {
     expect(result.data.epsTtm).toBe(10);
     expect(result.data.growth.historical1yPercent).toBeCloseTo(10, 10);
     expect(result.data.growth.historical3yPercent).toBeCloseTo(10, 10);
-    expect(result.data.growth.historical5yPercent).toBeNull();
+    // No growth_estimates: historical5yPercent falls back to the local CAGR from
+    // annualIncome()'s EPS series — 1.331 vs. 1.0 five years earlier.
+    const expectedLocal5y = (Math.pow(1.331 / 1.0, 1 / 5) - 1) * 100;
+    expect(result.data.growth.historical5yPercent).toBeCloseTo(expectedLocal5y, 10);
     expect(result.data.growth.analystEstimate5yPercent).toBeNull();
   });
 

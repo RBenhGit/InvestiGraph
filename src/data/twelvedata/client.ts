@@ -95,15 +95,14 @@ export async function fetchGrowthEstimates(
   return twelveDataFetch<GrowthEstimatesResponse>(url, 'growth_estimates');
 }
 
-/** Quarterly income statement, outputsize=4: `computeHistoricalPeAverages` ideally wants a
- * 20-point trailing quarterly-P/E window (23+ quarters of underlying EPS — see historicalPe.ts),
- * but confirmed live against the real account: this plan's `income_statement` endpoint rejects
- * `period=quarterly` with `outputsize` above 6 (HTTP 400, "Full access to historical data is
- * available only in the Enterprise plan") — and even 6 quarters can't fill any P/E-average
- * window (avg1y alone needs 7). Below Enterprise, `historicalPe` will always come back all-null;
- * that's a real plan-tier limit, not a bug, and it degrades gracefully rather than erroring
- * (see fetchStockData). 4 is the minimum this app actually needs (one TTM-EPS point), and
- * requesting more than the plan allows would fail the entire lookup for no benefit. */
+/** Quarterly income statement, outputsize=4: confirmed live against the real account, this
+ * plan's `income_statement` endpoint rejects `period=quarterly` with `outputsize` above 6
+ * (HTTP 400, "Full access to historical data is available only in the Enterprise plan") — a
+ * hard ceiling this app cannot work around by requesting more. `historicalPe` (see
+ * historicalPe.ts) therefore computes its P/E windows from *annual* EPS instead of quarterly,
+ * which isn't subject to this cap (see fetchAnnualIncomeStatement below). 4 is the minimum this
+ * endpoint call actually needs here (one TTM-EPS point for epsTtm), and requesting more than
+ * the plan allows would fail the entire lookup for no benefit. */
 export async function fetchQuarterlyIncomeStatement(
   ticker: string,
   apiKey: string,
@@ -112,12 +111,15 @@ export async function fetchQuarterlyIncomeStatement(
   return twelveDataFetch<IncomeStatementResponse>(url, 'income_statement (quarterly)');
 }
 
-/** Annual income statement, outputsize=5, for the 1y/3y historical CAGR calculations. */
+/** Annual income statement, outputsize=6 (confirmed live: the max this plan tier allows before
+ * the same Enterprise-only 400 as the quarterly endpoint above), for the 1y/3y/5y historical
+ * CAGR calculations and the annual-EPS P/E-average windows in historicalPe.ts. 6 entries is
+ * exactly enough for a 5y CAGR (index 0 vs. index 5) and a 5-point trailing P/E-average window. */
 export async function fetchAnnualIncomeStatement(
   ticker: string,
   apiKey: string,
 ): Promise<IncomeStatementResponse> {
-  const url = `${BASE_URL}/income_statement?symbol=${encodeURIComponent(ticker)}&period=annual&outputsize=5&apikey=${apiKey}`;
+  const url = `${BASE_URL}/income_statement?symbol=${encodeURIComponent(ticker)}&period=annual&outputsize=6&apikey=${apiKey}`;
   return twelveDataFetch<IncomeStatementResponse>(url, 'income_statement (annual)');
 }
 

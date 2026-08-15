@@ -4,7 +4,10 @@ export interface HistoricalPeAverages {
   avg5y: number | null;
 }
 
-export interface QuarterlyEpsPoint {
+/** One fiscal year's diluted EPS, most-recent-first — the input `historicalPe.ts` now uses for
+ * its P/E-average windows (annual, not quarterly: see fetchAnnualIncomeStatement's comment in
+ * client.ts for why quarterly can't reach a usable window under this plan tier). */
+export interface AnnualEpsPoint {
   periodEnd: string;
   dilutedEps: number;
 }
@@ -25,7 +28,10 @@ export interface StockData {
   growth: {
     historical1yPercent: number | null; // computed locally: EPS(latest annual) / EPS(1y ago) − 1
     historical3yPercent: number | null; // computed locally: CAGR over 3 annual periods
-    historical5yPercent: number | null; // passthrough: growth_estimates.past_5_years_pa × 100
+    // Prefers growth_estimates.past_5_years_pa × 100 (real analyst-aggregated figure) when that
+    // plan-gated endpoint is available; otherwise falls back to a locally-computed 5-annual-
+    // period CAGR from the same annual EPS series historical1y/historical3y already use.
+    historical5yPercent: number | null;
     analystEstimate5yPercent: number | null; // passthrough: growth_estimates.next_5_years_pa × 100 — real consensus, verified live
   };
   historicalPe: HistoricalPeAverages;
