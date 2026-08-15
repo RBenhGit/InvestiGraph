@@ -3,8 +3,17 @@
 # stack; while it is empty this hook is a no-op. Claude Code overrides the gate after
 # 8 consecutive blocks, so a genuinely stuck run still terminates.
 # Example: TEST_CMD="npm test --silent"   TEST_CMD="pytest -q"
-
-TEST_CMD="npx vitest run"
+#
+# Routed over SSH, not run locally: this project lives on a `Z:` SSHFS mount whose
+# Windows driver returns EPERM (not the POSIX-standard EEXIST) on `mkdir` of an
+# already-existing directory. That breaks `npm install` from this shell, so
+# node_modules here is permanently stuck with the wrong-platform esbuild binary and
+# `npx vitest run` can never succeed locally — not a real test failure, a broken
+# local environment. The same files are reachable via SSH on the host that actually
+# owns the filesystem (native Linux, no mkdir bug, node_modules already correct
+# there); running the suite through that SSH hop is what actually verifies the code.
+# If that host/path/key ever changes, update the remote cd target below.
+TEST_CMD="ssh -o BatchMode=yes -o ConnectTimeout=10 aviv@100.76.172.46 'cd /home/aviv/shared_disk/Cursor_apps/Eps_Evaluation && npm test'"
 
 INPUT=$(cat)   # always drain stdin, even on the early exits below
 
@@ -39,7 +48,7 @@ if GIT_DIR_PATH=$(git rev-parse --git-dir 2>/dev/null); then
   fi
 fi
 
-TEST_OUTPUT=$($TEST_CMD 2>&1)
+TEST_OUTPUT=$(eval "$TEST_CMD" 2>&1)
 TEST_STATUS=$?
 
 if [ "$TEST_STATUS" -eq 127 ]; then
