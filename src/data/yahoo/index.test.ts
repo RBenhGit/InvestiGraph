@@ -1,0 +1,111 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchAnalystConsensus } from './index';
+import { fetchQuoteSummary } from './client';
+
+vi.mock('./client', () => ({
+  fetchQuoteSummary: vi.fn(),
+}));
+
+const TICKER = 'MSFT';
+
+function quoteSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    earningsTrend: {
+      trend: [
+        { period: '0q', growth: 0.1412 },
+        { period: '+1q', growth: 0.1636 },
+        { period: '0y', growth: 0.1403 },
+        { period: '+1y', growth: 0.1953 },
+      ],
+    },
+    financialData: {
+      targetMeanPrice: 567.2,
+      targetHighPrice: 870,
+      targetLowPrice: 400,
+      numberOfAnalystOpinions: 53,
+      recommendationKey: 'strong_buy',
+    },
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('fetchAnalystConsensus', () => {
+  it('reads the +1y earnings-trend growth entry and financialData fields on success', async () => {
+    vi.mocked(fetchQuoteSummary).mockResolvedValue(quoteSummary());
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.ticker).toBe(TICKER);
+    expect(result.data.nextYearEpsGrowthPercent).toBeCloseTo(19.53, 10);
+    expect(result.data.priceTarget).toEqual({
+      mean: 567.2,
+      high: 870,
+      low: 400,
+      numberOfAnalysts: 53,
+    });
+    expect(result.data.recommendationKey).toBe('strong_buy');
+  });
+
+  it('returns null growth when the +1y trend entry is absent (e.g. thin coverage)', async () => {
+    vi.mocked(fetchQuoteSummary).mockResolvedValue(
+      quoteSummary({ earningsTrend: { trend: [{ period: '0q', growth: 0.1 }] } }),
+    );
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.nextYearEpsGrowthPercent).toBeNull();
+  });
+
+  it('returns null price-target fields when financialData is absent', async () => {
+    vi.mocked(fetchQuoteSummary).mockResolvedValue(
+      quoteSummary({ financialData: undefined }),
+    );
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.priceTarget).toEqual({
+      mean: null,
+      high: null,
+      low: null,
+      numberOfAnalysts: null,
+    });
+    expect(result.data.recommendationKey).toBeNull();
+  });
+
+  it('reports EMPTY_RESPONSE when both modules are absent', async () => {
+    vi.mocked(fetchQuoteSummary).mockResolvedValue({});
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result).toEqual({ ok: false, error: { type: 'EMPTY_RESPONSE', ticker: TICKER } });
+  });
+
+  it('infers NOT_FOUND when the thrown error signals an unknown symbol', async () => {
+    vi.mocked(fetchQuoteSummary).mockRejectedValue(new Error('Quote not found for ticker symbol: NOTATICKER'));
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result).toEqual({ ok: false, error: { type: 'NOT_FOUND', ticker: TICKER } });
+  });
+
+  it('maps any other thrown error to API_ERROR', async () => {
+    vi.mocked(fetchQuoteSummary).mockRejectedValue(new Error('network timeout'));
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result).toEqual({
+      ok: false,
+      error: { type: 'API_ERROR', ticker: TICKER, message: 'network timeout' },
+    });
+  });
+});

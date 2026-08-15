@@ -16,6 +16,7 @@ const priceMetaEl = document.getElementById('price-meta');
 const priceDeltasEl = document.getElementById('price-deltas');
 const growthTableEl = document.getElementById('growth-table');
 const multiplesTableEl = document.getElementById('multiples-table');
+const analystTableEl = document.getElementById('analyst-table');
 
 /** Mirrors cli/index.ts's formatStockDataError, for display purposes only. */
 function formatStockDataError(error) {
@@ -138,6 +139,43 @@ function renderMultiplesTable(data) {
   );
 }
 
+/** Yahoo Finance analyst consensus: next-year EPS growth, price targets vs. current price,
+ * and the consensus recommendation. Independent second data source (not Twelve Data) -- the
+ * whole panel reads n/a if the Yahoo lookup failed, since /api/valuate degrades this field to
+ * null rather than failing the request (see server.ts). */
+function renderAnalystTable(analystConsensus, currentPrice) {
+  analystTableEl.innerHTML = '';
+
+  if (!analystConsensus) {
+    analystTableEl.append(tableRow('Analyst data', 'unavailable'));
+    return;
+  }
+
+  const { nextYearEpsGrowthPercent, priceTarget, recommendationKey } = analystConsensus;
+
+  const recommendationLabel = recommendationKey
+    ? recommendationKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : 'n/a';
+
+  analystTableEl.append(
+    tableRow('Recommendation', recommendationLabel),
+    tableRow('Next-year EPS growth (est.)', fmtPercent(nextYearEpsGrowthPercent)),
+    tableRow('Price target, mean', priceTargetValue(priceTarget.mean, currentPrice)),
+    tableRow('Price target, high', priceTargetValue(priceTarget.high, currentPrice)),
+    tableRow('Price target, low', priceTargetValue(priceTarget.low, currentPrice)),
+    tableRow('Number of analysts', priceTarget.numberOfAnalysts ?? 'n/a'),
+  );
+}
+
+/** A price-target figure alongside its % distance from the current price, same upside/downside
+ * framing as the price banner's fair-value deltas. */
+function priceTargetValue(target, currentPrice) {
+  if (target === null || target === undefined) return 'n/a';
+  const diffPercent = (target / currentPrice - 1) * 100;
+  const sign = diffPercent > 0 ? '+' : '';
+  return `${fmt(target)} (${sign}${fmt(diffPercent)}%)`;
+}
+
 /** Growth-source chips: up to 4, one per non-null growth figure. Clicking one overwrites the
  * growth input; the field stays freely hand-editable afterward. */
 function renderGrowthChips(growth) {
@@ -240,6 +278,7 @@ async function handleSubmit(event) {
     renderPriceBanner(data, lynch, ruleOne);
     renderGrowthTable(data.growth, effectiveGrowth);
     renderMultiplesTable(data);
+    renderAnalystTable(body.analystConsensus, data.currentPrice);
 
     renderMethodCard('lynch', lynch, data.currentPrice);
     renderMethodCard('rule-one', ruleOne, data.currentPrice, [

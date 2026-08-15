@@ -3,6 +3,7 @@ import path from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { fetchStockData } from '../data/twelvedata';
+import { fetchAnalystConsensus } from '../data/yahoo';
 import { calculateLynchValue } from '../valuation/lynch';
 import { calculateRuleOneValue } from '../valuation/ruleOne';
 
@@ -30,7 +31,14 @@ export function buildServer() {
     const { ticker, growthRatePercent, exitPeMultiple, requiredReturnPercent, years } =
       request.body;
 
-    const result = await fetchStockData(ticker);
+    // twelvedata is the required source — a failure there fails the whole request (see below).
+    // yahoo (analyst consensus/price targets) is supplementary and independently fetched in
+    // parallel: its failure must never take down a valuation that only needed twelvedata's
+    // data, so it degrades to `null` rather than being awaited into the failure path.
+    const [result, analystConsensusResult] = await Promise.all([
+      fetchStockData(ticker),
+      fetchAnalystConsensus(ticker).catch(() => null),
+    ]);
 
     if (!result.ok) {
       const status = result.error.type === 'NOT_FOUND' ? 404 : 400;
@@ -47,7 +55,10 @@ export function buildServer() {
       years,
     );
 
-    return reply.status(200).send({ ok: true, data, lynch, ruleOne });
+    const analystConsensus =
+      analystConsensusResult && analystConsensusResult.ok ? analystConsensusResult.data : null;
+
+    return reply.status(200).send({ ok: true, data, lynch, ruleOne, analystConsensus });
   });
 
   return fastify;

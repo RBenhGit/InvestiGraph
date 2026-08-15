@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from './server';
 import { fetchStockData } from '../data/twelvedata';
+import { fetchAnalystConsensus } from '../data/yahoo';
 import { calculateLynchValue } from '../valuation/lynch';
 import { calculateRuleOneValue } from '../valuation/ruleOne';
 import type { StockData } from '../data/twelvedata/types';
+import type { AnalystConsensus } from '../data/yahoo/types';
 
 vi.mock('../data/twelvedata', () => ({
   fetchStockData: vi.fn(),
+}));
+
+vi.mock('../data/yahoo', () => ({
+  fetchAnalystConsensus: vi.fn(),
 }));
 
 const TICKER = 'AAPL';
@@ -31,6 +37,17 @@ function stockData(overrides: Partial<StockData> = {}): StockData {
   };
 }
 
+function analystConsensus(overrides: Partial<AnalystConsensus> = {}): AnalystConsensus {
+  return {
+    ticker: TICKER,
+    nextYearEpsGrowthPercent: 12,
+    priceTarget: { mean: 230, high: 280, low: 190, numberOfAnalysts: 40 },
+    recommendationKey: 'buy',
+    asOf: '2026-08-14T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -38,6 +55,7 @@ beforeEach(() => {
 describe('POST /api/valuate', () => {
   it('returns 200 with fair values matching direct calls to the valuation functions', async () => {
     vi.mocked(fetchStockData).mockResolvedValue({ ok: true, data: stockData() });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
     const fastify = buildServer();
 
     const growthRatePercent = 10;
@@ -69,6 +87,7 @@ describe('POST /api/valuate', () => {
 
     expect(body.lynch.fairValue).toBe(expectedLynch.fairValue);
     expect(body.ruleOne.fairValue).toBe(expectedRuleOne.fairValue);
+    expect(body.analystConsensus).toEqual(analystConsensus());
   });
 
   it('surfaces a non-2xx response with the error when fetchStockData fails', async () => {
@@ -76,6 +95,7 @@ describe('POST /api/valuate', () => {
       ok: false,
       error: { type: 'NOT_FOUND', ticker: TICKER },
     });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
     const fastify = buildServer();
 
     const response = await fastify.inject({
@@ -94,6 +114,55 @@ describe('POST /api/valuate', () => {
     const body = response.json();
     expect(body.ok).toBe(false);
     expect(body.error).toEqual({ type: 'NOT_FOUND', ticker: TICKER });
+  });
+
+  it('still returns 200 with analystConsensus null when the Yahoo lookup fails', async () => {
+    vi.mocked(fetchStockData).mockResolvedValue({ ok: true, data: stockData() });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({
+      ok: false,
+      error: { type: 'API_ERROR', ticker: TICKER, message: 'network timeout' },
+    });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.ok).toBe(true);
+    expect(body.analystConsensus).toBeNull();
+  });
+
+  it('still returns 200 with analystConsensus null when the Yahoo lookup throws', async () => {
+    vi.mocked(fetchStockData).mockResolvedValue({ ok: true, data: stockData() });
+    vi.mocked(fetchAnalystConsensus).mockRejectedValue(new Error('unexpected'));
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.ok).toBe(true);
+    expect(body.analystConsensus).toBeNull();
   });
 });
 

@@ -128,7 +128,7 @@ footer { margin-top: 2.5rem; font-size: 0.78rem; color: var(--ink-soft); font-fa
 .price-delta-value .good { color: var(--good); font-weight: 700; }
 .price-delta-value .bad { color: var(--bad); font-weight: 700; }
 
-.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem; }
 @media (max-width: 42rem) { .panels { grid-template-columns: 1fr; } }
 .panel { border: 1.5px solid var(--line); border-radius: 0.9rem; padding: 1.1rem 1.3rem; background: var(--surface); }
 .panel-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;

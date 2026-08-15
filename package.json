@@ -18,7 +18,8 @@
     "@fastify/static": "^7.0.4",
     "commander": "^12.1.0",
     "dotenv": "^17.4.2",
-    "fastify": "^4.28.1"
+    "fastify": "^4.28.1",
+    "yahoo-finance2": "^4.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
