@@ -128,18 +128,40 @@ footer { margin-top: 2.5rem; font-size: 0.78rem; color: var(--ink-soft); font-fa
 .price-delta-value .good { color: var(--good); font-weight: 700; }
 .price-delta-value .bad { color: var(--bad); font-weight: 700; }
 
-.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem; }
+/* Panels — second pass. The first redesign put three equal-weight, densely-packed boxes right
+   under the price banner, competing for attention with the method cards below. This pass:
+   (1) gives each panel a thin top accent tying it to what it actually feeds — growth sources
+   genuinely drive the two valuation methods (accent-a/b gradient), multiples/analyst are pure
+   reference (quiet neutral) — so the eye can tell "usable input" from "context" at a glance;
+   (2) adds real breathing room per row instead of packing every figure at equal density;
+   (3) makes the value the dominant visual weight and the label recede, so scanning a panel
+   means reading big numbers down a column, not parsing label:value pairs one at a time;
+   (4) gives growth-source rows a horizontal bar-fill behind the value, so "which source is
+   highest" reads as a shape before it reads as text. */
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
 @media (max-width: 42rem) { .panels { grid-template-columns: 1fr; } }
-.panel { border: 1.5px solid var(--line); border-radius: 0.9rem; padding: 1.1rem 1.3rem; background: var(--surface); }
-.panel-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
-  color: var(--ink-soft); margin-bottom: 0.7rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
-.panel-note { font-size: 0.68rem; font-weight: 500; text-transform: none; letter-spacing: 0; opacity: 0.75; }
-.mini-table { display: flex; flex-direction: column; }
-.mini-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
-  padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
-.mini-row:last-child { border-bottom: none; }
-.mini-label { font-size: 0.85rem; color: var(--ink-soft); }
+.panel { border-radius: 0.9rem; background: var(--surface); border: 1.5px solid var(--line);
+  border-top: 3px solid var(--line); overflow: hidden; }
+.panel.panel-primary { border-top-color: var(--accent-a); }
+.panel.panel-reference { opacity: 0.92; }
+.panel-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-soft); padding: 1rem 1.3rem 0.85rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+.panel-note { font-size: 0.66rem; font-weight: 500; text-transform: none; letter-spacing: 0; opacity: 0.7; }
+.mini-table { display: flex; flex-direction: column; padding: 0 0.4rem 0.4rem; }
+.mini-row { position: relative; display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; padding: 0.65rem 0.9rem; margin: 0.1rem; border-radius: 0.6rem; overflow: hidden; }
+.mini-label { font-size: 0.78rem; color: var(--ink-soft); position: relative; z-index: 1; }
 .mini-value { font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
-  font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.9rem; }
-.mini-row-active { background: var(--brand-soft); margin: 0 -0.5rem; padding: 0.45rem 0.5rem; border-radius: 0.5rem; border-bottom-color: transparent; }
+  font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1rem; position: relative; z-index: 1; }
+.mini-row-active { background: var(--brand-soft); }
 .mini-row-active .mini-label { color: var(--ink); font-weight: 600; }
+.mini-row-active .mini-value { font-weight: 800; }
+
+/* Bar-fill behind growth-source rows: width set inline per row via --bar-fill (0-1), scaled
+   against the largest magnitude among the four sources so relative size is visible without
+   reading numbers. Sits under the label/value (z-index above), full row height, low-opacity
+   accent tint so it reads as texture, not a competing color block. */
+.mini-row-bar::before { content: ''; position: absolute; inset: 0; z-index: 0;
+  width: calc(var(--bar-fill, 0) * 100%); background: var(--accent-a-soft);
+  border-radius: 0.6rem; transition: width 0.25s ease; }
+.mini-row-bar.mini-row-active::before { background: color-mix(in srgb, var(--brand) 35%, var(--accent-a-soft)); }

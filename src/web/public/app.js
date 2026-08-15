@@ -85,7 +85,7 @@ function renderPriceDelta(label, fairValue, currentPrice, dotColorVar) {
 
 function renderPriceBanner(data, lynch, ruleOne) {
   priceValueEl.textContent = `${fmt(data.currentPrice)} ${data.currency}`;
-  priceMetaEl.textContent = `${data.ticker} \u00b7 EPS (TTM) ${fmt(data.epsTtm)} \u00b7 as of ${data.asOf}`;
+  priceMetaEl.textContent = `${data.ticker} · EPS (TTM) ${fmt(data.epsTtm)} · as of ${data.asOf}`;
 
   priceDeltasEl.innerHTML = '';
   priceDeltasEl.append(
@@ -94,7 +94,9 @@ function renderPriceBanner(data, lynch, ruleOne) {
   );
 }
 
-/** Small label/value row for the growth-sources and multiples panels. */
+/** Small label/value row for the growth-sources and multiples panels. `opts.barFill` (0-1), if
+ * given, draws a horizontal bar behind the row scaled to that fraction -- see .mini-row-bar in
+ * style.css. */
 function tableRow(label, value, opts) {
   const row = document.createElement('div');
   row.className = 'mini-row';
@@ -106,11 +108,18 @@ function tableRow(label, value, opts) {
   valueDiv.textContent = value;
   row.append(labelDiv, valueDiv);
   if (opts && opts.highlight) row.classList.add('mini-row-active');
+  if (opts && opts.barFill !== undefined) {
+    row.classList.add('mini-row-bar');
+    row.style.setProperty('--bar-fill', String(opts.barFill));
+  }
   return row;
 }
 
 /** Every EPS growth-rate source side by side, with the one currently in use highlighted --
- * replaces the old chip-only display, where picking a source hid the others. */
+ * replaces the old chip-only display, where picking a source hid the others. Each row also
+ * gets a bar-fill scaled against the largest |value| among the four sources (magnitude, not
+ * sign, since a source can be negative and still be "the biggest number here"), so relative
+ * size reads as a shape before it reads as text. */
 function renderGrowthTable(growth, growthUsed) {
   growthTableEl.innerHTML = '';
   const sources = [
@@ -119,10 +128,22 @@ function renderGrowthTable(growth, growthUsed) {
     { key: 'historical5yPercent', label: 'Historical, 5Y' },
     { key: 'analystEstimate5yPercent', label: 'Analyst estimate, 5Y' },
   ];
+  const magnitudes = sources
+    .map((source) => growth[source.key])
+    .filter((value) => value !== null && value !== undefined)
+    .map(Math.abs);
+  const maxMagnitude = magnitudes.length > 0 ? Math.max(...magnitudes) : 0;
+
   for (const source of sources) {
     const value = growth[source.key];
     const isActive = value !== null && value !== undefined && value === growthUsed;
-    growthTableEl.append(tableRow(source.label, fmtPercent(value), { highlight: isActive }));
+    const barFill =
+      value !== null && value !== undefined && maxMagnitude > 0
+        ? Math.abs(value) / maxMagnitude
+        : 0;
+    growthTableEl.append(
+      tableRow(source.label, fmtPercent(value), { highlight: isActive, barFill }),
+    );
   }
 }
 
