@@ -74,11 +74,13 @@ function statistics() {
   return { statistics: { valuations_metrics: {} } };
 }
 
-function mockAllSuccess(overrides: {
-  quote?: ReturnType<typeof quote>;
-  quarterlyIncome?: ReturnType<typeof quarterlyIncome>;
-  monthlyTimeSeries?: ReturnType<typeof monthlyTimeSeries>;
-} = {}) {
+function mockAllSuccess(
+  overrides: {
+    quote?: ReturnType<typeof quote>;
+    quarterlyIncome?: ReturnType<typeof quarterlyIncome>;
+    monthlyTimeSeries?: ReturnType<typeof monthlyTimeSeries>;
+  } = {},
+) {
   vi.mocked(fetchQuote).mockResolvedValue(overrides.quote ?? quote());
   vi.mocked(fetchStatistics).mockResolvedValue(statistics());
   vi.mocked(fetchGrowthEstimates).mockResolvedValue(growthEstimates());
@@ -127,7 +129,12 @@ describe('fetchStockData', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: { type: 'API_ERROR', ticker: TICKER, endpoint: 'quote', message: 'rate limit exceeded' },
+      error: {
+        type: 'API_ERROR',
+        ticker: TICKER,
+        endpoint: 'quote',
+        message: 'rate limit exceeded',
+      },
     });
   });
 
@@ -150,6 +157,27 @@ describe('fetchStockData', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.type).toBe('INVALID_CURRENCY_UNIT');
+  });
+
+  it('still succeeds with null growth_estimates fields when that endpoint is unavailable (e.g. plan-gated 403)', async () => {
+    mockAllSuccess();
+    vi.mocked(fetchGrowthEstimates).mockRejectedValue(
+      new TwelveDataResponseError(
+        'API_ERROR',
+        'growth_estimates',
+        '/growth_estimates is available exclusively with ultra or enterprise plans',
+      ),
+    );
+
+    const result = await fetchStockData(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.epsTtm).toBe(10);
+    expect(result.data.growth.historical1yPercent).toBeCloseTo(10, 10);
+    expect(result.data.growth.historical3yPercent).toBeCloseTo(10, 10);
+    expect(result.data.growth.historical5yPercent).toBeNull();
+    expect(result.data.growth.analystEstimate5yPercent).toBeNull();
   });
 
   it('reports INSUFFICIENT_DATA when there is not enough quarterly data to resolve TTM EPS', async () => {

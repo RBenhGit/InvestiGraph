@@ -66,15 +66,22 @@ export async function fetchStockData(ticker: string): Promise<StockDataResult> {
   try {
     const apiKey = loadTwelveDataApiKey();
 
-    const [quote, statistics, growthEstimates, quarterlyIncome, annualIncome, monthlyTimeSeries] =
-      await Promise.all([
+    const [quote, statistics, quarterlyIncome, annualIncome, monthlyTimeSeries] = await Promise.all(
+      [
         fetchQuote(ticker, apiKey),
         fetchStatistics(ticker, apiKey),
-        fetchGrowthEstimates(ticker, apiKey),
         fetchQuarterlyIncomeStatement(ticker, apiKey),
         fetchAnnualIncomeStatement(ticker, apiKey),
         fetchMonthlyTimeSeries(ticker, apiKey),
-      ]);
+      ],
+    );
+
+    // growth_estimates is gated behind Twelve Data's higher plan tiers (confirmed live: a
+    // non-ultra/enterprise key gets a 403 here while every other endpoint succeeds) — this
+    // must not fail the whole lookup. historical5y/analystEstimate5y simply stay null, same as
+    // any other "no analyst coverage" case StockData.growth already treats as independently
+    // nullable (1y/3y CAGR and historicalPe still come from data this key does have access to).
+    const growthEstimates = await fetchGrowthEstimates(ticker, apiKey).catch(() => null);
 
     const fundamentalsCurrency = monthlyTimeSeries.meta?.currency;
     if (fundamentalsCurrency) {
@@ -120,8 +127,8 @@ export async function fetchStockData(ticker: string): Promise<StockDataResult> {
     const historical3yPercent =
       annualEps.length >= 4 ? calculateCagrPercent(annualEps[0], annualEps[3], 3) : null;
 
-    const historical5yPercent = toPercent(growthEstimates.growth_estimates.past_5_years_pa);
-    const analystEstimate5yPercent = toPercent(growthEstimates.growth_estimates.next_5_years_pa);
+    const historical5yPercent = toPercent(growthEstimates?.growth_estimates.past_5_years_pa);
+    const analystEstimate5yPercent = toPercent(growthEstimates?.growth_estimates.next_5_years_pa);
 
     const quarterlyEpsPoints: QuarterlyEpsPoint[] = quarterlyEntries
       .map((entry) => ({ periodEnd: entry.fiscal_date, dilutedEps: parsedEps(entry) }))

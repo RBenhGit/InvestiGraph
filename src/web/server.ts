@@ -7,7 +7,9 @@ import { calculateLynchValue } from '../valuation/lynch';
 import { calculateRuleOneValue } from '../valuation/ruleOne';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT) || 3000;
+// 3000/3001/3100 are already claimed by other projects on this machine (stock_vision, etc.) —
+// default to a port that doesn't collide.
+const PORT = Number(process.env.PORT) || 3210;
 
 interface ValuateRequestBody {
   ticker: string;
@@ -53,7 +55,9 @@ export function buildServer() {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const fastify = buildServer();
-  fastify.listen({ port: PORT }, (err, address) => {
+  // Bind to all interfaces (not just loopback) so the dev tool is reachable over Tailscale/LAN,
+  // not only from this machine.
+  fastify.listen({ port: PORT, host: '0.0.0.0' }, (err, address) => {
     if (err) {
       fastify.log.error(err);
       process.exit(1);

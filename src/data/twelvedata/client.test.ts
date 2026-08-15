@@ -109,7 +109,7 @@ describe('fetchGrowthEstimates', () => {
 });
 
 describe('fetchQuarterlyIncomeStatement', () => {
-  it('parses a successful response and requests outputsize=24, period=quarterly', async () => {
+  it('parses a successful response and requests outputsize=4, period=quarterly', async () => {
     const body = {
       meta: {},
       income_statement: [
@@ -124,7 +124,7 @@ describe('fetchQuarterlyIncomeStatement', () => {
     expect(result).toEqual(body);
     const url = fetchMock.mock.calls[0][0] as string;
     expect(url).toBe(
-      'https://api.twelvedata.com/income_statement?symbol=AAPL&period=quarterly&outputsize=24&apikey=test-key',
+      'https://api.twelvedata.com/income_statement?symbol=AAPL&period=quarterly&outputsize=4&apikey=test-key',
     );
   });
 

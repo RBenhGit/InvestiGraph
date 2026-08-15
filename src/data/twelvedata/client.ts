@@ -95,15 +95,20 @@ export async function fetchGrowthEstimates(
   return twelveDataFetch<GrowthEstimatesResponse>(url, 'growth_estimates');
 }
 
-/** Quarterly income statement, outputsize=24: `computeHistoricalPeAverages` needs a 20-point
- * trailing quarterly-P/E window, and each point consumes its own quarter plus its 3 preceding
- * quarters, so a 20-point window needs 23 quarters of underlying EPS data minimum — 24 gives
- * clean margin. */
+/** Quarterly income statement, outputsize=4: `computeHistoricalPeAverages` ideally wants a
+ * 20-point trailing quarterly-P/E window (23+ quarters of underlying EPS — see historicalPe.ts),
+ * but confirmed live against the real account: this plan's `income_statement` endpoint rejects
+ * `period=quarterly` with `outputsize` above 6 (HTTP 400, "Full access to historical data is
+ * available only in the Enterprise plan") — and even 6 quarters can't fill any P/E-average
+ * window (avg1y alone needs 7). Below Enterprise, `historicalPe` will always come back all-null;
+ * that's a real plan-tier limit, not a bug, and it degrades gracefully rather than erroring
+ * (see fetchStockData). 4 is the minimum this app actually needs (one TTM-EPS point), and
+ * requesting more than the plan allows would fail the entire lookup for no benefit. */
 export async function fetchQuarterlyIncomeStatement(
   ticker: string,
   apiKey: string,
 ): Promise<IncomeStatementResponse> {
-  const url = `${BASE_URL}/income_statement?symbol=${encodeURIComponent(ticker)}&period=quarterly&outputsize=24&apikey=${apiKey}`;
+  const url = `${BASE_URL}/income_statement?symbol=${encodeURIComponent(ticker)}&period=quarterly&outputsize=4&apikey=${apiKey}`;
   return twelveDataFetch<IncomeStatementResponse>(url, 'income_statement (quarterly)');
 }
 
