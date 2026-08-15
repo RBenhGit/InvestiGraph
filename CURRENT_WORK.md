@@ -6,13 +6,13 @@
 
 EPS×multiple stock valuation tool — Node.js + TypeScript, shared core (`src/data/`,
 `src/valuation/`) with thin CLI (`src/cli/`) and web (`src/web/`) adapters. Fully implemented,
-end-to-end checked against the live Twelve Data API. **75/75 tests, `npm run lint` clean,
-`npm run build` (tsc) clean.** Analyst-consensus feature (below) verified live in a browser —
-ready to commit.
+end-to-end checked against the live Twelve Data API. **77/77 tests, `npm run lint` clean,
+`npm run build` (tsc) clean.** Historical-5Y-growth/avg-P/E data fix and a panel redesign
+(below) both verified live in a browser and committed.
 
 ## Last completed
 
-Implemented the whole app in one pass (tasks 1-9), then two follow-ups:
+Implemented the whole app in one pass (tasks 1-9), then several follow-ups:
 
 - **Data layer** (`src/data/twelvedata/`): `fetchStockData(ticker)` — the single published
   entry point. Pulls quote, statistics, growth_estimates, quarterly/annual income statements,
@@ -37,47 +37,67 @@ banner** (current price + both fair values as % upside/downside), a **growth-rat
 panel** (all four growth figures side by side, active one highlighted), and a **valuation
 multiples panel** (historical avg P/E 1y/3y/5y + trailing P/E + PEG, reference-only).
 
-**Analyst-consensus feature** (not yet committed) — the growth-sources and multiples panels
-above still showed `n/a` for historical-5y growth, analyst-estimate-5y growth, and all three
-avg-P/E figures. Investigated: confirmed live against Twelve Data's own `api_usage` endpoint
-that the API key is `plan_category: "pro"`, and its own error messages state
-`growth_estimates` needs Ultra/Enterprise and full `income_statement` history needs
-Enterprise — a real plan-tier gap, not a bug, nothing fixable in this codebase.
+**Analyst-consensus feature** (`4a2bd07`) — the growth-sources and multiples panels above still
+showed `n/a` for historical-5y growth, analyst-estimate-5y growth, and all three avg-P/E
+figures at the time. Investigated: confirmed live against Twelve Data's own `api_usage`
+endpoint that the API key is `plan_category: "pro"`, and its own error messages state
+`growth_estimates` needs Ultra/Enterprise and full `income_statement` history needs Enterprise.
+Added a second, independent data source rather than upgrading the paid plan or using an LLM
+guess: `src/data/yahoo/` (sibling module, same shape as `twelvedata/`) wraps the
+`yahoo-finance2` npm package's `quoteSummary` endpoint and exposes
+`fetchAnalystConsensus(ticker)` — next-year consensus EPS growth, analyst price targets
+(mean/high/low + count), and the consensus recommendation. Fully independent of `twelvedata/`;
+`src/web/server.ts` fetches both in parallel, degrading `analystConsensus` to `null` (never
+failing the whole request) if the Yahoo call fails. Added a third "Analyst consensus" panel.
+75/75 tests, lint, build clean.
 
-Resolution: added a second, independent data source rather than upgrading the paid plan or
-using an LLM guess. `src/data/yahoo/` (new sibling module, same shape as `twelvedata/`) wraps
-the `yahoo-finance2` npm package's `quoteSummary` endpoint and exposes
-`fetchAnalystConsensus(ticker)`: next-year consensus EPS growth (Yahoo no longer publishes a
-5y figure — confirmed absent across MSFT/AAPL/TSLA, so +1y is the longest-horizon figure
-actually available), analyst price targets (mean/high/low + count), and the consensus
-recommendation (e.g. "strong_buy"). Real, live, sourced data — not an LLM-generated estimate.
+**Historical-5Y-growth / Avg-P/E data fix** (`4d54b50`) — the growth-sources and multiples
+panels still showed `n/a` for `Historical, 5Y` and all three `Avg. P/E` figures even with the
+Yahoo analyst-consensus panel added, because those specific figures were never routed through
+Yahoo — they still depended on Twelve Data fields gated behind its plan tier. Confirmed live
+that the real ceiling is `income_statement?period=quarterly` capping at 6 quarters (not 4 as
+previously assumed) — an unfixable hard limit for a quarterly-TTM P/E scheme, since even the
+max allowed (6) falls short of the 7 quarters `avg1y` needs. Ported the sibling `EvalApp`
+project's approach (`D:\Investment Codes\EvalApp`): `historicalPe.ts` now computes one P/E
+point per **fiscal year** (annual EPS + nearest-preceding monthly close — not subject to the
+quarterly cap) and takes the **median** (not mean) over 1y/3y/5y windows, requiring only
+`ceil(N/2)` valid points rather than an all-or-nothing full window — matches EvalApp's
+`calcMedian` exactly, since with as few as 1-5 points per window a mean is too sensitive to one
+outlier year. `historical5yPercent` now prefers `growth_estimates.past_5_years_pa` when
+reachable, falling back to a locally-computed 5-annual-period CAGR (same shape as the existing
+1y/3y CAGR) otherwise — no longer permanently `null` on this plan tier.
+`fetchAnnualIncomeStatement`'s `outputsize` bumped 5→6 (confirmed live as the max this plan
+allows) to have enough annual points for both the 5y CAGR and the 5-point P/E window.
+`QuarterlyEpsPoint` type removed (dead after the switch to annual). 77/77 tests (was 75, +2
+net new after also fixing one incorrect pre-existing test expectation), lint/build clean,
+live-verified against AAPL: Historical 5Y 9.21%, Avg P/E 1Y/3Y/5Y 34.13/34.13/27.93 (previously
+all `n/a`).
 
-Fully independent of `twelvedata/`: never imported by it, and `src/web/server.ts` fetches both
-in parallel via `Promise.all`, degrading `analystConsensus` to `null` (never failing the whole
-request) if the Yahoo call fails — same graceful-degradation pattern already used for
-`growth_estimates`. `src/web/public/` gained a third panel, "Analyst consensus", showing
-recommendation, next-year growth, and all three price targets with their % distance from the
-current price.
-
-Verified: 75/75 tests (was 67, +8 new — `src/data/yahoo/index.test.ts` plus 3 new
-`server.test.ts` cases covering the merge/degrade wiring), lint clean, build clean, and
-live-checked in a browser via SSH port forward against MSFT — all three panels render together
-correctly, e.g. "Strong Buy" / next-year growth 19.53% / mean target 567.20 (+14.49%). Not yet
-committed.
+**Panel redesign** (`2d116c7`) — user feedback: the three reference panels felt dense/cramped
+with equal visual weight, competing with the price banner and method cards. Growth-sources
+panel now gets a pink (accent-a) top border (`panel-primary`, since it's the one panel whose
+values actually feed the two valuation methods); the other two get a quiet neutral top border
+and slightly reduced opacity (`panel-reference`). Each growth-source row gets a horizontal
+bar-fill sized to `|value|` relative to the largest of the four sources, so "which source is
+biggest" reads as a shape. More row padding, values now the dominant visual weight, labels
+recede. Verified live in both light/dark and desktop/mobile (panel-primary border color,
+bar-fill widths, responsive grid collapse, dark-mode `color-mix()` resolution all confirmed via
+computed-style inspection).
 
 ## In flight
 
-Nothing blocking. Analyst-consensus feature is done and verified; next action is committing it.
+Nothing blocking. Both the data fix and the panel redesign are committed and verified.
 
 ## Known problems
 
 **This machine's `Z:` drive (Windows) is an SSHFS mount of the same filesystem this project
 lives on, and its Windows driver returns `EPERM` instead of the POSIX-standard `EEXIST` when
 something calls `mkdir` on a directory that already exists** — breaks `npm install`/`test`/
-`lint`/`run web` and Claude Code's own file-write tooling from that path. On top of that
-underlying bug, the `Z:` mount can also drop out entirely under load (observed this session,
-likely a side effect of opening/closing several SSH tunnels back-to-back) — when that happens
-even `cd` into the project fails until the mount reconnects on its own or is remounted.
+`lint`/`run web` and Claude Code's own file-write tooling (the `Edit` tool specifically; `Write`
++ plain shell `cp`/`sed` work fine) from that path. On top of that underlying bug, the `Z:`
+mount can also drop out entirely under load (observed across multiple sessions, likely a side
+effect of opening/closing several SSH tunnels back-to-back) — when that happens even `cd` into
+the project fails until the mount reconnects on its own or is remounted.
 
 **Workaround that resolved it this session:** SSH directly into the host instead of going
 through the Windows SSHFS mount (`ssh aviv@100.76.172.46`, key-based, then
@@ -85,19 +105,20 @@ through the Windows SSHFS mount (`ssh aviv@100.76.172.46`, key-based, then
 semantics — `npm install`/`test`/`lint`/`build`/`web` all work normally there, independent of
 whatever state `Z:` is in. `.claude/hooks/stop-test-gate.sh`'s `TEST_CMD` now routes through
 this same SSH hop (commit `0d6082b`) so the stop-gate verifies against the real, working
-environment instead of the broken local one — but that fix lives in the repo itself, so it only
-takes effect once `Z:` can see the committed state; until then the hook may still show the
-old "vitest not recognized" message from a stale local view.
+environment instead of the broken local one. For file edits specifically, when the `Edit` tool
+fails with `EPERM: operation not permitted, mkdir ...`, write the new content to the scratchpad
+directory with `Write`, then `cp` it over the target path on `Z:` via the `Bash` tool (plain
+shell operations on `Z:` work fine) — `sed` in-place on `Z:` also works for small mechanical
+changes and is faster when applicable.
 
 ## Next up
 
-1. Commit the analyst-consensus feature (`src/data/yahoo/` + `src/web/server.ts` +
-   `src/web/server.test.ts` + `src/web/public/{index.html,app.js,style.css}` +
-   `package.json`/`package-lock.json` + this file).
+1. No open implementation work. The app fully covers the EPS×multiple valuation flow with two
+   independent reference data sources (Twelve Data fundamentals + Yahoo analyst consensus) and
+   a redesigned, hierarchy-aware web UI.
 2. Separately flagged (not blocking): `npm audit` reports 8 known vulnerabilities in
    fastify/@fastify/static/vitest's transitive deps, pre-existing and unrelated to any single
-   feature — spun off as its own background task rather than bundled into this change.
-3. No other open implementation work beyond that.
+   feature — spun off as its own background task rather than bundled into any change.
 
 ## Log
 
@@ -123,4 +144,14 @@ old "vitest not recognized" message from a stale local view.
   upside/downside). Also fixed `.claude/hooks/stop-test-gate.sh` to route `TEST_CMD` through
   SSH instead of local `vitest` (commit `0d6082b`), since the local `Z:` environment can never
   self-repair its `node_modules`. Flagged (not fixed) 8 pre-existing `npm audit` CVEs in
-  fastify/vitest as a separate background task. Ready to commit.
+  fastify/vitest as a separate background task. Committed (`4a2bd07`).
+- 2026-08-15 — User flagged `Historical, 5Y` and `Avg. P/E` (1y/3y/5y) still `n/a` even with
+  the Yahoo analyst panel live. Confirmed live the real ceiling is `income_statement`'s
+  quarterly `outputsize` capping at 6 (not 4). Consulted the sibling `EvalApp` project
+  (`D:\Investment Codes\EvalApp`) for its equivalent calc, ported its annual-EPS +
+  median-with-`ceil(N/2)`-floor approach into `historicalPe.ts`, and added a local 5y-CAGR
+  fallback for `historical5yPercent`. 77/77 tests, lint, build clean; live-verified against
+  AAPL. Committed (`4d54b50`). Then redesigned the three panels per user feedback ("feels
+  cramped") — primary/reference visual hierarchy via top-border accent + opacity, bar-fill
+  visualization on growth-source rows, more row breathing room. Verified live in light/dark and
+  desktop/mobile. Committed (`2d116c7`).
