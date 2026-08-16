@@ -95,14 +95,12 @@ export async function fetchGrowthEstimates(
   return twelveDataFetch<GrowthEstimatesResponse>(url, 'growth_estimates');
 }
 
-/** Quarterly income statement, outputsize=4: confirmed live against the real account, this
- * plan's `income_statement` endpoint rejects `period=quarterly` with `outputsize` above 6
- * (HTTP 400, "Full access to historical data is available only in the Enterprise plan") — a
- * hard ceiling this app cannot work around by requesting more. `historicalPe` (see
- * historicalPe.ts) therefore computes its P/E windows from *annual* EPS instead of quarterly,
- * which isn't subject to this cap (see fetchAnnualIncomeStatement below). 4 is the minimum this
- * endpoint call actually needs here (one TTM-EPS point for epsTtm), and requesting more than
- * the plan allows would fail the entire lookup for no benefit. */
+/** Quarterly income statement, outputsize=4. The value 4 is deliberate, as it is the exact minimum
+ * needed here (one TTM-EPS point for epsTtm). Note that the endpoint has a hard ceiling of 6
+ * on this plan tier (HTTP 400, "Full access to historical data is available only in the Enterprise plan"),
+ * but 4 is all we need. `historicalPe` (see historicalPe.ts) therefore computes its P/E windows
+ * from *annual* EPS instead of quarterly, which isn't subject to this cap (see
+ * fetchAnnualIncomeStatement below). */
 export async function fetchQuarterlyIncomeStatement(
   ticker: string,
   apiKey: string,
