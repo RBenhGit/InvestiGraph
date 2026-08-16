@@ -1,6 +1,6 @@
 # Current Work — Eps_Evaluation
 
-**Updated:** 2026-08-15
+**Updated:** 2026-08-16
 
 ## Where things stand
 
@@ -84,9 +84,22 @@ recede. Verified live in both light/dark and desktop/mobile (panel-primary borde
 bar-fill widths, responsive grid collapse, dark-mode `color-mix()` resolution all confirmed via
 computed-style inspection).
 
+**Documentation-drift fixes** — completed tasks 1-5 of `TASKS.md`. Fixed documentation drift in `CLAUDE.md` (added `yahoo` module, fixed `historicalPe` description), added `PORT` to `.env.example`, reworded the `outputsize=4` comment in `client.ts` to clarify it is deliberate, clarified the dead branch in `resolveTtmEps` docstring, and added cross-reference notes for the duplicated growth fallback chain. No behavioral changes made.
+
 ## In flight
 
-Nothing blocking. Both the data fix and the panel redesign are committed and verified.
+**Task 6 is blocked on a product decision by the user** — CLAUDE.md claims the CLI and web
+adapters differ "only in how they collect inputs and render output", but analyst-consensus data
+is web-only. Either correct the doc (cheap, recommended) or wire `fetchAnalystConsensus` into
+the CLI (a feature addition). Do not let a model decide this unilaterally.
+
+**`wiki/` added** — a project wiki (7 pages, Hebrew, in `wiki/`) built from what this session
+verified directly in the code, not copied from `CLAUDE.md`. Covers architecture, data sources,
+valuation methods, the `Z:`/`EPERM` environment trap, the task-execution protocol (distilled
+from `.claude/standards/`), and a commit-by-commit history including the documentation-drift
+findings above. Start at `wiki/Home.md`. Note: the original "CodeFundation wiki" that
+`.claude/standards/*.md` cite as their source is not reachable from this repo or environment —
+this `wiki/` is a project-specific wiki built fresh, not a recovery of that external one.
 
 ## Known problems
 
@@ -113,10 +126,11 @@ changes and is faster when applicable.
 
 ## Next up
 
-1. No open implementation work. The app fully covers the EPS×multiple valuation flow with two
-   independent reference data sources (Twelve Data fundamentals + Yahoo analyst consensus) and
-   a redesigned, hierarchy-aware web UI.
-2. Separately flagged (not blocking): `npm audit` reports 8 known vulnerabilities in
+1. **Task 6 — needs the user's decision**, see "In flight" above. Not to be actioned by a model.
+2. The implementation is otherwise complete: the app covers the EPS×multiple valuation flow with
+   two independent data sources (Twelve Data fundamentals + Yahoo analyst consensus) and a
+   hierarchy-aware web UI.
+3. Separately flagged (not blocking): `npm audit` reports 8 known vulnerabilities in
    fastify/@fastify/static/vitest's transitive deps, pre-existing and unrelated to any single
    feature — spun off as its own background task rather than bundled into any change.
 
@@ -155,3 +169,21 @@ changes and is faster when applicable.
   cramped") — primary/reference visual hierarchy via top-border accent + opacity, bar-fill
   visualization on growth-source rows, more row breathing room. Verified live in light/dark and
   desktop/mobile. Committed (`2d116c7`).
+- 2026-08-16 — Ran `/code-review` on `85aeeed` (method-identity colour fix): no findings; the
+  palette swap is correct and all three theme blocks were updated consistently. Then ran a full
+  project re-evaluation comparing every documentation claim against the implementation. Baseline
+  re-verified green via the SSH host (77/77, lint, build). Found no bugs in running code, but
+  real documentation drift — chiefly that `src/data/yahoo/` (added in `4a2bd07`) and the
+  `historicalPe` annual/median rewrite (`4d54b50`) were never reflected in `CLAUDE.md`. Wrote
+  `docs/Project_ReEvaluation_2026-08-16.md` (findings + evidence), `TASKS.md` (8 prioritised
+  tasks), and `docs/IMPLEMENTATION_PROMPT.md` (hand-off prompt for the model that will implement
+  tasks 1-5, carrying the full working protocol and the three environment traps). Task 6 left
+  open pending a product decision by the user.
+- 2026-08-16 — Built `wiki/` (7 Hebrew pages) as a project-specific wiki, per user request.
+  Verified the original "CodeFundation wiki" `.claude/standards/*.md` cite as their source is
+  not reachable from this repo/environment (no URL, no local copy) before starting, so the new
+  `wiki/` is built fresh from what this session verified in the code — not a recovery of the
+  external one. Content deliberately reflects the corrected facts from the re-evaluation above
+  (e.g. `src/data/yahoo/`, the annual/median `historicalPe`) rather than repeating `CLAUDE.md`'s
+  current drift.
+- 2026-08-16 — Completed tasks 1-5 from TASKS.md (documentation drift fixes). Task 6 is pending a product decision regarding the CLI/web analyst-consensus divergence.
