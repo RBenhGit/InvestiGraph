@@ -23,8 +23,8 @@ neither has a mocked/offline mode.
 ## Architecture
 
 Two shared core layers (`src/data/`, `src/valuation/`) sit behind thin adapters (`src/cli/`,
-`src/web/`). Both adapters call the same two entry points and differ only in how they collect
-inputs and render output.
+`src/web/`). While both adapters call the `twelvedata` entry point to collect fundamentals, the
+web adapter additionally calls `yahoo` for analyst data. The CLI does not use the `yahoo` module.
 
 ```
 src/data/twelvedata/   fetchStockData(ticker) -> StockDataResult   (external API -> StockData)

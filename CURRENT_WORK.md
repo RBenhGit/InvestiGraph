@@ -85,13 +85,9 @@ bar-fill widths, responsive grid collapse, dark-mode `color-mix()` resolution al
 computed-style inspection).
 
 **Documentation-drift fixes** — completed tasks 1-5 of `TASKS.md`. Fixed documentation drift in `CLAUDE.md` (added `yahoo` module, fixed `historicalPe` description), added `PORT` to `.env.example`, reworded the `outputsize=4` comment in `client.ts` to clarify it is deliberate, clarified the dead branch in `resolveTtmEps` docstring, and added cross-reference notes for the duplicated growth fallback chain. No behavioral changes made.
+**Task 6 (CLI/Web divergence)** — updated `CLAUDE.md` to document that the CLI does not use the Yahoo analyst data (Option A chosen by user).
 
 ## In flight
-
-**Task 6 is blocked on a product decision by the user** — CLAUDE.md claims the CLI and web
-adapters differ "only in how they collect inputs and render output", but analyst-consensus data
-is web-only. Either correct the doc (cheap, recommended) or wire `fetchAnalystConsensus` into
-the CLI (a feature addition). Do not let a model decide this unilaterally.
 
 **`wiki/` added** — a project wiki (7 pages, Hebrew, in `wiki/`) built from what this session
 verified directly in the code, not copied from `CLAUDE.md`. Covers architecture, data sources,
@@ -126,8 +122,7 @@ changes and is faster when applicable.
 
 ## Next up
 
-1. **Task 6 — needs the user's decision**, see "In flight" above. Not to be actioned by a model.
-2. The implementation is otherwise complete: the app covers the EPS×multiple valuation flow with
+1. The implementation is otherwise complete: the app covers the EPS×multiple valuation flow with
    two independent data sources (Twelve Data fundamentals + Yahoo analyst consensus) and a
    hierarchy-aware web UI.
 3. Separately flagged (not blocking): `npm audit` reports 8 known vulnerabilities in
@@ -187,3 +182,4 @@ changes and is faster when applicable.
   (e.g. `src/data/yahoo/`, the annual/median `historicalPe`) rather than repeating `CLAUDE.md`'s
   current drift.
 - 2026-08-16 — Completed tasks 1-5 from TASKS.md (documentation drift fixes). Task 6 is pending a product decision regarding the CLI/web analyst-consensus divergence.
+- 2026-08-16 — Completed task 6 (Option A chosen by user): Updated CLAUDE.md to document that the CLI does not include Yahoo analyst data.
