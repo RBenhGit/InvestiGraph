@@ -65,6 +65,9 @@ async function twelveDataFetch<T>(url: string, endpoint: string): Promise<T> {
   const response = await fetch(url);
 
   if (!response.ok) {
+    if (response.status === 429) {
+      throw new TwelveDataResponseError('RATE_LIMIT', endpoint);
+    }
     throw new TwelveDataResponseError(
       'API_ERROR',
       endpoint,

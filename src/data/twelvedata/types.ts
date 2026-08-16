@@ -50,6 +50,7 @@ export type StockDataError =
   | { type: 'INSUFFICIENT_DATA'; ticker: string; reason: string }
   | { type: 'EMPTY_RESPONSE'; ticker: string; endpoint: string }
   | { type: 'API_ERROR'; ticker: string; endpoint: string; message: string }
+  | { type: 'RATE_LIMIT'; ticker: string; endpoint: string }
   | { type: 'INVALID_CURRENCY_UNIT'; ticker: string; detail: string };
 
 export type StockDataResult = { ok: true; data: StockData } | { ok: false; error: StockDataError };

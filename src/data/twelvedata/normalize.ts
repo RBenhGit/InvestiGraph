@@ -65,15 +65,17 @@ export function resolveTtmEps(
 
 /** Thrown by `assertNonEmpty` when a 200 response doesn't actually carry usable data. */
 export class TwelveDataResponseError extends Error {
-  readonly type: 'EMPTY_RESPONSE' | 'API_ERROR';
+  readonly type: 'EMPTY_RESPONSE' | 'API_ERROR' | 'RATE_LIMIT';
   readonly endpoint: string;
   readonly apiMessage?: string;
 
-  constructor(type: 'EMPTY_RESPONSE' | 'API_ERROR', endpoint: string, apiMessage?: string) {
+  constructor(type: 'EMPTY_RESPONSE' | 'API_ERROR' | 'RATE_LIMIT', endpoint: string, apiMessage?: string) {
     super(
-      type === 'API_ERROR'
-        ? `Twelve Data API error from ${endpoint}: ${apiMessage ?? 'unknown error'}`
-        : `Empty response from Twelve Data endpoint ${endpoint}`,
+      type === 'RATE_LIMIT'
+        ? `Rate limit exceeded on Twelve Data endpoint ${endpoint}. Please wait a minute and try again.`
+        : type === 'API_ERROR'
+          ? `Twelve Data API error from ${endpoint}: ${apiMessage ?? 'unknown error'}`
+          : `Empty response from Twelve Data endpoint ${endpoint}`,
     );
     this.name = 'TwelveDataResponseError';
     this.type = type;
@@ -102,6 +104,9 @@ export function assertNonEmpty(raw: unknown, endpoint: string): void {
     const obj = raw as Record<string, unknown>;
     if (obj.status === 'error') {
       const message = typeof obj.message === 'string' ? obj.message : undefined;
+      if (message && message.toLowerCase().includes('limit')) {
+        throw new TwelveDataResponseError('RATE_LIMIT', endpoint, message);
+      }
       throw new TwelveDataResponseError('API_ERROR', endpoint, message);
     }
     if (Object.keys(obj).length === 0) {

@@ -22,6 +22,8 @@ export function formatStockDataError(error: StockDataError): string {
       return `Empty response from "${error.endpoint}" for "${error.ticker}".`;
     case 'API_ERROR':
       return `API error from "${error.endpoint}" for "${error.ticker}": ${error.message}`;
+    case 'RATE_LIMIT':
+      return `Rate limit exceeded from "${error.endpoint}" for "${error.ticker}". Please wait a minute and try again.`;
     case 'INVALID_CURRENCY_UNIT':
       return `Invalid currency unit for "${error.ticker}": ${error.detail}`;
   }

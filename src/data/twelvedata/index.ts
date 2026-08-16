@@ -50,6 +50,9 @@ function toStockDataError(err: unknown, ticker: string): StockDataError {
     if (err.type === 'EMPTY_RESPONSE') {
       return { type: 'EMPTY_RESPONSE', ticker, endpoint: err.endpoint };
     }
+    if (err.type === 'RATE_LIMIT') {
+      return { type: 'RATE_LIMIT', ticker, endpoint: err.endpoint };
+    }
     const message = err.apiMessage ?? err.message;
     // Cheap, best-effort signal for a clearly-unknown ticker — Twelve Data's own error
     // messages for a bad symbol consistently mention "not found"/"no data"/"invalid symbol".
