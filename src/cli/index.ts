@@ -12,7 +12,7 @@ const REQUIRED_RETURN_PERCENT = 15;
 const YEARS = 10;
 
 /** Renders a `StockDataError` as a one-line, human-readable message. */
-function formatStockDataError(error: StockDataError): string {
+export function formatStockDataError(error: StockDataError): string {
   switch (error.type) {
     case 'NOT_FOUND':
       return `Ticker "${error.ticker}" not found.`;

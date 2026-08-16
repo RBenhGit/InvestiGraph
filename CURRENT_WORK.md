@@ -183,3 +183,4 @@ changes and is faster when applicable.
   current drift.
 - 2026-08-16 — Completed tasks 1-5 from TASKS.md (documentation drift fixes). Task 6 is pending a product decision regarding the CLI/web analyst-consensus divergence.
 - 2026-08-16 — Completed task 6 (Option A chosen by user): Updated CLAUDE.md to document that the CLI does not include Yahoo analyst data.
+- 2026-08-16 — Completed task 7 (created `README.md` with installation/usage instructions) and task 8 (added test coverage for `src/data/yahoo/client.ts`, `src/cli/index.ts`, and `src/web/public/app.js` using jsdom). 88/88 tests passing. Also addressed 8 security vulnerabilities by running `npm audit fix --force`, upgrading Fastify, @fastify/static, and vitest to new major versions. Verified that the app and test suite still function correctly post-upgrade.
