@@ -28,6 +28,7 @@ inputs and render output.
 
 ```
 src/data/twelvedata/   fetchStockData(ticker) -> StockDataResult   (external API -> StockData)
+src/data/yahoo/        fetchAnalystConsensus(ticker) -> AnalystConsensusResult
 src/valuation/lynch/    calculateLynchValue(eps, growth) -> ValuationResult
 src/valuation/ruleOne/  calculateRuleOneValue(eps, growth, exitPe, requiredReturn, years) -> ValuationResult
 src/cli/                thin wrapper: calls fetchStockData + both valuations, formats to stdout
@@ -46,8 +47,9 @@ src/web/                Fastify server: POST /api/valuate does the same, serves 
   API's point-in-time EPS, falls back to net-income-from-quarters when it's missing/zero),
   `assertNonEmpty`/`TwelveDataResponseError` (a 200 status isn't proof of usable data),
   `validateCurrency`/`CurrencyMismatchError`, `calculateCagrPercent`.
-- `historicalPe.ts` — computes trailing 1y/3y/5y average P/E locally from quarterly EPS +
-  monthly closes, since Twelve Data has no such field (only point-in-time `trailing_pe`).
+- `historicalPe.ts` — computes trailing 1y/3y/5y median P/E locally from annual EPS +
+  monthly closes, since Twelve Data has no such field. Requires `ceil(N/2)` valid points per
+  window. (Note: output fields are named `avg1y`/`avg3y`/`avg5y` for historical reasons).
 - `env.ts` — the single read point for `TWELVE_DATA_API_KEY`; nothing else should read
   `process.env.TWELVE_DATA_API_KEY` directly.
 - `index.ts` orchestrates: fetches everything in parallel (`growth_estimates` alone is
@@ -55,6 +57,13 @@ src/web/                Fastify server: POST /api/valuate does the same, serves 
   the whole lookup), resolves TTM EPS, cross-checks price vs. fundamentals currency, and returns
   a discriminated-union `StockDataResult` (`{ ok: true, data }` or `{ ok: false, error }` with a
   typed `StockDataError`) rather than throwing to callers.
+
+**`src/data/yahoo/`** — `index.ts` is the _only_ published entry point (`fetchAnalystConsensus`);
+nothing outside this directory may import its `client.ts` or `types.ts`. Internally uses
+`yahoo-finance2` to fetch analyst consensus (next-year EPS growth, price targets, recommendations).
+**Important Rule**: This module uses a public endpoint and does not require an API key (hence its
+absence from `.env.example`). Furthermore, any failure here MUST gracefully degrade to returning
+`null` (never failing the overall valuation request), as it's an auxiliary data source.
 
 **`src/valuation/`** — pure functions, no I/O. `shared/clampGrowthRate.ts` clamps every growth
 rate to `[-5%, 25%]` before either method uses it (both `lynch` and `ruleOne` call it
