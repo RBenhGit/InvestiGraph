@@ -286,6 +286,8 @@ async function handleSubmit(event) {
 
     let effectiveGrowth = growthRatePercent;
     if (growthInput.value === '') {
+      // Note: This growth fallback chain is duplicated in cli/index.ts.
+      // If you change the fallback logic here, make sure to update the CLI as well.
       const seed =
         data.growth.analystEstimate5yPercent ??
         data.growth.historical3yPercent ??

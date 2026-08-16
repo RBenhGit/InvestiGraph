@@ -24,8 +24,9 @@ export function parseNumber(value: unknown): number | null {
 /**
  * Resolves trailing-twelve-month diluted EPS.
  *
- * Prefers the API's point-in-time EPS, but treats exactly `0` the same as missing (a real TTM
- * EPS of precisely zero isn't a value to trust blindly). Falls back to
+ * Prefers the API's point-in-time EPS (though note that in production, `index.ts` currently passes `null`
+ * to bypass this branch in favor of the income statement data), but treats exactly `0` the same as missing
+ * (a real TTM EPS of precisely zero isn't a value to trust blindly). Falls back to
  * `netIncomeTtm / mean(dilutedSharesOutstanding)` derived from the last 4 quarters of
  * income-statement data — there is no direct "net income" parameter because diluted EPS ×
  * diluted shares for a quarter already approximates that quarter's net income, and summing

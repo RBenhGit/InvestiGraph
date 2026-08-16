@@ -37,6 +37,8 @@ async function run(ticker: string): Promise<void> {
   }
 
   const { data } = result;
+  // Note: This growth fallback chain is duplicated in web/public/app.js.
+  // If you change the fallback logic here, make sure to update the web UI as well.
   const growthSeed =
     data.growth.analystEstimate5yPercent ??
     data.growth.historical3yPercent ??
