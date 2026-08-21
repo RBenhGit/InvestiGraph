@@ -290,8 +290,11 @@ function renderAnalystTable(analystConsensus, currentPrice) {
     tableRow('Number of analysts', priceTarget.numberOfAnalysts ?? 'n/a'),
   );
 
-  // Financial Health Metrics
-  if (beta !== undefined || ruleOf40 !== undefined) {
+  // Financial Health Metrics. beta/ruleOf40 are typed `number | null` (never `undefined`) —
+  // gate the section header on `!== null` too, matching the row-level checks below, so the
+  // header isn't shown when both values are genuinely missing (e.g. a ticker Yahoo has no
+  // summaryDetail/financialData coverage for).
+  if (beta !== null || ruleOf40 !== null) {
     const divider = document.createElement('tr');
     divider.innerHTML = '<td colspan="2" style="padding-top: 1rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Financial Health</td>';
     analystTableEl.append(divider);

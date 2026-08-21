@@ -90,11 +90,12 @@ computed-style inspection).
 
 ## In flight
 
-Nothing in flight. CLAUDE.md and `wiki/` are in sync with the code (2026-08-21 re-evaluation),
-and a follow-up calculation audit that same day found and fixed two real bugs in the web
-server's growth-rate fallback (defaulted to 0% instead of erroring; undocumented 15% cap on
-historical growth only on the web, causing CLI/web value divergence) — see Log below. Suite is
-115/115 green, lint clean, build clean.
+Nothing in flight. CLAUDE.md and `wiki/` are in sync with the code (2026-08-21 re-evaluation).
+Two rounds of a user-requested calculation audit that same day found and fixed three real bugs:
+the web server's growth-rate fallback (defaulted to 0% instead of erroring; undocumented 15%
+cap on historical growth only on the web); and an empty "Financial Health" header rendering for
+tickers with no beta/Rule of 40 data. All fixed with regression tests, all verified live (not
+just unit tests) — see Log below. Suite is 125/125 green, lint clean, build clean.
 
 ## Known problems
 
@@ -233,5 +234,31 @@ changes and is faster when applicable.
   `cli/index.ts` (`analystEstimate5y ?? historical3y ?? historical1y`, no cap, no default-to-0).
   Wrote two failing-then-passing tests in `server.test.ts` reproducing both bugs before fixing
   (per CLAUDE.md's bug-fix policy); updated the stale explanatory comment in `app.js`. 115/115
-  tests (both new), lint clean, build clean, verified via SSH.
+  tests (both new), lint clean, build clean, verified via SSH. Then verified the fix live end-
+  to-end (not just unit tests): restarted the SSH-hosted web server (the first live check hit a
+  stale pre-fix process — a red herring, not a regression), hit `/api/valuate` directly for
+  real tickers, and drove the actual browser UI. NVDA (real historical 3Y growth 204.24%, no
+  analyst estimate) now correctly uses the uncapped value before the standard [-5,25] clamp
+  applies; RKLB (a real ticker with all four growth fields null on this plan tier) now shows
+  "n/a — FAILED (MISSING_GROWTH_RATE)" in the UI instead of a fabricated $0.
+- 2026-08-21 — Audited the three newly-added analyst-consensus fields (`beta`, `priceToSales`,
+  `ruleOf40` in `src/data/yahoo/`) at user request. `beta`/`priceToSales` are direct pass-
+  through from Yahoo's `summaryDetail` module, no local math, correct field mapping (live-
+  verified: AAPL beta 1.09/P-S 9.65, NVDA beta 2.22/P-S 20.57 — both sane). `ruleOf40 =
+  (revenueGrowth + ebitdaMargins) * 100`: initially looked suspicious (NVDA showed 150.5%) but
+  hand-verified against Yahoo's raw fields (revenueGrowth 0.852, ebitdaMargins 0.65294 — both
+  already fractions) confirms the arithmetic and the result is a real, correct Rule of 40 score
+  for a company with NVDA's actual growth/margin profile; AAPL's 52.4% is likewise sane. The
+  null-guard correctly treats a genuine `0` in either field as real (not the falsy-zero bug
+  this codebase specifically guards against elsewhere). Found and fixed one real bug:
+  `app.js`'s "Financial Health" section-header check used `beta !== undefined || ruleOf40 !==
+  undefined`, but both fields are typed `number | null` and never actually `undefined` — so the
+  header rendered even when both were genuinely `null`, producing an empty section for any
+  ticker Yahoo has no financial-health coverage for. Fixed to check `!== null` (matching the
+  row-level guards on the same lines already). Added 10 new tests (0 existed before for any of
+  the three fields): 3 in `app.test.js` exercising `renderAnalystTable` directly (both-present,
+  ruleOf40-only, both-null-no-header — the regression case), 7 in `yahoo/index.test.ts`
+  (summaryDetail extraction, missing-summaryDetail nulling, ruleOf40 arithmetic against the
+  real NVDA-shaped numbers above, the falsy-zero guard, and three missing-field null cases).
+  125/125 tests, lint clean, build clean, verified via SSH.
 

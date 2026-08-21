@@ -143,4 +143,95 @@ describe('fetchAnalystConsensus', () => {
     expect(result.ok).toBe(true);
     expect(saveCachedYahooData).toHaveBeenCalledWith(TICKER, expect.objectContaining({ ticker: TICKER }));
   });
+
+  describe('beta, priceToSales, and ruleOf40', () => {
+    it('reads beta and priceToSales straight from summaryDetail', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({ summaryDetail: { beta: 1.086, priceToSalesTrailing12Months: 9.649255 } }),
+      );
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.beta).toBe(1.086);
+      expect(result.data.priceToSales).toBe(9.649255);
+    });
+
+    it('nulls beta and priceToSales when summaryDetail is absent', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(quoteSummary({ summaryDetail: undefined }));
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.beta).toBeNull();
+      expect(result.data.priceToSales).toBeNull();
+    });
+
+    it('computes ruleOf40 as (revenueGrowth + ebitdaMargins) * 100 -- both fields are fractions, not percents', async () => {
+      // Real NVDA-shaped figures: 85.2% revenue growth + 65.3% EBITDA margin = 150.5,
+      // hand-verified live against Twelve Data/Yahoo before writing this expectation.
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({
+          financialData: { revenueGrowth: 0.852, ebitdaMargins: 0.65294 },
+        }),
+      );
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.ruleOf40).toBeCloseTo(150.494, 10);
+    });
+
+    it('treats a genuine 0 for revenueGrowth or ebitdaMargins as a real value, not missing (falsy-zero regression guard)', async () => {
+      // A flat-revenue, breakeven-EBITDA company: 0 + 0.4 = 40, not null.
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({
+          financialData: { revenueGrowth: 0, ebitdaMargins: 0.4 },
+        }),
+      );
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.ruleOf40).toBeCloseTo(40, 10);
+    });
+
+    it('nulls ruleOf40 when revenueGrowth is missing', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({ financialData: { ebitdaMargins: 0.5 } }),
+      );
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.ruleOf40).toBeNull();
+    });
+
+    it('nulls ruleOf40 when ebitdaMargins is missing', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({ financialData: { revenueGrowth: 0.3 } }),
+      );
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.ruleOf40).toBeNull();
+    });
+
+    it('nulls ruleOf40 when financialData is absent entirely', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(quoteSummary({ financialData: undefined }));
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.ruleOf40).toBeNull();
+    });
+  });
 });
