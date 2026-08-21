@@ -19,19 +19,17 @@ export interface QuoteSummaryResult {
     targetLowPrice?: number | null;
     numberOfAnalystOpinions?: number | null;
     recommendationKey?: string | null;
+    revenueGrowth?: number | null;
+    ebitdaMargins?: number | null;
+  };
+  summaryDetail?: {
+    beta?: number | null;
+    priceToSalesTrailing12Months?: number | null;
   };
 }
 
-/**
- * Fetches `earningsTrend` + `financialData` for one ticker via yahoo-finance2's undocumented
- * `quoteSummary` endpoint (the same public endpoint yahoo-finance.com's own UI calls — no API
- * key, no official SLA). Confirmed live across MSFT/AAPL/TSLA: Yahoo no longer returns a "+5y"
- * long-term-growth entry in `earningsTrend.trend` (it's been dropped from the public feed) —
- * only "0q"/"+1q"/"0y"/"+1y" are present, so index.ts reads "+1y" as the longest-horizon
- * consensus growth figure actually available, not a 5-year estimate.
- */
 export async function fetchQuoteSummary(ticker: string): Promise<QuoteSummaryResult> {
   return yahooFinance.quoteSummary(ticker, {
-    modules: ['earningsTrend', 'financialData'],
+    modules: ['earningsTrend', 'financialData', 'summaryDetail'],
   }) as Promise<QuoteSummaryResult>;
 }

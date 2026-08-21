@@ -9,9 +9,15 @@ import {
   fetchStatistics,
 } from './client';
 import { TwelveDataResponseError } from './normalize';
+import { getCachedStockData, saveCachedStockData } from '../cache';
 
 vi.mock('./env', () => ({
   loadTwelveDataApiKey: () => 'test-key',
+}));
+
+vi.mock('../cache', () => ({
+  saveCachedStockData: vi.fn(),
+  getCachedStockData: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('./client', () => ({
@@ -205,5 +211,96 @@ describe('fetchStockData', () => {
       ok: false,
       error: { type: 'INSUFFICIENT_DATA', ticker: TICKER, reason: 'unable to resolve TTM EPS' },
     });
+  });
+
+  it('falls back to cached stock data when API call fails', async () => {
+    mockAllSuccess();
+    vi.mocked(fetchQuote).mockRejectedValue(
+      new TwelveDataResponseError('RATE_LIMIT', 'quote'),
+    );
+    const mockCached = {
+      ticker: TICKER,
+      epsTtm: 5,
+      currentPrice: 150,
+      currency: 'USD',
+      growth: {
+        historical1yPercent: 8,
+        historical3yPercent: 9,
+        historical5yPercent: 10,
+        analystEstimate5yPercent: 12,
+      },
+      historicalPe: { avg1y: 20, avg3y: 22, avg5y: 24 },
+      trailingPe: 30,
+      providerReference: { trailingPe: 30, pegRatio: 2.5 },
+      asOf: '2026-08-19T12:00:00.000Z',
+    };
+    vi.mocked(getCachedStockData).mockResolvedValue(mockCached);
+
+    const result = await fetchStockData(TICKER);
+
+    expect(result).toEqual({ ok: true, data: mockCached });
+  });
+
+  it('returns cached stock data directly without calling API when cache is fresh', async () => {
+    const mockCached = {
+      ticker: TICKER,
+      epsTtm: 5,
+      currentPrice: 150,
+      currency: 'USD',
+      growth: {
+        historical1yPercent: 8,
+        historical3yPercent: 9,
+        historical5yPercent: 10,
+        analystEstimate5yPercent: 12,
+      },
+      historicalPe: { avg1y: 20, avg3y: 22, avg5y: 24 },
+      trailingPe: 30,
+      providerReference: { trailingPe: 30, pegRatio: 2.5 },
+      asOf: new Date().toISOString(),
+    };
+    vi.mocked(getCachedStockData).mockResolvedValue(mockCached);
+
+    const result = await fetchStockData(TICKER);
+
+    expect(result).toEqual({ ok: true, data: mockCached });
+    expect(fetchQuote).not.toHaveBeenCalled();
+    expect(fetchStatistics).not.toHaveBeenCalled();
+  });
+
+  it('bypasses cache when forceRefresh is true', async () => {
+    mockAllSuccess();
+    const mockCached = {
+      ticker: TICKER,
+      epsTtm: 5,
+      currentPrice: 150,
+      currency: 'USD',
+      growth: {
+        historical1yPercent: 8,
+        historical3yPercent: 9,
+        historical5yPercent: 10,
+        analystEstimate5yPercent: 12,
+      },
+      historicalPe: { avg1y: 20, avg3y: 22, avg5y: 24 },
+      trailingPe: 30,
+      providerReference: { trailingPe: 30, pegRatio: 2.5 },
+      asOf: new Date().toISOString(),
+    };
+    vi.mocked(getCachedStockData).mockResolvedValue(mockCached);
+
+    const result = await fetchStockData(TICKER, { forceRefresh: true });
+
+    expect(result.ok).toBe(true);
+    expect(fetchQuote).toHaveBeenCalled();
+    expect(saveCachedStockData).toHaveBeenCalled();
+  });
+
+  it('saves to cache on successful fetch', async () => {
+    mockAllSuccess();
+    vi.mocked(getCachedStockData).mockResolvedValue(null);
+
+    const result = await fetchStockData(TICKER);
+
+    expect(result.ok).toBe(true);
+    expect(saveCachedStockData).toHaveBeenCalledWith(TICKER, expect.objectContaining({ ticker: TICKER }));
   });
 });

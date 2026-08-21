@@ -3,3 +3,8 @@ dist/
 .env
 *.log
 .DS_Store
+history.json
+history-*.json
+cache/
+.cache/
+yahoo_test.json

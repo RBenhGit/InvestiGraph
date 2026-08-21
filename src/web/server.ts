@@ -6,6 +6,12 @@ import { fetchStockData } from '../data/twelvedata';
 import { fetchAnalystConsensus } from '../data/yahoo';
 import { calculateLynchValue } from '../valuation/lynch';
 import { calculateRuleOneValue } from '../valuation/ruleOne';
+import {
+  saveValuation,
+  getHistory,
+  deleteValuation,
+  type SaveValuationInput,
+} from '../history';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 3000/3001/3100 are already claimed by other projects on this machine (stock_vision, etc.) —
@@ -14,10 +20,13 @@ const PORT = Number(process.env.PORT) || 3210;
 
 interface ValuateRequestBody {
   ticker: string;
-  growthRatePercent: number;
+  epsOverride?: number;
+  growthRatePercent?: number | null;
   exitPeMultiple: number;
   requiredReturnPercent: number;
   years: number;
+  mosPercent?: number;
+  forceRefresh?: boolean;
 }
 
 export function buildServer() {
@@ -28,16 +37,24 @@ export function buildServer() {
   });
 
   fastify.post<{ Body: ValuateRequestBody }>('/api/valuate', async (request, reply) => {
-    const { ticker, growthRatePercent, exitPeMultiple, requiredReturnPercent, years } =
-      request.body;
+    const {
+      ticker,
+      epsOverride,
+      growthRatePercent,
+      exitPeMultiple,
+      requiredReturnPercent,
+      years,
+      mosPercent,
+      forceRefresh,
+    } = request.body;
 
     // twelvedata is the required source — a failure there fails the whole request (see below).
     // yahoo (analyst consensus/price targets) is supplementary and independently fetched in
     // parallel: its failure must never take down a valuation that only needed twelvedata's
     // data, so it degrades to `null` rather than being awaited into the failure path.
     const [result, analystConsensusResult] = await Promise.all([
-      fetchStockData(ticker),
-      fetchAnalystConsensus(ticker).catch(() => null),
+      fetchStockData(ticker, { forceRefresh }),
+      fetchAnalystConsensus(ticker, { forceRefresh }).catch(() => null),
     ]);
 
     if (!result.ok) {
@@ -46,19 +63,74 @@ export function buildServer() {
     }
 
     const { data } = result;
-    const lynch = calculateLynchValue(data.epsTtm, growthRatePercent);
+    const effectiveEps = (typeof epsOverride === 'number' && epsOverride > 0) ? epsOverride : data.epsTtm;
+    
+    let effectiveGrowth = typeof growthRatePercent === 'number' ? growthRatePercent : null;
+    
+    // Seed the growth rate automatically if not provided by the frontend
+    if (effectiveGrowth === null) {
+      if (data.growth.analystEstimate5yPercent !== null && data.growth.analystEstimate5yPercent !== undefined) {
+        effectiveGrowth = data.growth.analystEstimate5yPercent;
+      } else {
+        const hist = data.growth.historical3yPercent ?? data.growth.historical1yPercent;
+        if (hist !== null && hist !== undefined) {
+          effectiveGrowth = Math.min(hist, 15); // Cap historical fallback at 15% margin of safety
+        } else {
+          effectiveGrowth = 0;
+        }
+      }
+    }
+
+    const lynch = calculateLynchValue(effectiveEps, effectiveGrowth);
     const ruleOne = calculateRuleOneValue(
-      data.epsTtm,
-      growthRatePercent,
+      effectiveEps,
+      effectiveGrowth,
       exitPeMultiple,
       requiredReturnPercent,
       years,
+      mosPercent ?? 0,
     );
 
     const analystConsensus =
       analystConsensusResult && analystConsensusResult.ok ? analystConsensusResult.data : null;
 
-    return reply.status(200).send({ ok: true, data, lynch, ruleOne, analystConsensus });
+    return reply.status(200).send({ 
+      ok: true, 
+      data, 
+      effectiveEps, 
+      effectiveGrowth,
+      lynch, 
+      ruleOne, 
+      analystConsensus 
+    });
+  });
+
+  fastify.get<{ Querystring: { ticker?: string } }>('/api/history', async (request, reply) => {
+    const { ticker } = request.query;
+    const result = await getHistory(ticker);
+    if (!result.ok) {
+      return reply.status(500).send(result);
+    }
+    return reply.status(200).send(result);
+  });
+
+  fastify.post<{ Body: SaveValuationInput }>('/api/history', async (request, reply) => {
+    const result = await saveValuation(request.body);
+    if (!result.ok) {
+      const status = result.error.type === 'INVALID_INPUT' ? 400 : 500;
+      return reply.status(status).send(result);
+    }
+    return reply.status(201).send(result);
+  });
+
+  fastify.delete<{ Params: { id: string } }>('/api/history/:id', async (request, reply) => {
+    const { id } = request.params;
+    const result = await deleteValuation(id);
+    if (!result.ok) {
+      const status = result.error.type === 'NOT_FOUND' ? 404 : 500;
+      return reply.status(status).send(result);
+    }
+    return reply.status(200).send(result);
   });
 
   return fastify;

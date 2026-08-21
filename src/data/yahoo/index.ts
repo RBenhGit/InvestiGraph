@@ -9,6 +9,7 @@
 // this module failing must never take down a valuation that only needed twelvedata's data.
 
 import { fetchQuoteSummary } from './client';
+import { saveCachedYahooData, getCachedYahooData } from '../cache';
 import type { AnalystConsensus, AnalystConsensusError, AnalystConsensusResult } from './types';
 
 function toAnalystConsensusError(err: unknown, ticker: string): AnalystConsensusError {
@@ -22,7 +23,30 @@ function toAnalystConsensusError(err: unknown, ticker: string): AnalystConsensus
   return { type: 'API_ERROR', ticker, message };
 }
 
-export async function fetchAnalystConsensus(ticker: string): Promise<AnalystConsensusResult> {
+export interface FetchAnalystOptions {
+  forceRefresh?: boolean;
+  maxAgeMs?: number;
+}
+
+const DEFAULT_YAHOO_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export async function fetchAnalystConsensus(
+  ticker: string,
+  options?: FetchAnalystOptions,
+): Promise<AnalystConsensusResult> {
+  const normalizedTicker = ticker.toUpperCase();
+
+  if (!options?.forceRefresh) {
+    const cached = await getCachedYahooData(normalizedTicker);
+    if (cached) {
+      const age = Date.now() - new Date(cached.asOf).getTime();
+      const maxAge = options?.maxAgeMs ?? DEFAULT_YAHOO_CACHE_TTL_MS;
+      if (Number.isFinite(age) && age < maxAge) {
+        return { ok: true, data: cached };
+      }
+    }
+  }
+
   try {
     const result = await fetchQuoteSummary(ticker);
 
@@ -35,6 +59,14 @@ export async function fetchAnalystConsensus(ticker: string): Promise<AnalystCons
       typeof nextYearTrend?.growth === 'number' ? nextYearTrend.growth * 100 : null;
 
     const financialData = result.financialData;
+    const summaryDetail = result.summaryDetail;
+
+    let ruleOf40 = null;
+    if (financialData?.revenueGrowth !== undefined && financialData?.ebitdaMargins !== undefined) {
+      if (financialData.revenueGrowth !== null && financialData.ebitdaMargins !== null) {
+        ruleOf40 = (financialData.revenueGrowth + financialData.ebitdaMargins) * 100;
+      }
+    }
 
     const data: AnalystConsensus = {
       ticker,
@@ -46,11 +78,20 @@ export async function fetchAnalystConsensus(ticker: string): Promise<AnalystCons
         numberOfAnalysts: financialData?.numberOfAnalystOpinions ?? null,
       },
       recommendationKey: financialData?.recommendationKey ?? null,
+      beta: summaryDetail?.beta ?? null,
+      priceToSales: summaryDetail?.priceToSalesTrailing12Months ?? null,
+      ruleOf40,
       asOf: new Date().toISOString(),
     };
 
+    await saveCachedYahooData(ticker, data);
+
     return { ok: true, data };
   } catch (err) {
+    const cached = await getCachedYahooData(ticker);
+    if (cached) {
+      return { ok: true, data: cached };
+    }
     return { ok: false, error: toAnalystConsensusError(err, ticker) };
   }
 }

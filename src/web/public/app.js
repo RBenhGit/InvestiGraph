@@ -2,11 +2,14 @@
 // that would reimplement the formulas the same way the base design doc forbids in the CLI.
 
 const tickerInput = document.getElementById('ticker-input');
+const epsInput = document.getElementById('eps-input');
 const goBtn = document.getElementById('go-btn');
 const growthInput = document.getElementById('growth-input');
 const exitPeInput = document.getElementById('exit-pe-input');
 const requiredReturnInput = document.getElementById('required-return-input');
 const yearsInput = document.getElementById('years-input');
+const mosSelect = document.getElementById('mos-select');
+const notesInput = document.getElementById('notes-input');
 const growthChips = document.getElementById('growth-chips');
 const errorCard = document.getElementById('error-card');
 const result = document.getElementById('result');
@@ -17,6 +20,80 @@ const priceDeltasEl = document.getElementById('price-deltas');
 const growthTableEl = document.getElementById('growth-table');
 const multiplesTableEl = document.getElementById('multiples-table');
 const analystTableEl = document.getElementById('analyst-table');
+
+// History elements
+const saveBtn = document.getElementById('save-btn');
+const saveStatus = document.getElementById('save-status');
+const historyEmpty = document.getElementById('history-empty');
+const historyTableContainer = document.getElementById('history-table-container');
+const historyTbody = document.getElementById('history-tbody');
+const historyFilter = document.getElementById('history-filter');
+const historyRefreshBtn = document.getElementById('history-refresh-btn');
+
+let currentValuation = null;
+
+// ---------------- Scenario Management ----------------
+let currentScenario = 'base';
+const scenarioState = {
+  base: { growth: null, exitPe: 15, requiredReturn: 15, years: 10, mos: 25 },
+  bull: { growth: null, exitPe: 20, requiredReturn: 12, years: 10, mos: 10 },
+  bear: { growth: null, exitPe: 10, requiredReturn: 15, years: 10, mos: 50 },
+};
+
+function saveCurrentScenarioInputs() {
+  if (!scenarioState[currentScenario]) return;
+  if (growthInput && growthInput.value !== '') {
+    scenarioState[currentScenario].growth = Number(growthInput.value);
+  }
+  if (exitPeInput) {
+    scenarioState[currentScenario].exitPe = Number(exitPeInput.value) || 15;
+  }
+  if (requiredReturnInput) {
+    scenarioState[currentScenario].requiredReturn = Number(requiredReturnInput.value) || 15;
+  }
+  if (yearsInput) {
+    scenarioState[currentScenario].years = Number(yearsInput.value) || 10;
+  }
+  if (mosSelect) {
+    scenarioState[currentScenario].mos = Number(mosSelect.value) || 0;
+  }
+}
+
+function applyScenario(targetScenario) {
+  saveCurrentScenarioInputs();
+  currentScenario = targetScenario;
+
+  const buttons = document.querySelectorAll('.scenario-btn');
+  buttons.forEach((btn) => {
+    if (btn.getAttribute('data-scenario') === targetScenario) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  const state = scenarioState[targetScenario];
+  if (!state) return;
+
+  if (state.growth === null && scenarioState.base.growth !== null) {
+    const baseG = scenarioState.base.growth;
+    if (targetScenario === 'bull') {
+      state.growth = Number((baseG > 0 ? baseG * 1.25 : baseG + 3).toFixed(2));
+    } else if (targetScenario === 'bear') {
+      state.growth = Number((baseG > 0 ? baseG * 0.75 : baseG - 3).toFixed(2));
+    }
+  }
+
+  if (growthInput && state.growth !== null) growthInput.value = state.growth;
+  if (exitPeInput) exitPeInput.value = state.exitPe;
+  if (requiredReturnInput) requiredReturnInput.value = state.requiredReturn;
+  if (yearsInput) yearsInput.value = state.years;
+  if (mosSelect) mosSelect.value = String(state.mos);
+
+  if (tickerInput && tickerInput.value.trim() !== '') {
+    handleSubmit(new Event('submit'));
+  }
+}
 
 /** Mirrors cli/index.ts's formatStockDataError, for display purposes only. */
 function formatStockDataError(error) {
@@ -46,19 +123,31 @@ function fmtPercent(value) {
   return value === null || value === undefined ? 'n/a' : `${Number(value).toFixed(2)}%`;
 }
 
+function formatDate(isoString) {
+  if (!isoString) return 'n/a';
+  try {
+    const d = new Date(isoString);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  } catch {
+    return isoString;
+  }
+}
+
 function setLoading(isLoading) {
-  goBtn.disabled = isLoading;
-  result.style.opacity = isLoading ? '0.5' : '1';
+  if (goBtn) goBtn.disabled = isLoading;
+  if (result) result.style.opacity = isLoading ? '0.5' : '1';
 }
 
 function showError(message) {
-  result.hidden = true;
-  errorCard.hidden = false;
-  errorCard.textContent = message;
+  if (result) result.hidden = true;
+  if (errorCard) {
+    errorCard.hidden = false;
+    errorCard.textContent = message;
+  }
 }
 
 function clearError() {
-  errorCard.hidden = true;
+  if (errorCard) errorCard.hidden = true;
 }
 
 /** Current price vs. one fair-value estimate: upside/downside % and a verdict pill. */
@@ -86,6 +175,7 @@ function renderPriceDelta(label, fairValue, currentPrice, dotColorVar) {
 }
 
 function renderPriceBanner(data, lynch, ruleOne) {
+  if (!priceValueEl || !priceMetaEl || !priceDeltasEl) return;
   priceValueEl.textContent = `${fmt(data.currentPrice)} ${data.currency}`;
   priceMetaEl.textContent = `${data.ticker} · EPS (TTM) ${fmt(data.epsTtm)} · as of ${data.asOf}`;
 
@@ -96,9 +186,7 @@ function renderPriceBanner(data, lynch, ruleOne) {
   );
 }
 
-/** Small label/value row for the growth-sources and multiples panels. `opts.barFill` (0-1), if
- * given, draws a horizontal bar behind the row scaled to that fraction -- see .mini-row-bar in
- * style.css. */
+/** Small label/value row for the growth-sources and multiples panels. */
 function tableRow(label, value, opts) {
   const row = document.createElement('div');
   row.className = 'mini-row';
@@ -117,12 +205,9 @@ function tableRow(label, value, opts) {
   return row;
 }
 
-/** Every EPS growth-rate source side by side, with the one currently in use highlighted --
- * replaces the old chip-only display, where picking a source hid the others. Each row also
- * gets a bar-fill scaled against the largest |value| among the four sources (magnitude, not
- * sign, since a source can be negative and still be "the biggest number here"), so relative
- * size reads as a shape before it reads as text. */
+/** Every EPS growth-rate source side by side, with the one currently in use highlighted */
 function renderGrowthTable(growth, growthUsed) {
+  if (!growthTableEl) return;
   growthTableEl.innerHTML = '';
   const sources = [
     { key: 'historical1yPercent', label: 'Historical, 1Y' },
@@ -149,24 +234,40 @@ function renderGrowthTable(growth, growthUsed) {
   }
 }
 
-/** Historical average P/E (1y/3y/5y, computed locally) plus the provider's own point-in-time
- * trailing P/E and PEG -- grouped together since they all answer "is this multiple rich?". */
-function renderMultiplesTable(data) {
+/** Historical average P/E plus trailing P/E and PEG */
+function renderMultiplesTable(data, effectiveGrowth, effectiveEps, analystConsensus) {
+  if (!multiplesTableEl) return;
   multiplesTableEl.innerHTML = '';
+  
+  // Calculate trailing P/E dynamically based on the effective EPS
+  const currentPrice = data.currentPrice;
+  const epsToUse = (effectiveEps && effectiveEps > 0) ? effectiveEps : data.epsTtm;
+  const trailingPe = (epsToUse && epsToUse > 0) ? (currentPrice / epsToUse) : null;
+  
+  // Calculate local PEG instead of relying on provider's unreliable metric
+  let pegRatio = null;
+  if (trailingPe !== null && effectiveGrowth !== null && effectiveGrowth > 0) {
+    pegRatio = trailingPe / effectiveGrowth;
+  }
+
   multiplesTableEl.append(
-    tableRow('Avg. P/E, 1Y', fmt(data.historicalPe.avg1y)),
-    tableRow('Avg. P/E, 3Y', fmt(data.historicalPe.avg3y)),
-    tableRow('Avg. P/E, 5Y', fmt(data.historicalPe.avg5y)),
-    tableRow('Trailing P/E (current)', fmt(data.providerReference.trailingPe)),
-    tableRow('PEG ratio', fmt(data.providerReference.pegRatio)),
+    tableRow('Median P/E, 1Y', fmt(data.historicalPe.avg1y)),
+    tableRow('Median P/E, 3Y', fmt(data.historicalPe.avg3y)),
+    tableRow('Median P/E, 5Y', fmt(data.historicalPe.avg5y)),
+    tableRow('Trailing P/E (current)', fmt(trailingPe)),
+    tableRow('PEG ratio (local)', fmt(pegRatio)),
   );
+
+  if (analystConsensus && analystConsensus.priceToSales !== undefined) {
+    multiplesTableEl.append(
+      tableRow('P/S ratio (TTM)', fmt(analystConsensus.priceToSales))
+    );
+  }
 }
 
-/** Yahoo Finance analyst consensus: next-year EPS growth, price targets vs. current price,
- * and the consensus recommendation. Independent second data source (not Twelve Data) -- the
- * whole panel reads n/a if the Yahoo lookup failed, since /api/valuate degrades this field to
- * null rather than failing the request (see server.ts). */
+/** Yahoo Finance analyst consensus */
 function renderAnalystTable(analystConsensus, currentPrice) {
+  if (!analystTableEl) return;
   analystTableEl.innerHTML = '';
 
   if (!analystConsensus) {
@@ -174,7 +275,7 @@ function renderAnalystTable(analystConsensus, currentPrice) {
     return;
   }
 
-  const { nextYearEpsGrowthPercent, priceTarget, recommendationKey } = analystConsensus;
+  const { nextYearEpsGrowthPercent, priceTarget, recommendationKey, beta, ruleOf40 } = analystConsensus;
 
   const recommendationLabel = recommendationKey
     ? recommendationKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -188,10 +289,22 @@ function renderAnalystTable(analystConsensus, currentPrice) {
     tableRow('Price target, low', priceTargetValue(priceTarget.low, currentPrice)),
     tableRow('Number of analysts', priceTarget.numberOfAnalysts ?? 'n/a'),
   );
+
+  // Financial Health Metrics
+  if (beta !== undefined || ruleOf40 !== undefined) {
+    const divider = document.createElement('tr');
+    divider.innerHTML = '<td colspan="2" style="padding-top: 1rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Financial Health</td>';
+    analystTableEl.append(divider);
+
+    if (ruleOf40 !== undefined && ruleOf40 !== null) {
+      analystTableEl.append(tableRow('Rule of 40', `${fmt(ruleOf40)}%`));
+    }
+    if (beta !== undefined && beta !== null) {
+      analystTableEl.append(tableRow('Beta (Volatility)', fmt(beta)));
+    }
+  }
 }
 
-/** A price-target figure alongside its % distance from the current price, same upside/downside
- * framing as the price banner's fair-value deltas. */
 function priceTargetValue(target, currentPrice) {
   if (target === null || target === undefined) return 'n/a';
   const diffPercent = (target / currentPrice - 1) * 100;
@@ -199,9 +312,9 @@ function priceTargetValue(target, currentPrice) {
   return `${fmt(target)} (${sign}${fmt(diffPercent)}%)`;
 }
 
-/** Growth-source chips: up to 4, one per non-null growth figure. Clicking one overwrites the
- * growth input; the field stays freely hand-editable afterward. */
+/** Growth-source chips */
 function renderGrowthChips(growth) {
+  if (!growthChips) return;
   growthChips.innerHTML = '';
   const sources = [
     { key: 'historical1yPercent', label: '1Y' },
@@ -217,7 +330,10 @@ function renderGrowthChips(growth) {
     chip.className = 'chip';
     chip.textContent = `${source.label}: ${fmt(value)}%`;
     chip.addEventListener('click', () => {
-      growthInput.value = value;
+      if (growthInput) {
+        growthInput.value = value;
+        scenarioState[currentScenario].growth = value;
+      }
     });
     growthChips.append(chip);
   }
@@ -243,6 +359,8 @@ function renderMethodCard(prefix, result, currentPrice, extraFields) {
   const verdictEl = document.getElementById(`${prefix}-verdict`);
   const inputsEl = document.getElementById(`${prefix}-inputs`);
 
+  if (!fairValueEl || !verdictEl || !inputsEl) return;
+
   if (!result.ok) {
     fairValueEl.textContent = 'n/a';
     verdictEl.textContent = `FAILED (${result.error})`;
@@ -260,22 +378,224 @@ function renderMethodCard(prefix, result, currentPrice, extraFields) {
   inputsEl.innerHTML = growthIO(result.inputs) + extraHtml;
 }
 
-async function handleSubmit(event) {
-  event.preventDefault();
+// ---------------- History Functions ----------------
+
+async function fetchHistory(filterTicker) {
+  if (!historyTbody) return;
+  try {
+    const url = filterTicker && filterTicker.trim()
+      ? `/api/history?ticker=${encodeURIComponent(filterTicker.trim())}`
+      : '/api/history';
+    const response = await fetch(url);
+    const body = await response.json();
+
+    if (!body || !body.ok) return;
+
+    renderHistoryTable(body.data);
+  } catch (err) {
+    console.error('Failed to fetch history:', err);
+  }
+}
+
+function renderHistoryTable(records) {
+  if (!historyTbody || !historyEmpty || !historyTableContainer) return;
+
+  if (!records || records.length === 0) {
+    historyEmpty.hidden = false;
+    historyTableContainer.hidden = true;
+    historyTbody.innerHTML = '';
+    return;
+  }
+
+  historyEmpty.hidden = true;
+  historyTableContainer.hidden = false;
+  historyTbody.innerHTML = '';
+
+  for (const item of records) {
+    const tr = document.createElement('tr');
+
+    // Date
+    const tdDate = document.createElement('td');
+    tdDate.className = 'table-date';
+    tdDate.textContent = formatDate(item.evaluatedAt);
+
+    // Ticker
+    const tdTicker = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = 'badge-ticker';
+    badge.textContent = item.ticker;
+    tdTicker.append(badge);
+
+    // Price
+    const tdPrice = document.createElement('td');
+    tdPrice.className = 'table-price';
+    tdPrice.textContent = `${fmt(item.currentPrice)} ${item.currency || 'USD'}`;
+
+    // Lynch Fair Value
+    const tdLynch = document.createElement('td');
+    tdLynch.className = 'table-val';
+    if (item.lynchFairValue !== null && item.lynchFairValue !== undefined) {
+      const diff = (item.lynchFairValue / item.currentPrice - 1) * 100;
+      const isGood = diff > 0;
+      tdLynch.innerHTML = `<b>${fmt(item.lynchFairValue)}</b> <span class="${isGood ? 'good' : 'bad'}">(${isGood ? '+' : ''}${fmt(diff)}%)</span>`;
+    } else {
+      tdLynch.textContent = 'n/a';
+    }
+
+    // Rule #1 Fair Value
+    const tdRuleOne = document.createElement('td');
+    tdRuleOne.className = 'table-val';
+    if (item.ruleOneFairValue !== null && item.ruleOneFairValue !== undefined) {
+      const diff = (item.ruleOneFairValue / item.currentPrice - 1) * 100;
+      const isGood = diff > 0;
+      tdRuleOne.innerHTML = `<b>${fmt(item.ruleOneFairValue)}</b> <span class="${isGood ? 'good' : 'bad'}">(${isGood ? '+' : ''}${fmt(diff)}%)</span>`;
+    } else {
+      tdRuleOne.textContent = 'n/a';
+    }
+
+    // Growth
+    const tdGrowth = document.createElement('td');
+    tdGrowth.className = 'table-val';
+    tdGrowth.textContent = fmtPercent(item.growthRatePercent);
+
+    // Assumptions
+    const tdAssump = document.createElement('td');
+    tdAssump.className = 'table-assumptions';
+    const mosText = item.mosPercent ? ` | MoS: ${item.mosPercent}%` : '';
+    const epsText = item.epsOverride ? ` | Adj.EPS: ${fmt(item.epsOverride)}` : '';
+    tdAssump.textContent = `PE: ${fmt(item.exitPeMultiple)} | Req: ${fmt(item.requiredReturnPercent)}% | ${item.years}y${mosText}${epsText}`;
+
+    // Notes
+    const tdNotes = document.createElement('td');
+    tdNotes.className = 'table-notes';
+    tdNotes.textContent = item.notes || '—';
+    if (item.notes) tdNotes.title = item.notes;
+
+    // Actions
+    const tdActions = document.createElement('td');
+    tdActions.className = 'table-actions';
+
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.className = 'btn-action-load';
+    loadBtn.textContent = 'Load';
+    loadBtn.addEventListener('click', () => {
+      if (tickerInput) tickerInput.value = item.ticker;
+      if (epsInput) {
+        epsInput.value = item.epsOverride !== undefined && item.epsOverride !== null ? item.epsOverride : '';
+      }
+      if (growthInput) growthInput.value = item.growthRatePercent;
+      if (exitPeInput) exitPeInput.value = item.exitPeMultiple;
+      if (requiredReturnInput) requiredReturnInput.value = item.requiredReturnPercent;
+      if (yearsInput) yearsInput.value = item.years;
+      if (mosSelect && item.mosPercent !== undefined) mosSelect.value = String(item.mosPercent);
+      if (notesInput) notesInput.value = item.notes || '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      handleSubmit(new Event('submit'));
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn-action-del';
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', async () => {
+      try {
+        await fetch(`/api/history/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+        const filterVal = historyFilter ? historyFilter.value : '';
+        fetchHistory(filterVal);
+      } catch (err) {
+        console.error('Failed to delete history item:', err);
+      }
+    });
+
+    tdActions.append(loadBtn, delBtn);
+
+    tr.append(tdDate, tdTicker, tdPrice, tdLynch, tdRuleOne, tdGrowth, tdAssump, tdNotes, tdActions);
+    historyTbody.append(tr);
+  }
+}
+
+async function handleSaveValuation() {
+  if (!currentValuation) return;
+  if (saveBtn) saveBtn.disabled = true;
+  if (saveStatus) {
+    saveStatus.textContent = 'Saving...';
+    saveStatus.className = 'save-status';
+  }
+
+  if (notesInput) {
+    currentValuation.notes = notesInput.value.trim();
+  }
+
+  try {
+    const response = await fetch('/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(currentValuation),
+    });
+    const body = await response.json().catch(() => ({ ok: false }));
+
+    if (response.ok && body.ok) {
+      if (saveStatus) {
+        saveStatus.textContent = '✓ Valuation saved!';
+        saveStatus.className = 'save-status good';
+      }
+      setTimeout(() => {
+        if (saveStatus) saveStatus.textContent = '';
+      }, 3000);
+      const filterVal = historyFilter ? historyFilter.value : '';
+      fetchHistory(filterVal);
+    } else {
+      const errMsg =
+        (body && body.error && body.error.message) ||
+        (body && body.error && body.error.reason) ||
+        (body && body.message) ||
+        'Failed to save.';
+      if (saveStatus) {
+        saveStatus.textContent = errMsg;
+        saveStatus.className = 'save-status bad';
+      }
+    }
+  } catch (err) {
+    if (saveStatus) {
+      saveStatus.textContent = `Error: ${err instanceof Error ? err.message : String(err)}`;
+      saveStatus.className = 'save-status bad';
+    }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+// ---------------- Form Submit ----------------
+
+async function handleSubmit(event, forceRefresh = false) {
+  if (event && event.preventDefault) event.preventDefault();
   clearError();
   setLoading(true);
+  if (saveStatus) saveStatus.textContent = '';
 
-  const ticker = tickerInput.value.trim();
-  const growthRatePercent = Number(growthInput.value);
-  const exitPeMultiple = Number(exitPeInput.value);
-  const requiredReturnPercent = Number(requiredReturnInput.value);
-  const years = Number(yearsInput.value);
+  const ticker = tickerInput ? tickerInput.value.trim() : '';
+  const epsOverride = epsInput && epsInput.value !== '' ? Number(epsInput.value) : undefined;
+  const growthRatePercent = growthInput && growthInput.value !== '' ? Number(growthInput.value) : null;
+  const exitPeMultiple = exitPeInput ? Number(exitPeInput.value) : 15;
+  const requiredReturnPercent = requiredReturnInput ? Number(requiredReturnInput.value) : 15;
+  const years = yearsInput ? Number(yearsInput.value) : 10;
+  const mosPercent = mosSelect ? Number(mosSelect.value) : 0;
 
   try {
     const response = await fetch('/api/valuate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker, growthRatePercent, exitPeMultiple, requiredReturnPercent, years }),
+      body: JSON.stringify({
+        ticker,
+        epsOverride,
+        growthRatePercent,
+        exitPeMultiple,
+        requiredReturnPercent,
+        years,
+        mosPercent,
+        forceRefresh,
+      }),
     });
     const body = await response.json();
 
@@ -284,35 +604,60 @@ async function handleSubmit(event) {
       return;
     }
 
-    const { data, lynch, ruleOne } = body;
+    const { data, effectiveEps, lynch, ruleOne } = body;
+    
+    // Server now handles the seeding and cap for safety. If it used a fallback, it returns effectiveGrowth.
+    let effectiveGrowth = body.effectiveGrowth ?? growthRatePercent;
 
-    let effectiveGrowth = growthRatePercent;
-    if (growthInput.value === '') {
-      // Note: This growth fallback chain is duplicated in cli/index.ts.
-      // If you change the fallback logic here, make sure to update the CLI as well.
-      const seed =
-        data.growth.analystEstimate5yPercent ??
-        data.growth.historical3yPercent ??
-        data.growth.historical1yPercent ??
-        '';
-      growthInput.value = seed;
-      effectiveGrowth = seed === '' ? null : seed;
+    // Show the actual EPS used if the user left it on Auto
+    if (epsInput && epsInput.value === '') {
+      epsInput.value = data.epsTtm;
     }
+
+    // Populate the growth input if the user left it empty, so they see the exact seed used.
+    if (growthInput && growthInput.value === '') {
+      growthInput.value = effectiveGrowth !== null ? effectiveGrowth : '';
+      scenarioState.base.growth = effectiveGrowth;
+    }
+
+    // Cache current valuation state for saving
+    currentValuation = {
+      ticker: data.ticker,
+      currentPrice: data.currentPrice,
+      currency: data.currency,
+      epsTtm: data.epsTtm,
+      epsOverride,
+      growthRatePercent: effectiveGrowth,
+      exitPeMultiple,
+      requiredReturnPercent,
+      years,
+      mosPercent,
+      lynchFairValue: lynch.ok ? lynch.fairValue : null,
+      ruleOneFairValue: ruleOne.ok ? ruleOne.fairValue : null,
+      notes: notesInput ? notesInput.value.trim() : '',
+    };
 
     renderGrowthChips(data.growth);
     renderPriceBanner(data, lynch, ruleOne);
     renderGrowthTable(data.growth, effectiveGrowth);
-    renderMultiplesTable(data);
+    renderMultiplesTable(data, effectiveGrowth, effectiveEps, body.analystConsensus);
     renderAnalystTable(body.analystConsensus, data.currentPrice);
 
     renderMethodCard('lynch', lynch, data.currentPrice);
-    renderMethodCard('rule-one', ruleOne, data.currentPrice, [
+    const ruleOneExtras = [
       ['exit P/E', fmt(exitPeMultiple)],
       ['req. return', `${fmt(requiredReturnPercent)}%`],
       ['years', years],
-    ]);
+    ];
+    if (mosPercent > 0) {
+      ruleOneExtras.push(['MoS', `${mosPercent}%`]);
+      if (ruleOne.intermediate && ruleOne.intermediate.stickerPrice) {
+        ruleOneExtras.push(['sticker', fmt(ruleOne.intermediate.stickerPrice)]);
+      }
+    }
+    renderMethodCard('rule-one', ruleOne, data.currentPrice, ruleOneExtras);
 
-    result.hidden = false;
+    if (result) result.hidden = false;
   } catch (err) {
     showError(`Request failed: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
@@ -320,4 +665,43 @@ async function handleSubmit(event) {
   }
 }
 
-document.getElementById('valuate-form').addEventListener('submit', handleSubmit);
+// Event Listeners
+const valuateForm = document.getElementById('valuate-form');
+if (valuateForm) valuateForm.addEventListener('submit', (e) => handleSubmit(e, false));
+
+if (tickerInput) {
+  tickerInput.addEventListener('input', () => {
+    if (epsInput) epsInput.value = '';
+    // Optional: clear growth if desired, but for now just clear EPS so it doesn't leak between stocks
+  });
+}
+
+const refreshBtn = document.getElementById('refresh-btn');
+if (refreshBtn) {
+  refreshBtn.addEventListener('click', (e) => {
+    handleSubmit(e, true);
+  });
+}
+if (saveBtn) saveBtn.addEventListener('click', handleSaveValuation);
+if (historyRefreshBtn) {
+  historyRefreshBtn.addEventListener('click', () => {
+    fetchHistory(historyFilter ? historyFilter.value : '');
+  });
+}
+if (historyFilter) {
+  historyFilter.addEventListener('input', () => {
+    fetchHistory(historyFilter.value);
+  });
+}
+
+// Scenario buttons
+const scenarioButtons = document.querySelectorAll('.scenario-btn');
+scenarioButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const scenario = btn.getAttribute('data-scenario');
+    if (scenario) applyScenario(scenario);
+  });
+});
+
+// Initial history load
+fetchHistory();

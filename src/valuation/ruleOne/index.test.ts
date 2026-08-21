@@ -48,4 +48,28 @@ describe('calculateRuleOneValue', () => {
     const result = calculateRuleOneValue(10, 10, 15, 10, 0);
     expect(result).toEqual({ ok: false, error: 'INVALID_YEARS' });
   });
+
+  it('applies margin of safety discount correctly when mosPercent > 0', () => {
+    // With g = 10, r = 10, sticker price is 150.
+    // With 25% MoS, fairValue should be 150 * 0.75 = 112.5
+    const result = calculateRuleOneValue(10, 10, 15, 10, 10, 25);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.fairValue).toBeCloseTo(112.5, 6);
+      expect(result.inputs.mosPercent).toBe(25);
+      expect(result.intermediate?.stickerPrice).toBeCloseTo(150, 6);
+      expect(result.intermediate?.mosPrice).toBeCloseTo(112.5, 6);
+    }
+  });
+
+  it('returns INVALID_MOS when mosPercent is negative or >= 100', () => {
+    expect(calculateRuleOneValue(10, 10, 15, 10, 10, -5)).toEqual({
+      ok: false,
+      error: 'INVALID_MOS',
+    });
+    expect(calculateRuleOneValue(10, 10, 15, 10, 10, 100)).toEqual({
+      ok: false,
+      error: 'INVALID_MOS',
+    });
+  });
 });

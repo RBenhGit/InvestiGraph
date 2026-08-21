@@ -1,0 +1,3 @@
+{
+  "post_edit": "ssh -o BatchMode=yes aviv@100.76.172.46 'cd shared_disk/Cursor_apps/Eps_Evaluation && npx eslint . && npx vitest run'"
+}

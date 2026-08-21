@@ -32,9 +32,23 @@
             required
           />
           <button id="go-btn" class="go-btn" type="submit">Value it</button>
+          <button id="refresh-btn" class="chip" type="button" title="Fetch fresh live data from market" style="padding: 0.6rem 1rem; cursor: pointer; margin-left: 0.4rem; height: 100%;">🔄 Refresh Live</button>
         </form>
 
+        <div class="scenario-container">
+          <span class="scenario-title">Scenario:</span>
+          <div class="scenario-toggle" id="scenario-toggle">
+            <button type="button" class="scenario-btn" data-scenario="bear" id="scenario-bear">🐻 Bear</button>
+            <button type="button" class="scenario-btn active" data-scenario="base" id="scenario-base">⚖️ Base</button>
+            <button type="button" class="scenario-btn" data-scenario="bull" id="scenario-bull">🐂 Bull</button>
+          </div>
+        </div>
+
         <div class="searchrow" style="margin-top: 1rem">
+          <label class="assumption" title="Leave blank to use TTM GAAP EPS from API">
+            Adj. EPS
+            <input id="eps-input" class="assumption-input" type="number" step="0.01" placeholder="Auto" />
+          </label>
           <label class="assumption">
             Growth %
             <input id="growth-input" class="assumption-input" type="number" step="0.1" />
@@ -56,6 +70,15 @@
           <label class="assumption">
             Years
             <input id="years-input" class="assumption-input" type="number" step="1" value="10" />
+          </label>
+          <label class="assumption">
+            MoS %
+            <select id="mos-select" class="assumption-input">
+              <option value="0">0% (None)</option>
+              <option value="10">10%</option>
+              <option value="25" selected>25%</option>
+              <option value="50">50%</option>
+            </select>
           </label>
         </div>
 
@@ -112,6 +135,51 @@
             <div id="rule-one-verdict" class="verdict"></div>
             <div id="rule-one-inputs" class="inputs-used"></div>
           </div>
+        </div>
+
+        <div class="save-row">
+          <input
+            id="notes-input"
+            class="assumption-input notes-input"
+            type="text"
+            placeholder="Investment thesis / notes..."
+          />
+          <button id="save-btn" class="save-btn" type="button">
+            <span>💾</span> Save this valuation
+          </button>
+          <span id="save-status" class="save-status"></span>
+        </div>
+      </div>
+
+      <div class="history-section" id="history-section">
+        <div class="history-header">
+          <div>
+            <h2>Saved Valuations</h2>
+            <p class="history-subtitle">Track valuation history and parameter changes over time.</p>
+          </div>
+          <div class="history-actions">
+            <input id="history-filter" class="assumption-input" type="text" placeholder="Filter ticker..." />
+            <button id="history-refresh-btn" class="chip" type="button">Refresh</button>
+          </div>
+        </div>
+        <div id="history-empty" class="history-empty">No saved valuations yet. Value a stock and click "Save this valuation".</div>
+        <div id="history-table-container" class="history-table-container" hidden>
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Ticker</th>
+                <th>Price</th>
+                <th>Lynch FV</th>
+                <th>Rule #1 FV</th>
+                <th>Growth</th>
+                <th>Assumptions</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
         </div>
       </div>
 

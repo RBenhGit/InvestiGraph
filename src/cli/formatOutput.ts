@@ -40,6 +40,17 @@ function formatMethodLine(label: string, result: ValuationResult<ValuationInputs
   return `${label}: FAILED (${result.error})`;
 }
 
+function formatRuleOneLine(result: ValuationResult<RuleOneInputsUsed>): string {
+  if (!result.ok) {
+    return `Method B (Rule #1) fair value: FAILED (${result.error})`;
+  }
+  if (result.inputs.mosPercent && result.inputs.mosPercent > 0) {
+    const sticker = result.intermediate?.stickerPrice ?? result.fairValue;
+    return `Method B (Rule #1, MoS ${result.inputs.mosPercent}%) fair value: ${fmt(result.fairValue)} (Sticker: ${fmt(sticker)})`;
+  }
+  return `Method B (Rule #1) fair value: ${fmt(result.fairValue)}`;
+}
+
 export function formatOutput(
   data: StockData,
   lynchResult: ValuationResult<ValuationInputsUsed>,
@@ -66,7 +77,7 @@ export function formatOutput(
   }
   lines.push('');
   lines.push(formatMethodLine('Method A (Lynch) fair value', lynchResult));
-  lines.push(formatMethodLine('Method B (Rule #1) fair value', ruleOneResult));
+  lines.push(formatRuleOneLine(ruleOneResult));
   lines.push('');
   lines.push('Historical P/E averages:');
   lines.push(`  1y: ${fmt(data.historicalPe.avg1y)}`);

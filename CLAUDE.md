@@ -17,8 +17,12 @@ two independent "fair value" estimates from EPS × growth rate — Lynch/PEG-sty
 - Format: `npm run format` (`prettier --write .`)
 - Run locally: `npm run cli -- TICKER` (e.g. `npm run cli -- AAPL`), `npm run web` (Fastify on `PORT`, default 3210 — chosen to avoid colliding with other local projects on 3000/3001/3100)
 
-Requires `TWELVE_DATA_API_KEY` in `.env` (copy from `.env.example`) for both `cli` and `web` —
-neither has a mocked/offline mode.
+Requires `TWELVE_DATA_API_KEY` in `.env` (copy from `.env.example`) for both `cli` and `web` to
+fetch live data. There is a disk-backed cache (`src/data/cache.ts`, see Architecture below) that
+serves stale-but-present data when the live API call fails, so a missing/invalid key or an
+outage doesn't always mean total failure if a prior successful lookup for that ticker was
+cached — but there is no seeded/mocked data shipped with the repo, so a ticker never looked up
+before still requires a live key.
 
 ## Architecture
 
@@ -27,10 +31,12 @@ Two shared core layers (`src/data/`, `src/valuation/`) sit behind thin adapters 
 web adapter additionally calls `yahoo` for analyst data. The CLI does not use the `yahoo` module.
 
 ```
-src/data/twelvedata/   fetchStockData(ticker) -> StockDataResult   (external API -> StockData)
-src/data/yahoo/        fetchAnalystConsensus(ticker) -> AnalystConsensusResult
+src/data/cache.ts       saveCached*/getCached* — disk-backed cache, shared by twelvedata/ and yahoo/
+src/data/twelvedata/   fetchStockData(ticker, opts?) -> StockDataResult   (external API -> StockData)
+src/data/yahoo/        fetchAnalystConsensus(ticker, opts?) -> AnalystConsensusResult
+src/history/            saveValuation/getHistory/deleteValuation -> HistoryResult   (disk-backed persistence)
 src/valuation/lynch/    calculateLynchValue(eps, growth) -> ValuationResult
-src/valuation/ruleOne/  calculateRuleOneValue(eps, growth, exitPe, requiredReturn, years) -> ValuationResult
+src/valuation/ruleOne/  calculateRuleOneValue(eps, growth, exitPe, requiredReturn, years, mosPercent?) -> ValuationResult
 src/cli/                thin wrapper: calls fetchStockData + both valuations, formats to stdout
 src/web/                Fastify server: POST /api/valuate does the same, serves src/web/public/
 ```
@@ -65,13 +71,38 @@ nothing outside this directory may import its `client.ts` or `types.ts`. Interna
 absence from `.env.example`). Furthermore, any failure here MUST gracefully degrade to returning
 `null` (never failing the overall valuation request), as it's an auxiliary data source.
 
+**`src/data/cache.ts`** — a disk-backed cache shared by both `twelvedata/index.ts` and
+`yahoo/index.ts` (imported as a sibling, `../cache`; it is not internal to either module). Plain
+JSON files under `cache/` (`twelvedata_<TICKER>.json` / `yahoo_<TICKER>.json`), directory
+overridable via the optional `CACHE_DIR_PATH` env var. All cache I/O failures are silently
+swallowed by design — caching must never fail the user's actual request. Both `fetchStockData`
+and `fetchAnalystConsensus` now take an optional second `{ forceRefresh?, maxAgeMs? }` options
+argument: on a normal call they read-through the cache (24h TTL, no network call at all if
+fresh); on a live-fetch failure they fall back to serving stale cached data instead of failing,
+which is the behavior described in the Commands section above. The web UI's "🔄 Refresh Live"
+button and the `forceRefresh` field on `POST /api/valuate` bypass the cache to force a live call.
+
+**`src/history/`** — `index.ts` is the published entry point (`saveValuation`, `getHistory`,
+`deleteValuation`, plus the shared types); `store.ts` is internal-only (raw JSON-array file I/O
+against `history.json`, directory/path overridable via the optional `HISTORY_FILE_PATH` env
+var) and is never imported outside this directory. Same `{ ok }`-result convention as the rest
+of the codebase (`HistoryResult<T>`, `HistoryError` of `IO_ERROR`/`NOT_FOUND`/`INVALID_INPUT`).
+Lets a user save a computed valuation (with an optional MoS % and free-text notes/thesis) and
+retrieve/filter/delete it later. Wired into `POST/GET /api/history` and `DELETE
+/api/history/:id` on the web side, and `-s/--save`, `-H/--history [ticker]` on the CLI.
+
 **`src/valuation/`** — pure functions, no I/O. `shared/clampGrowthRate.ts` clamps every growth
 rate to `[-5%, 25%]` before either method uses it (both `lynch` and `ruleOne` call it
 internally — callers pass the raw, unclamped rate). Both `calculateLynchValue` and
 `calculateRuleOneValue` accept `epsTtm`/`growthRatePercent` as `number | null | undefined`
 (they flow in directly from `StockData`'s independently-nullable growth fields) and return a
 `ValuationResult`: `{ ok: true, fairValue, inputs, intermediate? }` or `{ ok: false, error }`
-with a typed `ValuationError`, never a throw.
+with a typed `ValuationError`, never a throw. `calculateRuleOneValue` additionally takes an
+optional `mosPercent` (Margin of Safety, default `0`) that discounts the sticker price down to
+a target buy price (`fairValue = stickerPrice * (1 - mosPercent / 100)`); the function itself
+accepts any value in `[0, 100)` (`INVALID_MOS` otherwise) — the web UI's four-value dropdown
+(0/10/25/50%) is a UI-level convention, not a constraint enforced by the function or by the
+CLI's free-text `-m/--mos <percent>` flag.
 
 **Error handling convention**: both layers use `{ ok: boolean }` discriminated-union results
 end-to-end instead of exceptions crossing module boundaries — `src/cli/index.ts` and
@@ -82,6 +113,14 @@ years) and the growth-rate fallback chain (`analystEstimate5y ?? historical3y ??
 — deliberately kept out of `src/valuation/` so those functions stay pure and take every input
 explicitly. The web UI additionally lets the user override growth/exit-PE/required-return/years
 per request instead of using the CLI's fixed defaults.
+
+**CLI flags** (`src/cli/index.ts`): `-m/--mos <percent>` (Margin of Safety, see above),
+`-n/--notes <text>` (thesis attached to a saved valuation), `-s/--save` (save the result to
+history), `-H/--history [ticker]` (print saved valuations, optionally filtered by ticker).
+
+**Web REST surface** (`src/web/server.ts`): `POST /api/valuate` (body now also accepts
+`epsOverride`, `mosPercent`, `forceRefresh`), `GET /api/history?ticker=`, `POST /api/history`,
+`DELETE /api/history/:id`.
 
 ## Principles
 
@@ -171,5 +210,6 @@ span many sessions.
   breakeven EPS) must not be treated as missing.
 - Ports 3000/3001/3100 are already used by other local projects on this machine; the web
   server's default is 3210 for that reason — don't "fix" it back to 3000.
-- No mocked/offline mode: both `npm run cli` and `npm run web` require a live
-  `TWELVE_DATA_API_KEY` in `.env` to do anything.
+- `CACHE_DIR_PATH` and `HISTORY_FILE_PATH` (`src/data/cache.ts`, `src/history/store.ts`) are
+  optional env vars with safe defaults (`cache/` and `history.json` under the project root) —
+  listed commented-out in `.env.example` the same way `PORT` is; almost nobody needs to set them.

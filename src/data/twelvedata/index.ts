@@ -21,6 +21,7 @@ import {
   validateCurrency,
 } from './normalize';
 import { computeHistoricalPeAverages } from './historicalPe';
+import { saveCachedStockData, getCachedStockData } from '../cache';
 import type {
   AnnualEpsPoint,
   MonthlyClosePoint,
@@ -65,7 +66,30 @@ function toStockDataError(err: unknown, ticker: string): StockDataError {
   return { type: 'API_ERROR', ticker, endpoint: 'unknown', message };
 }
 
-export async function fetchStockData(ticker: string): Promise<StockDataResult> {
+export interface FetchStockDataOptions {
+  forceRefresh?: boolean;
+  maxAgeMs?: number;
+}
+
+const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export async function fetchStockData(
+  ticker: string,
+  options?: FetchStockDataOptions,
+): Promise<StockDataResult> {
+  const normalizedTicker = ticker.toUpperCase();
+
+  if (!options?.forceRefresh) {
+    const cached = await getCachedStockData(normalizedTicker);
+    if (cached) {
+      const age = Date.now() - new Date(cached.asOf).getTime();
+      const maxAge = options?.maxAgeMs ?? DEFAULT_CACHE_TTL_MS;
+      if (Number.isFinite(age) && age < maxAge) {
+        return { ok: true, data: cached };
+      }
+    }
+  }
+
   try {
     const apiKey = loadTwelveDataApiKey();
 
@@ -175,8 +199,14 @@ export async function fetchStockData(ticker: string): Promise<StockDataResult> {
       asOf: new Date().toISOString(),
     };
 
+    await saveCachedStockData(ticker, data);
+
     return { ok: true, data };
   } catch (err) {
+    const cached = await getCachedStockData(ticker);
+    if (cached) {
+      return { ok: true, data: cached };
+    }
     return { ok: false, error: toStockDataError(err, ticker) };
   }
 }

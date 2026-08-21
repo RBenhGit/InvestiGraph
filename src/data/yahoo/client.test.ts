@@ -17,7 +17,8 @@ describe('yahoo client', () => {
   it('calls yahooFinance.quoteSummary with correct arguments', async () => {
     const mockResult = {
       earningsTrend: { trend: [{ period: '+1y', growth: 0.15 }] },
-      financialData: { recommendationKey: 'buy' }
+      financialData: { recommendationKey: 'buy' },
+      summaryDetail: { beta: 1.2, priceToSalesTrailing12Months: 5.4 },
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const quoteSummaryMock = (YahooFinance as any).quoteSummary;
@@ -27,7 +28,7 @@ describe('yahoo client', () => {
     const result = await fetchQuoteSummary('AAPL');
 
     expect(quoteSummaryMock).toHaveBeenCalledWith('AAPL', {
-      modules: ['earningsTrend', 'financialData'],
+      modules: ['earningsTrend', 'financialData', 'summaryDetail'],
     });
     expect(result).toEqual(mockResult);
   });

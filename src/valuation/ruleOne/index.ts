@@ -5,15 +5,15 @@ export type RuleOneInputsUsed = ValuationInputsUsed & {
   exitPeMultiple: number;
   requiredReturnPercent: number;
   years: number;
+  mosPercent: number;
 };
 
 /**
  * Method B (Rule #1-style): project EPS forward `years` at the (clamped) growth rate, apply an
- * exit P/E multiple, discount back at `requiredReturnPercent`. A single terminal-value multiple,
- * not a DCF with annual cash-flow projection.
+ * exit P/E multiple, discount back at `requiredReturnPercent`.
  *
- * `epsTtm` and `growthRatePercent` are widened to accept `null`/`undefined` for the same reason
- * as `calculateLynchValue` — both flow in from independently-nullable `StockData` fields.
+ * An optional `mosPercent` (Margin of Safety, e.g. 25 for 25%, defaults to 0) discounts the sticker price
+ * down to the target buy price (fairValue = stickerPrice * (1 - mosPercent / 100)).
  */
 export function calculateRuleOneValue(
   epsTtm: number | null | undefined,
@@ -21,6 +21,7 @@ export function calculateRuleOneValue(
   exitPeMultiple: number,
   requiredReturnPercent: number,
   years: number,
+  mosPercent: number = 0,
 ): ValuationResult<RuleOneInputsUsed> {
   if (epsTtm === null || epsTtm === undefined || Number.isNaN(epsTtm)) {
     return { ok: false, error: 'MISSING_EPS' };
@@ -44,13 +45,17 @@ export function calculateRuleOneValue(
   if (!Number.isInteger(years) || years <= 0) {
     return { ok: false, error: 'INVALID_YEARS' };
   }
+  if (Number.isNaN(mosPercent) || mosPercent < 0 || mosPercent >= 100) {
+    return { ok: false, error: 'INVALID_MOS' };
+  }
 
   const growthRatePercentClamped = clampGrowthRate(growthRatePercent);
   const g = growthRatePercentClamped / 100;
   const r = requiredReturnPercent / 100;
   const epsFuture = epsTtm * Math.pow(1 + g, years);
   const futurePrice = epsFuture * exitPeMultiple;
-  const fairValue = futurePrice / Math.pow(1 + r, years);
+  const stickerPrice = futurePrice / Math.pow(1 + r, years);
+  const fairValue = mosPercent > 0 ? stickerPrice * (1 - mosPercent / 100) : stickerPrice;
 
   return {
     ok: true,
@@ -62,7 +67,8 @@ export function calculateRuleOneValue(
       exitPeMultiple,
       requiredReturnPercent,
       years,
+      mosPercent,
     },
-    intermediate: { epsFuture, futurePrice },
+    intermediate: { epsFuture, futurePrice, stickerPrice, mosPrice: fairValue },
   };
 }

@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchAnalystConsensus } from './index';
 import { fetchQuoteSummary } from './client';
+import { getCachedYahooData, saveCachedYahooData } from '../cache';
+
+vi.mock('../cache', () => ({
+  saveCachedYahooData: vi.fn(),
+  getCachedYahooData: vi.fn().mockResolvedValue(null),
+}));
 
 vi.mock('./client', () => ({
   fetchQuoteSummary: vi.fn(),
@@ -107,5 +113,34 @@ describe('fetchAnalystConsensus', () => {
       ok: false,
       error: { type: 'API_ERROR', ticker: TICKER, message: 'network timeout' },
     });
+  });
+
+  it('falls back to cached analyst data when fetch fails', async () => {
+    vi.mocked(fetchQuoteSummary).mockRejectedValue(new Error('network down'));
+    const mockCached = {
+      ticker: TICKER,
+      nextYearEpsGrowthPercent: 15,
+      priceTarget: { mean: 500, high: 600, low: 400, numberOfAnalysts: 20 },
+      recommendationKey: 'buy',
+      beta: null,
+      priceToSales: null,
+      ruleOf40: null,
+      asOf: '2026-08-19T00:00:00.000Z',
+    };
+    vi.mocked(getCachedYahooData).mockResolvedValue(mockCached);
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result).toEqual({ ok: true, data: mockCached });
+  });
+
+  it('saves to cache on successful fetch', async () => {
+    vi.mocked(fetchQuoteSummary).mockResolvedValue(quoteSummary());
+    vi.mocked(getCachedYahooData).mockResolvedValue(null);
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result.ok).toBe(true);
+    expect(saveCachedYahooData).toHaveBeenCalledWith(TICKER, expect.objectContaining({ ticker: TICKER }));
   });
 });

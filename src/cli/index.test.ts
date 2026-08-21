@@ -6,14 +6,16 @@ vi.mock('commander', () => {
       name() { return this; }
       description() { return this; }
       argument() { return this; }
+      option() { return this; }
       action() { return this; }
       parseAsync() { return Promise.resolve(); }
     }
   };
 });
 
-import { formatStockDataError } from './index';
+import { formatStockDataError, formatHistoryOutput } from './index';
 import type { StockDataError } from '../data/twelvedata/types';
+import type { SavedValuation } from '../history';
 
 describe('formatStockDataError', () => {
   it('formats NOT_FOUND error', () => {
@@ -56,5 +58,61 @@ describe('formatStockDataError', () => {
       detail: 'Mismatched currencies' 
     };
     expect(formatStockDataError(error)).toBe('Invalid currency unit for "XYZ": Mismatched currencies');
+  });
+});
+
+describe('formatHistoryOutput', () => {
+  it('returns empty message when records array is empty', () => {
+    expect(formatHistoryOutput([])).toBe('No saved valuations found.');
+  });
+
+  it('formats history records into a clean table', () => {
+    const records: SavedValuation[] = [
+      {
+        id: '1',
+        ticker: 'AAPL',
+        evaluatedAt: '2026-08-19T18:45:00.000Z',
+        currentPrice: 220.5,
+        currency: 'USD',
+        epsTtm: 6.5,
+        growthRatePercent: 12.0,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+        lynchFairValue: 156.0,
+        ruleOneFairValue: 180.2,
+      },
+    ];
+    const output = formatHistoryOutput(records);
+    expect(output).toContain('AAPL');
+    expect(output).toContain('220.50 USD');
+    expect(output).toContain('156.00');
+    expect(output).toContain('180.20');
+    expect(output).toContain('12.00%');
+  });
+
+  it('formats history records with MoS and Notes included', () => {
+    const records: SavedValuation[] = [
+      {
+        id: '2',
+        ticker: 'MSFT',
+        evaluatedAt: '2026-08-19T18:45:00.000Z',
+        currentPrice: 400.0,
+        currency: 'USD',
+        epsTtm: 11.5,
+        growthRatePercent: 14.0,
+        exitPeMultiple: 20,
+        requiredReturnPercent: 15,
+        years: 10,
+        mosPercent: 25,
+        lynchFairValue: 300.0,
+        ruleOneFairValue: 275.0,
+        notes: 'Conservative growth assumption',
+      },
+    ];
+    const output = formatHistoryOutput(records);
+    expect(output).toContain('MSFT');
+    expect(output).toContain('MoS:25%');
+    expect(output).toContain('Conservative growth assumption');
   });
 });

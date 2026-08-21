@@ -18,6 +18,11 @@ describe('app.js frontend', () => {
       <input id="exit-pe-input" />
       <input id="required-return-input" />
       <input id="years-input" />
+      <select id="mos-select"></select>
+      <input id="notes-input" />
+      <button class="scenario-btn" data-scenario="bear"></button>
+      <button class="scenario-btn" data-scenario="base"></button>
+      <button class="scenario-btn" data-scenario="bull"></button>
       <div id="growth-chips"></div>
       <div id="error-card"></div>
       <div id="result"></div>
@@ -36,7 +41,22 @@ describe('app.js frontend', () => {
       <div id="rule-one-fair-value"></div>
       <div id="rule-one-verdict"></div>
       <div id="rule-one-inputs"></div>
+
+      <button id="save-btn"></button>
+      <span id="save-status"></span>
+      <div id="history-empty"></div>
+      <div id="history-table-container"></div>
+      <table>
+        <tbody id="history-tbody"></tbody>
+      </table>
+      <input id="history-filter" />
+      <button id="history-refresh-btn"></button>
     `;
+
+    // Mock fetch for initial fetchHistory
+    global.fetch = () => Promise.resolve({
+      json: () => Promise.resolve({ ok: true, data: [] }),
+    });
 
     // Load and execute app.js using new Function to capture the formatStockDataError function
     const appJsPath = path.resolve(__dirname, 'app.js');
@@ -76,4 +96,3 @@ describe('app.js frontend', () => {
     expect(formatStockDataError(error)).toBe('Invalid currency unit for "XYZ": Mismatch');
   });
 });
-

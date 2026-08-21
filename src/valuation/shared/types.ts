@@ -10,7 +10,8 @@ export type ValuationError =
   | 'MISSING_GROWTH_RATE'
   | 'INVALID_EXIT_PE'
   | 'INVALID_REQUIRED_RETURN'
-  | 'INVALID_YEARS';
+  | 'INVALID_YEARS'
+  | 'INVALID_MOS';
 
 export type ValuationResult<TInputs> =
   | { ok: true; fairValue: number; inputs: TInputs; intermediate?: Record<string, number> }

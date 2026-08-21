@@ -1,16 +1,17 @@
 # Current Work — Eps_Evaluation
 
-**Updated:** 2026-08-16
+**Updated:** 2026-08-21
 
 ## Where things stand
 
 EPS×multiple stock valuation tool — Node.js + TypeScript, shared core (`src/data/`,
-`src/valuation/`) with thin CLI (`src/cli/`) and web (`src/web/`) adapters. Fully implemented,
-end-to-end checked against the live Twelve Data API. **77/77 tests, `npm run lint` clean,
-`npm run build` (tsc) clean.** Historical-5Y-growth/avg-P/E data fix and a panel redesign
-(below) both verified live in a browser and committed.
+`src/valuation/`) with thin CLI (`src/cli/`) and web (`src/web/`) adapters.
+**Cache-first optimization added:** `fetchStockData` and `fetchAnalystConsensus` now check local cache (24h TTL) before making external API calls, avoiding rate-limit hits when re-valuating or modifying assumptions. A "Refresh Live" button was added for explicit live market data refreshes.
 
 ## Last completed
+
+- **Cache-first Data Layer:** Wired `getCachedStockData` and `getCachedYahooData` into the entry points with TTL checks and `forceRefresh` support.
+- **Web UI & Server:** Added `forceRefresh` parameter to `POST /api/valuate` and a dedicated `🔄 Refresh Live` button in `index.html` + `app.js`. Re-calculating with different assumptions now runs in 0ms without hitting Twelve Data API rate limits.
 
 Implemented the whole app in one pass (tasks 1-9), then several follow-ups:
 
@@ -89,13 +90,10 @@ computed-style inspection).
 
 ## In flight
 
-**`wiki/` added** — a project wiki (7 pages, Hebrew, in `wiki/`) built from what this session
-verified directly in the code, not copied from `CLAUDE.md`. Covers architecture, data sources,
-valuation methods, the `Z:`/`EPERM` environment trap, the task-execution protocol (distilled
-from `.claude/standards/`), and a commit-by-commit history including the documentation-drift
-findings above. Start at `wiki/Home.md`. Note: the original "CodeFundation wiki" that
-`.claude/standards/*.md` cite as their source is not reachable from this repo or environment —
-this `wiki/` is a project-specific wiki built fresh, not a recovery of that external one.
+Nothing in flight — CLAUDE.md and `wiki/` are back in sync with the code as of the
+2026-08-21 re-evaluation (see Log below). The stop-test-gate hook caught a pre-existing
+`yahoo`/`beta`/`priceToSales`/`ruleOf40` test/type drift this session's doc-only change had
+missed — fixed inline (see Log below), suite is 113/113 green, lint clean, build clean.
 
 ## Known problems
 
@@ -182,5 +180,38 @@ changes and is faster when applicable.
   (e.g. `src/data/yahoo/`, the annual/median `historicalPe`) rather than repeating `CLAUDE.md`'s
   current drift.
 - 2026-08-16 — Completed tasks 1-5 from TASKS.md (documentation drift fixes). Task 6 is pending a product decision regarding the CLI/web analyst-consensus divergence.
-- 2026-08-16 — Completed task 6 (Option A chosen by user): Updated CLAUDE.md to document that the CLI does not include Yahoo analyst data.
 - 2026-08-16 — Completed task 7 (created `README.md` with installation/usage instructions) and task 8 (added test coverage for `src/data/yahoo/client.ts`, `src/cli/index.ts`, and `src/web/public/app.js` using jsdom). 88/88 tests passing. Also addressed 8 security vulnerabilities by running `npm audit fix --force`, upgrading Fastify, @fastify/static, and vitest to new major versions. Verified that the app and test suite still function correctly post-upgrade.
+- 2026-08-19 — Added valuation persistence and historical tracking feature:
+  - Created `src/history/` (`types.ts`, `store.ts`, `index.ts`, `index.test.ts`) with disk persistence in `history.json` and full error handling.
+  - Added REST endpoints in Fastify (`GET /api/history`, `POST /api/history`, `DELETE /api/history/:id`) with server tests in `src/web/server.test.ts`.
+  - Added Web UI features: "Save this valuation" button, "Saved Valuations" interactive table with live filtering, "Load into form" feature, and "Delete" action.
+  - Added CLI `--save` and `--history [TICKER]` flags with formatted terminal table output.
+  - 99/99 tests passing, ESLint clean, TypeScript build clean.
+- 2026-08-19 — Added Offline Caching, Margin of Safety (MoS), Notes & Thesis, and Scenarios features:
+  - Created `src/data/cache.ts` and `src/data/cache.test.ts` providing transparent offline caching in `cache/` for Twelve Data and Yahoo API responses, gracefully falling back to cached fundamentals if offline or API subscription is inactive.
+  - Added user-selectable Margin of Safety (`mosPercent`, 0%, 10%, 25%, 50%) to `src/valuation/ruleOne/index.ts`, Web UI dropdown, and CLI (`-m, --mos <percent>`).
+  - Added Investment Thesis / Notes field in Web UI and CLI (`-n, --notes <text>`) persisted in `history.json` and displayed in historical valuation views.
+  - Added Bull / Base / Bear scenario switch buttons in Web UI for quick assumption testing and real-time fair value recalculation.
+  - 110/110 tests passing, ESLint clean, TypeScript build clean.
+- 2026-08-21 — Re-evaluated the project (2nd pass) and re-synced documentation: ran the
+  `/re-evaluate-project` skill via two parallel Explore agents plus direct verification; found
+  the 2026-08-19 cache/history/MoS work was never folded into `CLAUDE.md` or `wiki/` — most
+  notably `CLAUDE.md` still claimed "no mocked/offline mode" which the disk cache now
+  contradicts. Wrote `docs/Project_ReEvaluation_2026-08-21.md` (full findings) and a designed
+  PDF summary (`docs/Project_ReEvaluation_2026-08-21_Summary.pdf`, Hebrew/RTL via
+  reportlab+python-bidi). Then updated `CLAUDE.md` (Architecture: added `src/data/cache.ts` and
+  `src/history/`, fixed the offline-mode claim, documented `mosPercent`/new REST
+  endpoints/CLI flags, added the `CACHE_DIR_PATH`/`HISTORY_FILE_PATH` env vars to Gotchas),
+  `.env.example` (added those two vars, commented-out like `PORT`), and `wiki/` (`Home.md`,
+  `ארכיטקטורה.md`, `מקורות-נתונים.md`, `שיטות-הערכה.md` updated; new page
+  `wiki/היסטוריית-הערכות-ומטמון.md` added for the history/cache features — kept separate from
+  the pre-existing `היסטוריה-ומקורות.md`, which is about commit history, not `src/history/`).
+  The stop-test-gate hook then caught pre-existing (uncommitted, unrelated to this session's
+  own edits) drift between `AnalystConsensus`'s type (`beta`/`priceToSales`/`ruleOf40` fields)
+  and three test fixtures that predated them (`src/data/yahoo/client.test.ts`,
+  `src/data/cache.test.ts`, `src/data/yahoo/index.test.ts`, `src/web/server.test.ts`) — fixed
+  all four inline (test expectations/fixtures only, no production code changed). Baseline
+  re-verified via SSH: 113/113 tests, lint clean, build clean (`tsc` had been silently broken
+  before this fix — `npm test` alone doesn't type-check, so it wasn't caught by the git-status
+  baseline check either).
+

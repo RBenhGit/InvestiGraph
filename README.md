@@ -4,7 +4,7 @@ An EPS×multiple stock valuation tool. It fetches fundamentals from the Twelve D
 - Peter Lynch style (PEG ratio, no discounting)
 - Rule #1 style (EPS projection × exit multiple, discounted)
 
-The tool is available via both a CLI and a Web interface.
+The tool is available via both a CLI and a Web interface, and supports saving valuations and tracking historical estimates over time.
 
 ## Prerequisites
 
@@ -33,12 +33,22 @@ cp .env.example .env
 Run the valuation logic directly in your terminal for a given stock ticker:
 
 ```bash
+# Calculate valuation
 npm run cli -- AAPL
+
+# Calculate valuation and save to history
+npm run cli -- AAPL --save
+
+# View all saved historical valuations
+npm run cli -- --history
+
+# View history filtered by ticker
+npm run cli -- --history AAPL
 ```
 
 ### Web UI
 
-Start the local Fastify server to view the valuations with an interactive UI. The web UI additionally provides analyst consensus data from Yahoo Finance.
+Start the local Fastify server to view the valuations with an interactive UI. The web UI additionally provides analyst consensus data from Yahoo Finance, and allows saving valuations and managing history directly from the browser:
 
 ```bash
 npm run web

@@ -36,6 +36,7 @@ describe('formatOutput', () => {
         exitPeMultiple: 15,
         requiredReturnPercent: 15,
         years: 10,
+        mosPercent: 0,
       },
       intermediate: { epsFuture: 20, futurePrice: 300 },
     };
@@ -100,11 +101,38 @@ describe('formatOutput', () => {
         exitPeMultiple: 15,
         requiredReturnPercent: 15,
         years: 10,
+        mosPercent: 0,
       },
     };
 
     const output = formatOutput(baseData, lynchResult, ruleOneResult);
 
     expect(output).toContain('analyst 5y estimate');
+  });
+
+  it('formats MoS information when mosPercent > 0', () => {
+    const lynchResult = {
+      ok: true as const,
+      fairValue: 256.8,
+      inputs: { epsTtm: 6.42, growthRatePercentRaw: 40, growthRatePercentClamped: 25 },
+    };
+    const ruleOneResult = {
+      ok: true as const,
+      fairValue: 150,
+      inputs: {
+        epsTtm: 6.42,
+        growthRatePercentRaw: 40,
+        growthRatePercentClamped: 25,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+        mosPercent: 25,
+      },
+      intermediate: { stickerPrice: 200 },
+    };
+
+    const output = formatOutput(baseData, lynchResult, ruleOneResult);
+
+    expect(output).toContain('Method B (Rule #1, MoS 25%) fair value: 150.00 (Sticker: 200.00)');
   });
 });
