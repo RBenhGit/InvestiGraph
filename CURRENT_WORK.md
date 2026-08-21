@@ -90,10 +90,11 @@ computed-style inspection).
 
 ## In flight
 
-Nothing in flight — CLAUDE.md and `wiki/` are back in sync with the code as of the
-2026-08-21 re-evaluation (see Log below). The stop-test-gate hook caught a pre-existing
-`yahoo`/`beta`/`priceToSales`/`ruleOf40` test/type drift this session's doc-only change had
-missed — fixed inline (see Log below), suite is 113/113 green, lint clean, build clean.
+Nothing in flight. CLAUDE.md and `wiki/` are in sync with the code (2026-08-21 re-evaluation),
+and a follow-up calculation audit that same day found and fixed two real bugs in the web
+server's growth-rate fallback (defaulted to 0% instead of erroring; undocumented 15% cap on
+historical growth only on the web, causing CLI/web value divergence) — see Log below. Suite is
+115/115 green, lint clean, build clean.
 
 ## Known problems
 
@@ -214,4 +215,23 @@ changes and is faster when applicable.
   re-verified via SSH: 113/113 tests, lint clean, build clean (`tsc` had been silently broken
   before this fix — `npm test` alone doesn't type-check, so it wasn't caught by the git-status
   baseline check either).
+- 2026-08-21 — Audited all valuation calculations (correctness, reliability, results) at user
+  request. Verified by hand: Lynch (`eps * growth`), Rule #1 (EPS projection × exit P/E,
+  discounted once), MoS discount, `clampGrowthRate`, `resolveTtmEps`, `calculateCagrPercent`,
+  and `historicalPe`'s median-of-window logic all match their tests and their documented
+  formulas exactly — no bugs found in the pure `src/valuation/`/`src/data/twelvedata/`
+  calculation layer. Found two real bugs in `src/web/server.ts`'s growth-rate auto-fill logic
+  (added 2026-08-19, untested, silently diverged from the CLI's fallback chain): (1) when no
+  growth source was available at all, it defaulted `effectiveGrowth` to `0` instead of leaving
+  it `null`, producing a fabricated $0 fair value with `ok: true` and no error shown, instead of
+  the `MISSING_GROWTH_RATE` error the CLI correctly returns for the same situation; (2) an
+  undocumented `Math.min(hist, 15)` capped the historical-growth fallback at 15% on the web only
+  — not on the CLI, not in CLAUDE.md/wiki, not covered by any test — so identical data could
+  produce fair values differing by up to ~47% depending on which adapter was used. Per user
+  triage: bug (1) fixed but deprioritized (return null, not urgent); bug (2) fixed as the
+  significant one (cap removed entirely). `server.ts` now uses the exact same fallback chain as
+  `cli/index.ts` (`analystEstimate5y ?? historical3y ?? historical1y`, no cap, no default-to-0).
+  Wrote two failing-then-passing tests in `server.test.ts` reproducing both bugs before fixing
+  (per CLAUDE.md's bug-fix policy); updated the stale explanatory comment in `app.js`. 115/115
+  tests (both new), lint clean, build clean, verified via SSH.
 

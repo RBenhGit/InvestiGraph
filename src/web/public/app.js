@@ -606,7 +606,10 @@ async function handleSubmit(event, forceRefresh = false) {
 
     const { data, effectiveEps, lynch, ruleOne } = body;
     
-    // Server now handles the seeding and cap for safety. If it used a fallback, it returns effectiveGrowth.
+    // Server seeds growth from the same fallback chain as the CLI when the field was left
+    // blank (analystEstimate5y ?? historical3y ?? historical1y, no extra cap); it returns
+    // effectiveGrowth so the UI can show the exact value used, including null when no source
+    // was available at all (lynch/ruleOne will then report MISSING_GROWTH_RATE below).
     let effectiveGrowth = body.effectiveGrowth ?? growthRatePercent;
 
     // Show the actual EPS used if the user left it on Auto

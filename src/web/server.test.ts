@@ -224,6 +224,85 @@ describe('POST /api/valuate', () => {
     expect(body.ok).toBe(true);
     expect(body.analystConsensus).toBeNull();
   });
+
+  it('seeds growth from historical3yPercent uncapped when analyst estimate is missing, matching the CLI fallback chain exactly', async () => {
+    // historical3yPercent (22) exceeds the old undocumented 15% web-only cap — this proves
+    // the cap is gone and the web adapter now uses the exact same fallback chain as the CLI
+    // (analystEstimate5y ?? historical3y ?? historical1y), with no extra transformation.
+    vi.mocked(fetchStockData).mockResolvedValue({
+      ok: true,
+      data: stockData({
+        growth: {
+          historical1yPercent: 8,
+          historical3yPercent: 22,
+          historical5yPercent: 7,
+          analystEstimate5yPercent: null,
+        },
+      }),
+    });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+        // growthRatePercent omitted: server must seed it itself, same as leaving the web form blank
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.ok).toBe(true);
+    expect(body.effectiveGrowth).toBe(22);
+
+    const expectedLynch = calculateLynchValue(10, 22);
+    expect(expectedLynch.ok).toBe(true);
+    if (expectedLynch.ok) {
+      expect(body.lynch.fairValue).toBe(expectedLynch.fairValue);
+    }
+  });
+
+  it('returns MISSING_GROWTH_RATE (not a fabricated 0%) when no growth data is available at all', async () => {
+    // All three growth fields null and no manual growthRatePercent provided: this must behave
+    // like the CLI does in the same situation (surface an error), not silently default to 0
+    // and return an ok:true response with a fake $0 fair value.
+    vi.mocked(fetchStockData).mockResolvedValue({
+      ok: true,
+      data: stockData({
+        growth: {
+          historical1yPercent: null,
+          historical3yPercent: null,
+          historical5yPercent: null,
+          analystEstimate5yPercent: null,
+        },
+      }),
+    });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.ok).toBe(true);
+    expect(body.effectiveGrowth).toBeNull();
+    expect(body.lynch).toEqual({ ok: false, error: 'MISSING_GROWTH_RATE' });
+    expect(body.ruleOne).toEqual({ ok: false, error: 'MISSING_GROWTH_RATE' });
+  });
 });
 
 describe('GET /api/history', () => {

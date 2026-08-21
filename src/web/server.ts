@@ -66,19 +66,18 @@ export function buildServer() {
     const effectiveEps = (typeof epsOverride === 'number' && epsOverride > 0) ? epsOverride : data.epsTtm;
     
     let effectiveGrowth = typeof growthRatePercent === 'number' ? growthRatePercent : null;
-    
-    // Seed the growth rate automatically if not provided by the frontend
+
+    // Seed the growth rate automatically if not provided by the frontend. Must match the CLI's
+    // fallback chain exactly (see src/cli/index.ts) — no extra cap, no defaulting to 0 when
+    // every source is null. Defaulting to 0 would silently turn "no growth data available" into
+    // a fabricated $0 fair value instead of the MISSING_GROWTH_RATE error the valuation
+    // functions are designed to surface.
     if (effectiveGrowth === null) {
-      if (data.growth.analystEstimate5yPercent !== null && data.growth.analystEstimate5yPercent !== undefined) {
-        effectiveGrowth = data.growth.analystEstimate5yPercent;
-      } else {
-        const hist = data.growth.historical3yPercent ?? data.growth.historical1yPercent;
-        if (hist !== null && hist !== undefined) {
-          effectiveGrowth = Math.min(hist, 15); // Cap historical fallback at 15% margin of safety
-        } else {
-          effectiveGrowth = 0;
-        }
-      }
+      effectiveGrowth =
+        data.growth.analystEstimate5yPercent ??
+        data.growth.historical3yPercent ??
+        data.growth.historical1yPercent ??
+        null;
     }
 
     const lynch = calculateLynchValue(effectiveEps, effectiveGrowth);
