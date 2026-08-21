@@ -66,7 +66,18 @@ src/web/                Fastify server: POST /api/valuate does the same, serves 
 
 **`src/data/yahoo/`** — `index.ts` is the _only_ published entry point (`fetchAnalystConsensus`);
 nothing outside this directory may import its `client.ts` or `types.ts`. Internally uses
-`yahoo-finance2` to fetch analyst consensus (next-year EPS growth, price targets, recommendations).
+`yahoo-finance2` to fetch analyst consensus (next-year EPS growth, price targets, recommendations)
+plus three "financial health" reference fields: `beta` and `priceToSales` are read straight from
+Yahoo's `summaryDetail` module (no local math); `ruleOf40 = (revenueGrowth + ebitdaMargins) * 100`
+is computed locally — both `revenueGrowth` and `ebitdaMargins` arrive from Yahoo as fractions
+(e.g. `0.852`, not `85.2`), so the single `* 100` is correct, not a double-conversion (hand-
+verified live against NVDA: `0.852 + 0.65294 = 1.50494 → 150.494`, a genuinely high but real
+score for that company's growth/margin profile at the time — don't "fix" a high Rule of 40
+result without re-checking the raw Yahoo fields first; it looked like a units bug on first
+glance and wasn't one). All three fields are `number | null`, never
+`undefined` — UI code checking for their presence must test `!== null`, not `!== undefined`
+(`app.js`'s "Financial Health" section header had exactly this bug: `!== undefined` is always
+true for a typed-`null` field, so the header rendered even when both were `null`).
 **Important Rule**: This module uses a public endpoint and does not require an API key (hence its
 absence from `.env.example`). Furthermore, any failure here MUST gracefully degrade to returning
 `null` (never failing the overall valuation request), as it's an auxiliary data source.
@@ -112,7 +123,14 @@ end-to-end instead of exceptions crossing module boundaries — `src/cli/index.t
 years) and the growth-rate fallback chain (`analystEstimate5y ?? historical3y ?? historical1y`)
 — deliberately kept out of `src/valuation/` so those functions stay pure and take every input
 explicitly. The web UI additionally lets the user override growth/exit-PE/required-return/years
-per request instead of using the CLI's fixed defaults.
+per request instead of using the CLI's fixed defaults. **The fallback chain must stay
+byte-identical between `cli/index.ts` and `server.ts`** — it silently diverged once (an
+undocumented `Math.min(hist, 15)` cap and a default-to-`0` on the web side, neither in the CLI,
+neither tested) and produced fair values differing by up to ~47% between the two adapters for
+identical data before being caught and removed; when all growth sources are `null`, the correct
+behavior is to leave `effectiveGrowth` as `null` and let `calculateLynchValue`/
+`calculateRuleOneValue` return `MISSING_GROWTH_RATE` — never default to `0`, which produces a
+fabricated-but-`ok:true` $0 fair value with no error shown.
 
 **CLI flags** (`src/cli/index.ts`): `-m/--mos <percent>` (Margin of Safety, see above),
 `-n/--notes <text>` (thesis attached to a saved valuation), `-s/--save` (save the result to
