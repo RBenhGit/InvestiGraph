@@ -32,68 +32,7 @@ const historyRefreshBtn = document.getElementById('history-refresh-btn');
 
 let currentValuation = null;
 
-// ---------------- Scenario Management ----------------
-let currentScenario = 'base';
-const scenarioState = {
-  base: { growth: null, exitPe: 15, requiredReturn: 15, years: 10, mos: 25 },
-  bull: { growth: null, exitPe: 20, requiredReturn: 12, years: 10, mos: 10 },
-  bear: { growth: null, exitPe: 10, requiredReturn: 15, years: 10, mos: 50 },
-};
 
-function saveCurrentScenarioInputs() {
-  if (!scenarioState[currentScenario]) return;
-  if (growthInput && growthInput.value !== '') {
-    scenarioState[currentScenario].growth = Number(growthInput.value);
-  }
-  if (exitPeInput) {
-    scenarioState[currentScenario].exitPe = Number(exitPeInput.value) || 15;
-  }
-  if (requiredReturnInput) {
-    scenarioState[currentScenario].requiredReturn = Number(requiredReturnInput.value) || 15;
-  }
-  if (yearsInput) {
-    scenarioState[currentScenario].years = Number(yearsInput.value) || 10;
-  }
-  if (mosSelect) {
-    scenarioState[currentScenario].mos = Number(mosSelect.value) || 0;
-  }
-}
-
-function applyScenario(targetScenario) {
-  saveCurrentScenarioInputs();
-  currentScenario = targetScenario;
-
-  const buttons = document.querySelectorAll('.scenario-btn');
-  buttons.forEach((btn) => {
-    if (btn.getAttribute('data-scenario') === targetScenario) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
-    }
-  });
-
-  const state = scenarioState[targetScenario];
-  if (!state) return;
-
-  if (state.growth === null && scenarioState.base.growth !== null) {
-    const baseG = scenarioState.base.growth;
-    if (targetScenario === 'bull') {
-      state.growth = Number((baseG > 0 ? baseG * 1.25 : baseG + 3).toFixed(2));
-    } else if (targetScenario === 'bear') {
-      state.growth = Number((baseG > 0 ? baseG * 0.75 : baseG - 3).toFixed(2));
-    }
-  }
-
-  if (growthInput && state.growth !== null) growthInput.value = state.growth;
-  if (exitPeInput) exitPeInput.value = state.exitPe;
-  if (requiredReturnInput) requiredReturnInput.value = state.requiredReturn;
-  if (yearsInput) yearsInput.value = state.years;
-  if (mosSelect) mosSelect.value = String(state.mos);
-
-  if (tickerInput && tickerInput.value.trim() !== '') {
-    handleSubmit(new Event('submit'));
-  }
-}
 
 /** Mirrors cli/index.ts's formatStockDataError, for display purposes only. */
 function formatStockDataError(error) {
@@ -367,10 +306,10 @@ function growthIO(inputs) {
   return `<span class="io">growth: <b>${fmt(clamped)}%</b></span>`;
 }
 
-function renderMethodCard(prefix, result, currentPrice, extraFields) {
-  const fairValueEl = document.getElementById(`${prefix}-fair-value`);
-  const verdictEl = document.getElementById(`${prefix}-verdict`);
-  const inputsEl = document.getElementById(`${prefix}-inputs`);
+function renderScenarioColumn(prefix, scenario, result, currentPrice, extraFields) {
+  const fairValueEl = document.getElementById(`${prefix}-${scenario}-fv`);
+  const verdictEl = document.getElementById(`${prefix}-${scenario}-verdict`);
+  const inputsEl = document.getElementById(`${prefix}-${scenario}-inputs`);
 
   if (!fairValueEl || !verdictEl || !inputsEl) return;
 
@@ -389,6 +328,12 @@ function renderMethodCard(prefix, result, currentPrice, extraFields) {
     .map(([label, value]) => `<span class="io">${label}: <b>${value}</b></span>`)
     .join('');
   inputsEl.innerHTML = growthIO(result.inputs) + extraHtml;
+}
+
+function renderMethodCard(prefix, results, currentPrice, getExtrasFn) {
+  renderScenarioColumn(prefix, 'bear', results.bear, currentPrice, getExtrasFn ? getExtrasFn('bear', results.bear) : undefined);
+  renderScenarioColumn(prefix, 'base', results.base, currentPrice, getExtrasFn ? getExtrasFn('base', results.base) : undefined);
+  renderScenarioColumn(prefix, 'bull', results.bull, currentPrice, getExtrasFn ? getExtrasFn('bull', results.bull) : undefined);
 }
 
 // ---------------- History Functions ----------------
@@ -425,110 +370,165 @@ function renderHistoryTable(records) {
   historyTbody.innerHTML = '';
 
   for (const item of records) {
-    const tr = document.createElement('tr');
+    // If it's a legacy record without 'base', wrap it to look like one.
+    const scenarios = item.base ? [
+      { name: 'Bear', data: item.bear || item.base },
+      { name: 'Base', data: item.base },
+      { name: 'Bull', data: item.bull || item.base }
+    ] : [
+      { name: 'Base', data: {
+          growthRatePercent: item.growthRatePercent,
+          exitPeMultiple: item.exitPeMultiple,
+          requiredReturnPercent: item.requiredReturnPercent,
+          mosPercent: item.mosPercent,
+          lynchFairValue: item.lynchFairValue,
+          ruleOneFairValue: item.ruleOneFairValue
+        }
+      }
+    ];
 
-    // Date
-    const tdDate = document.createElement('td');
-    tdDate.className = 'table-date';
-    tdDate.textContent = formatDate(item.evaluatedAt);
+    for (let i = 0; i < scenarios.length; i++) {
+      const scenario = scenarios[i];
+      const isFirstRow = i === 0;
+      const isBaseRow = scenario.name === 'Base';
+      const rowSpan = scenarios.length;
+      
+      const tr = document.createElement('tr');
+      if (scenarios.length > 1) {
+        tr.classList.add(`history-row-${scenario.name.toLowerCase()}`);
+      }
+      
+      // Date (only on first row)
+      if (isFirstRow) {
+        const tdDate = document.createElement('td');
+        tdDate.className = 'table-date';
+        tdDate.rowSpan = rowSpan;
+        tdDate.textContent = formatDate(item.evaluatedAt);
+        tr.append(tdDate);
+      }
 
-    // Ticker
-    const tdTicker = document.createElement('td');
-    const badge = document.createElement('span');
-    badge.className = 'badge-ticker';
-    badge.textContent = item.ticker;
-    tdTicker.append(badge);
+      // Ticker & Scenario Name
+      const tdTicker = document.createElement('td');
+      const badge = document.createElement('span');
+      badge.className = 'badge-ticker';
+      badge.textContent = item.ticker;
+      if (scenarios.length > 1) {
+        const scenarioLabel = document.createElement('span');
+        scenarioLabel.className = `badge-scenario scenario-${scenario.name.toLowerCase()}`;
+        scenarioLabel.textContent = scenario.name;
+        tdTicker.append(badge, ' ', scenarioLabel);
+      } else {
+        tdTicker.append(badge);
+      }
+      tr.append(tdTicker);
 
-    // Price
-    const tdPrice = document.createElement('td');
-    tdPrice.className = 'table-price';
-    tdPrice.textContent = `${fmt(item.currentPrice)} ${item.currency || 'USD'}`;
+      // Price (only on first row)
+      if (isFirstRow) {
+        const tdPrice = document.createElement('td');
+        tdPrice.className = 'table-price';
+        tdPrice.rowSpan = rowSpan;
+        tdPrice.textContent = `${fmt(item.currentPrice)} ${item.currency || 'USD'}`;
+        tr.append(tdPrice);
+      }
 
-    // Lynch Fair Value
-    const tdLynch = document.createElement('td');
-    tdLynch.className = 'table-val';
-    if (item.lynchFairValue !== null && item.lynchFairValue !== undefined) {
-      const diff = (item.lynchFairValue / item.currentPrice - 1) * 100;
-      const isGood = diff > 0;
-      tdLynch.innerHTML = `<b>${fmt(item.lynchFairValue)}</b> <span class="${isGood ? 'good' : 'bad'}">(${isGood ? '+' : ''}${fmt(diff)}%)</span>`;
-    } else {
-      tdLynch.textContent = 'n/a';
+      // Rule #1 Fair Value
+      const tdRuleOne = document.createElement('td');
+      tdRuleOne.className = 'table-val';
+      if (scenario.data.ruleOneFairValue !== null && scenario.data.ruleOneFairValue !== undefined) {
+        const diff = (scenario.data.ruleOneFairValue / item.currentPrice - 1) * 100;
+        const isGood = diff > 0;
+        tdRuleOne.innerHTML = `<b>${fmt(scenario.data.ruleOneFairValue)}</b> <span class="${isGood ? 'good' : 'bad'}">(${isGood ? '+' : ''}${fmt(diff)}%)</span>`;
+      } else {
+        tdRuleOne.textContent = 'n/a';
+      }
+      tr.append(tdRuleOne);
+
+      // Lynch Fair Value
+      const tdLynch = document.createElement('td');
+      tdLynch.className = 'table-val';
+      if (scenario.data.lynchFairValue !== null && scenario.data.lynchFairValue !== undefined) {
+        const diff = (scenario.data.lynchFairValue / item.currentPrice - 1) * 100;
+        const isGood = diff > 0;
+        tdLynch.innerHTML = `<b>${fmt(scenario.data.lynchFairValue)}</b> <span class="${isGood ? 'good' : 'bad'}">(${isGood ? '+' : ''}${fmt(diff)}%)</span>`;
+      } else {
+        tdLynch.textContent = 'n/a';
+      }
+      tr.append(tdLynch);
+
+      // Growth
+      const tdGrowth = document.createElement('td');
+      tdGrowth.className = 'table-val';
+      tdGrowth.textContent = fmtPercent(scenario.data.growthRatePercent);
+      tr.append(tdGrowth);
+
+      // Assumptions
+      const tdAssump = document.createElement('td');
+      tdAssump.className = 'table-assumptions';
+      const mosText = scenario.data.mosPercent ? ` | MoS: ${scenario.data.mosPercent}%` : '';
+      const epsText = item.epsOverride ? ` | Adj.EPS: ${fmt(item.epsOverride)}` : (item.epsTtm ? ` | EPS: ${fmt(item.epsTtm)}` : '');
+      tdAssump.textContent = `PE: ${fmt(scenario.data.exitPeMultiple)} | Req: ${fmt(scenario.data.requiredReturnPercent)}% | ${item.years}y${mosText}${epsText}`;
+      tr.append(tdAssump);
+
+      // Notes (only on first row)
+      if (isFirstRow) {
+        const tdNotes = document.createElement('td');
+        tdNotes.className = 'table-notes';
+        tdNotes.rowSpan = rowSpan;
+        tdNotes.textContent = item.notes || '—';
+        if (item.notes) tdNotes.title = item.notes;
+        tr.append(tdNotes);
+      }
+
+      // Actions (only on first row)
+      if (isFirstRow) {
+        const tdActions = document.createElement('td');
+        tdActions.className = 'table-actions';
+        tdActions.rowSpan = rowSpan;
+
+        const loadBtn = document.createElement('button');
+        loadBtn.type = 'button';
+        loadBtn.className = 'btn-action-load';
+        loadBtn.textContent = 'Load';
+        loadBtn.addEventListener('click', () => {
+          if (tickerInput) tickerInput.value = item.ticker;
+          if (epsInput) {
+            epsInput.value = item.epsOverride !== undefined && item.epsOverride !== null ? item.epsOverride : '';
+          }
+          const loadData = item.base || item; // Use base for loading inputs if new, otherwise legacy
+          if (growthInput) {
+            growthInput.value = loadData.growthRatePercent !== null && loadData.growthRatePercent !== undefined 
+              ? Number(Number(loadData.growthRatePercent).toFixed(2)) 
+              : '';
+          }
+          if (exitPeInput) exitPeInput.value = loadData.exitPeMultiple;
+          if (requiredReturnInput) requiredReturnInput.value = loadData.requiredReturnPercent;
+          if (yearsInput) yearsInput.value = item.years;
+          if (mosSelect && loadData.mosPercent !== undefined) mosSelect.value = String(loadData.mosPercent);
+          if (notesInput) notesInput.value = item.notes || '';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          handleSubmit(new Event('submit'));
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'btn-action-del';
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', async () => {
+          try {
+            await fetch(`/api/history/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+            const filterVal = historyFilter ? historyFilter.value : '';
+            fetchHistory(filterVal);
+          } catch (err) {
+            console.error('Failed to delete history item:', err);
+          }
+        });
+
+        tdActions.append(loadBtn, delBtn);
+        tr.append(tdActions);
+      }
+
+      historyTbody.append(tr);
     }
-
-    // Rule #1 Fair Value
-    const tdRuleOne = document.createElement('td');
-    tdRuleOne.className = 'table-val';
-    if (item.ruleOneFairValue !== null && item.ruleOneFairValue !== undefined) {
-      const diff = (item.ruleOneFairValue / item.currentPrice - 1) * 100;
-      const isGood = diff > 0;
-      tdRuleOne.innerHTML = `<b>${fmt(item.ruleOneFairValue)}</b> <span class="${isGood ? 'good' : 'bad'}">(${isGood ? '+' : ''}${fmt(diff)}%)</span>`;
-    } else {
-      tdRuleOne.textContent = 'n/a';
-    }
-
-    // Growth
-    const tdGrowth = document.createElement('td');
-    tdGrowth.className = 'table-val';
-    tdGrowth.textContent = fmtPercent(item.growthRatePercent);
-
-    // Assumptions
-    const tdAssump = document.createElement('td');
-    tdAssump.className = 'table-assumptions';
-    const mosText = item.mosPercent ? ` | MoS: ${item.mosPercent}%` : '';
-    const epsText = item.epsOverride ? ` | Adj.EPS: ${fmt(item.epsOverride)}` : (item.epsTtm ? ` | EPS: ${fmt(item.epsTtm)}` : '');
-    tdAssump.textContent = `PE: ${fmt(item.exitPeMultiple)} | Req: ${fmt(item.requiredReturnPercent)}% | ${item.years}y${mosText}${epsText}`;
-
-    // Notes
-    const tdNotes = document.createElement('td');
-    tdNotes.className = 'table-notes';
-    tdNotes.textContent = item.notes || '—';
-    if (item.notes) tdNotes.title = item.notes;
-
-    // Actions
-    const tdActions = document.createElement('td');
-    tdActions.className = 'table-actions';
-
-    const loadBtn = document.createElement('button');
-    loadBtn.type = 'button';
-    loadBtn.className = 'btn-action-load';
-    loadBtn.textContent = 'Load';
-    loadBtn.addEventListener('click', () => {
-      if (tickerInput) tickerInput.value = item.ticker;
-      if (epsInput) {
-        epsInput.value = item.epsOverride !== undefined && item.epsOverride !== null ? item.epsOverride : '';
-      }
-      if (growthInput) {
-        growthInput.value = item.growthRatePercent !== null && item.growthRatePercent !== undefined 
-          ? Number(Number(item.growthRatePercent).toFixed(2)) 
-          : '';
-      }
-      if (exitPeInput) exitPeInput.value = item.exitPeMultiple;
-      if (requiredReturnInput) requiredReturnInput.value = item.requiredReturnPercent;
-      if (yearsInput) yearsInput.value = item.years;
-      if (mosSelect && item.mosPercent !== undefined) mosSelect.value = String(item.mosPercent);
-      if (notesInput) notesInput.value = item.notes || '';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      handleSubmit(new Event('submit'));
-    });
-
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.className = 'btn-action-del';
-    delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', async () => {
-      try {
-        await fetch(`/api/history/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
-        const filterVal = historyFilter ? historyFilter.value : '';
-        fetchHistory(filterVal);
-      } catch (err) {
-        console.error('Failed to delete history item:', err);
-      }
-    });
-
-    tdActions.append(loadBtn, delBtn);
-
-    tr.append(tdDate, tdTicker, tdPrice, tdRuleOne, tdLynch, tdGrowth, tdAssump, tdNotes, tdActions);
-    historyTbody.append(tr);
   }
 }
 
@@ -642,7 +642,6 @@ async function handleSubmit(event, forceRefresh = false) {
     // Populate the growth input if the user left it empty, so they see the exact seed used.
     if (growthInput && growthInput.value === '') {
       growthInput.value = effectiveGrowth !== null ? effectiveGrowth : '';
-      scenarioState.base.growth = effectiveGrowth;
     }
 
     // Cache current valuation state for saving
@@ -652,35 +651,62 @@ async function handleSubmit(event, forceRefresh = false) {
       currency: data.currency,
       epsTtm: data.epsTtm,
       epsOverride,
-      growthRatePercent: effectiveGrowth,
-      exitPeMultiple,
-      requiredReturnPercent,
       years,
-      mosPercent,
-      lynchFairValue: lynch.ok ? lynch.fairValue : null,
-      ruleOneFairValue: ruleOne.ok ? ruleOne.fairValue : null,
+      
+      base: {
+        growthRatePercent: effectiveGrowth,
+        exitPeMultiple: exitPeMultiple,
+        requiredReturnPercent: requiredReturnPercent,
+        mosPercent: mosPercent,
+        lynchFairValue: lynch.base.ok ? lynch.base.fairValue : null,
+        ruleOneFairValue: ruleOne.base.ok ? ruleOne.base.fairValue : null,
+      },
+      bear: {
+        growthRatePercent: lynch.bear.ok && (lynch.bear.inputs.growthRatePercentRaw !== undefined ? lynch.bear.inputs.growthRatePercentRaw : lynch.bear.inputs.growthRatePercent) || null,
+        exitPeMultiple: 10,
+        requiredReturnPercent: 15,
+        mosPercent: 50,
+        lynchFairValue: lynch.bear.ok ? lynch.bear.fairValue : null,
+        ruleOneFairValue: ruleOne.bear.ok ? ruleOne.bear.fairValue : null,
+      },
+      bull: {
+        growthRatePercent: lynch.bull.ok && (lynch.bull.inputs.growthRatePercentRaw !== undefined ? lynch.bull.inputs.growthRatePercentRaw : lynch.bull.inputs.growthRatePercent) || null,
+        exitPeMultiple: 20,
+        requiredReturnPercent: 12,
+        mosPercent: 10,
+        lynchFairValue: lynch.bull.ok ? lynch.bull.fairValue : null,
+        ruleOneFairValue: ruleOne.bull.ok ? ruleOne.bull.fairValue : null,
+      },
       notes: notesInput ? notesInput.value.trim() : '',
     };
 
     renderGrowthChips(data.growth);
-    renderPriceBanner(data, lynch, ruleOne);
+    renderPriceBanner(data, lynch.base, ruleOne.base);
     renderGrowthTable(data.growth, effectiveGrowth);
     renderMultiplesTable(data, effectiveGrowth, effectiveEps, body.analystConsensus);
     renderAnalystTable(body.analystConsensus, data.currentPrice);
 
     renderMethodCard('lynch', lynch, data.currentPrice);
-    const ruleOneExtras = [
-      ['exit P/E', fmt(exitPeMultiple)],
-      ['req. return', `${fmt(requiredReturnPercent)}%`],
-      ['years', years],
-    ];
-    if (mosPercent > 0) {
-      ruleOneExtras.push(['MoS', `${mosPercent}%`]);
-      if (ruleOne.intermediate && ruleOne.intermediate.stickerPrice) {
-        ruleOneExtras.push(['sticker', fmt(ruleOne.intermediate.stickerPrice)]);
+    
+    renderMethodCard('rule-one', ruleOne, data.currentPrice, (scenarioName, scenarioResult) => {
+      const inputs = scenarioResult.ok ? scenarioResult.inputs : {};
+      const exitPe = inputs.exitPeMultiple || (scenarioName === 'bear' ? 10 : scenarioName === 'bull' ? 20 : exitPeMultiple);
+      const reqRet = inputs.requiredReturnPercent || (scenarioName === 'bear' ? 15 : scenarioName === 'bull' ? 12 : requiredReturnPercent);
+      const mos = inputs.mosPercent !== undefined ? inputs.mosPercent : (scenarioName === 'bear' ? 50 : scenarioName === 'bull' ? 10 : mosPercent);
+      
+      const extras = [
+        ['exit P/E', fmt(exitPe)],
+        ['req. return', `${fmt(reqRet)}%`],
+        ['years', years],
+      ];
+      if (mos > 0) {
+        extras.push(['MoS', `${mos}%`]);
+        if (scenarioResult.intermediate && scenarioResult.intermediate.stickerPrice) {
+          extras.push(['sticker', fmt(scenarioResult.intermediate.stickerPrice)]);
+        }
       }
-    }
-    renderMethodCard('rule-one', ruleOne, data.currentPrice, ruleOneExtras);
+      return extras;
+    });
 
     if (result) result.hidden = false;
   } catch (err) {
@@ -697,7 +723,7 @@ if (valuateForm) valuateForm.addEventListener('submit', (e) => handleSubmit(e, f
 if (tickerInput) {
   tickerInput.addEventListener('input', () => {
     if (epsInput) epsInput.value = '';
-    // Optional: clear growth if desired, but for now just clear EPS so it doesn't leak between stocks
+    if (growthInput) growthInput.value = '';
   });
 }
 
@@ -719,14 +745,6 @@ if (historyFilter) {
   });
 }
 
-// Scenario buttons
-const scenarioButtons = document.querySelectorAll('.scenario-btn');
-scenarioButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const scenario = btn.getAttribute('data-scenario');
-    if (scenario) applyScenario(scenario);
-  });
-});
 
 // Initial history load
 fetchHistory();

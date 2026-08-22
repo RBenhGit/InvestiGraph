@@ -413,4 +413,26 @@ footer {
   font-style: italic;
 }
 
+/* ---------------- Scenario Columns ---------------- */
+.scenarios-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+.scenario-col {
+  display: flex; flex-direction: column;
+}
+.scenario-col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 1rem; }
+.card.a .scenario-col:not(:last-child) { border-right-color: rgba(247, 246, 243, 0.22); }
+.scenario-name { font-weight: 700; font-size: 0.75rem; margin-bottom: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); }
+.card.a .scenario-name { color: rgba(247, 246, 243, 0.7); }
+.card .inputs-used { border-top: none; padding-top: 0; margin-top: auto; flex-direction: column; gap: 0.4rem; }
+
+/* Table scenarios */
+.badge-scenario {
+  font-family: ui-monospace, monospace; font-size: 0.65rem; padding: 0.1rem 0.3rem; border-radius: 2px;
+  background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--line); margin-left: 0.4rem;
+}
+.scenario-bear { color: var(--bad); border-color: var(--bad-soft); background: var(--bad-soft); }
+.scenario-base { font-weight: bold; color: var(--ink); border-color: var(--line-strong); background: var(--surface); }
+.scenario-bull { color: var(--good); border-color: var(--good-soft); background: var(--good-soft); }
+.history-row-bear td { background: rgba(230, 57, 70, 0.02); }
+.history-row-bull td { background: rgba(42, 157, 143, 0.02); }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

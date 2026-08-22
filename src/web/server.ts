@@ -80,14 +80,43 @@ export function buildServer() {
         null;
     }
 
-    const lynch = calculateLynchValue(effectiveEps, effectiveGrowth);
-    const ruleOne = calculateRuleOneValue(
+    // Calculate base scenario
+    const lynchBase = calculateLynchValue(effectiveEps, effectiveGrowth);
+    const ruleOneBase = calculateRuleOneValue(
       effectiveEps,
       effectiveGrowth,
       exitPeMultiple,
       requiredReturnPercent,
       years,
       mosPercent ?? 0,
+    );
+
+    // Calculate bear scenario
+    const bearGrowth = effectiveGrowth !== null 
+      ? Number((effectiveGrowth > 0 ? effectiveGrowth * 0.75 : effectiveGrowth - 3).toFixed(2)) 
+      : null;
+    const lynchBear = calculateLynchValue(effectiveEps, bearGrowth);
+    const ruleOneBear = calculateRuleOneValue(
+      effectiveEps,
+      bearGrowth,
+      10, // bearExitPe
+      15, // bearRequiredReturn
+      years,
+      50, // bearMos
+    );
+
+    // Calculate bull scenario
+    const bullGrowth = effectiveGrowth !== null 
+      ? Number((effectiveGrowth > 0 ? effectiveGrowth * 1.25 : effectiveGrowth + 3).toFixed(2)) 
+      : null;
+    const lynchBull = calculateLynchValue(effectiveEps, bullGrowth);
+    const ruleOneBull = calculateRuleOneValue(
+      effectiveEps,
+      bullGrowth,
+      20, // bullExitPe
+      12, // bullRequiredReturn
+      years,
+      10, // bullMos
     );
 
     const analystConsensus =
@@ -98,8 +127,16 @@ export function buildServer() {
       data, 
       effectiveEps, 
       effectiveGrowth,
-      lynch, 
-      ruleOne, 
+      lynch: {
+        base: lynchBase,
+        bear: lynchBear,
+        bull: lynchBull,
+      }, 
+      ruleOne: {
+        base: ruleOneBase,
+        bear: ruleOneBear,
+        bull: ruleOneBull,
+      }, 
       analystConsensus 
     });
   });

@@ -262,3 +262,10 @@ changes and is faster when applicable.
   real NVDA-shaped numbers above, the falsy-zero guard, and three missing-field null cases).
   125/125 tests, lint clean, build clean, verified via SSH.
 
+- 2026-08-22 — Redesigned Web UI to display 3 scenarios (Base, Bear, Bull) side-by-side simultaneously instead of using toggle buttons.
+  - Refactored backend src/web/server.ts to calculate and return all 3 scenarios (ase, ear, ull) in a single request for both Lynch and Rule #1 methods.
+  - Updated src/history/types.ts to support nested scenario objects for saving history records while maintaining backward compatibility with old records.
+  - Removed scenario state management and toggle listeners from src/web/public/app.js and updated DOM rendering logic to populate the 3-column grid structure.
+  - Modified history table rendering to display 3 rows per saved valuation.
+  - Applied CSS grid styling in src/web/public/style.css for the 3-column method cards and history table rows.
+  - Updated wiki documentation (wiki/היסטוריית-הערכות-ומטמון.md and wiki/ארכיטקטורה.md) to reflect the new scenario generation logic and history persistence structure.

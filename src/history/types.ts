@@ -1,3 +1,12 @@
+export interface ScenarioValuation {
+  growthRatePercent: number | null;
+  exitPeMultiple: number;
+  requiredReturnPercent: number;
+  mosPercent: number;
+  lynchFairValue: number | null;
+  ruleOneFairValue: number | null;
+}
+
 export interface SavedValuation {
   id: string;
   ticker: string;
@@ -6,13 +15,21 @@ export interface SavedValuation {
   currency: string;
   epsTtm: number;
   epsOverride?: number;
-  growthRatePercent: number;
-  exitPeMultiple: number;
-  requiredReturnPercent: number;
   years: number;
+  
+  // Legacy fields (optional for backward compatibility)
+  growthRatePercent?: number | null;
+  exitPeMultiple?: number;
+  requiredReturnPercent?: number;
   mosPercent?: number;
-  lynchFairValue: number | null;
-  ruleOneFairValue: number | null;
+  lynchFairValue?: number | null;
+  ruleOneFairValue?: number | null;
+
+  // New fields
+  base?: ScenarioValuation;
+  bear?: ScenarioValuation;
+  bull?: ScenarioValuation;
+
   notes?: string;
 }
 

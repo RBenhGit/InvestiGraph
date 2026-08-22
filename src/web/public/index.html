@@ -55,14 +55,7 @@
             </button>
           </div>
 
-          <div class="field">
-            <div class="label">Scenario</div>
-            <div class="scenario-toggle" id="scenario-toggle">
-              <button type="button" class="scenario-btn" data-scenario="bear" id="scenario-bear">Bear</button>
-              <button type="button" class="scenario-btn active" data-scenario="base" id="scenario-base">Base</button>
-              <button type="button" class="scenario-btn" data-scenario="bull" id="scenario-bull">Bull</button>
-            </div>
-          </div>
+
         </div>
 
         <div class="assumptions-line">
@@ -146,17 +139,51 @@
             <p class="method-desc">
               Project EPS forward, apply an exit P/E, discount back at the required return.
             </p>
-            <div id="rule-one-fair-value" class="fair-value">—</div>
-            <div id="rule-one-verdict" class="verdict"></div>
-            <div id="rule-one-inputs" class="inputs-used"></div>
+            <div class="scenarios-grid">
+              <div class="scenario-col bear-col">
+                <div class="scenario-name">Bear</div>
+                <div id="rule-one-bear-fv" class="fair-value">—</div>
+                <div id="rule-one-bear-verdict" class="verdict"></div>
+                <div id="rule-one-bear-inputs" class="inputs-used"></div>
+              </div>
+              <div class="scenario-col base-col">
+                <div class="scenario-name">Base</div>
+                <div id="rule-one-base-fv" class="fair-value">—</div>
+                <div id="rule-one-base-verdict" class="verdict"></div>
+                <div id="rule-one-base-inputs" class="inputs-used"></div>
+              </div>
+              <div class="scenario-col bull-col">
+                <div class="scenario-name">Bull</div>
+                <div id="rule-one-bull-fv" class="fair-value">—</div>
+                <div id="rule-one-bull-verdict" class="verdict"></div>
+                <div id="rule-one-bull-inputs" class="inputs-used"></div>
+              </div>
+            </div>
           </div>
           <div class="card b">
             <div class="card-eyebrow">Method B</div>
             <h2>Peter Lynch</h2>
             <p class="method-desc">FairValue = EPS(ttm) × growth rate. No discounting.</p>
-            <div id="lynch-fair-value" class="fair-value">—</div>
-            <div id="lynch-verdict" class="verdict"></div>
-            <div id="lynch-inputs" class="inputs-used"></div>
+            <div class="scenarios-grid">
+              <div class="scenario-col bear-col">
+                <div class="scenario-name">Bear</div>
+                <div id="lynch-bear-fv" class="fair-value">—</div>
+                <div id="lynch-bear-verdict" class="verdict"></div>
+                <div id="lynch-bear-inputs" class="inputs-used"></div>
+              </div>
+              <div class="scenario-col base-col">
+                <div class="scenario-name">Base</div>
+                <div id="lynch-base-fv" class="fair-value">—</div>
+                <div id="lynch-base-verdict" class="verdict"></div>
+                <div id="lynch-base-inputs" class="inputs-used"></div>
+              </div>
+              <div class="scenario-col bull-col">
+                <div class="scenario-name">Bull</div>
+                <div id="lynch-bull-fv" class="fair-value">—</div>
+                <div id="lynch-bull-verdict" class="verdict"></div>
+                <div id="lynch-bull-inputs" class="inputs-used"></div>
+              </div>
+            </div>
           </div>
         </div>
 
