@@ -65,7 +65,11 @@ src/web/                Fastify server: POST /api/valuate does the same, serves 
   typed `StockDataError`) rather than throwing to callers.
 
 **`src/data/yahoo/`** — `index.ts` is the _only_ published entry point (`fetchAnalystConsensus`);
-nothing outside this directory may import its `client.ts` or `types.ts`. Internally uses
+`client.ts` is never imported outside this directory. `types.ts` is the one intentional
+exception — `src/data/cache.ts` and test files import `AnalystConsensus` from it directly
+(`import type { AnalystConsensus } from './yahoo/types'`) for shared type shapes; this is a
+type-only import, not a dependency on the module's implementation, so it doesn't violate the
+sole-entry-point principle the way importing `client.ts` would. Internally uses
 `yahoo-finance2` to fetch analyst consensus (next-year EPS growth, price targets, recommendations)
 plus three "financial health" reference fields: `beta` and `priceToSales` are read straight from
 Yahoo's `summaryDetail` module (no local math); `ruleOf40 = (revenueGrowth + ebitdaMargins) * 100`
@@ -98,9 +102,19 @@ button and the `forceRefresh` field on `POST /api/valuate` bypass the cache to f
 against `history.json`, directory/path overridable via the optional `HISTORY_FILE_PATH` env
 var) and is never imported outside this directory. Same `{ ok }`-result convention as the rest
 of the codebase (`HistoryResult<T>`, `HistoryError` of `IO_ERROR`/`NOT_FOUND`/`INVALID_INPUT`).
-Lets a user save a computed valuation (with an optional MoS % and free-text notes/thesis) and
-retrieve/filter/delete it later. Wired into `POST/GET /api/history` and `DELETE
-/api/history/:id` on the web side, and `-s/--save`, `-H/--history [ticker]` on the CLI.
+Lets a user save a computed valuation and retrieve/filter/delete it later. Wired into
+`POST/GET /api/history` and `DELETE /api/history/:id` on the web side, and `-s/--save`,
+`-H/--history [ticker]` on the CLI.
+
+`SavedValuation` (`src/history/types.ts`) has two coexisting shapes, both optional, for backward
+compatibility: **legacy flat fields** (`growthRatePercent`, `exitPeMultiple`,
+`requiredReturnPercent`, `mosPercent`, `lynchFairValue`, `ruleOneFairValue`) written by the
+CLI's `--save`, and **new nested fields** `base?/bear?/bull?: ScenarioValuation` (each holding
+the same six fields per scenario) written by the web UI's 3-scenario save (see "Bear/Base/Bull
+scenarios" below). A single record only ever has one shape or the other, never both. Any code
+that reads a saved valuation's fair-value/assumption fields must resolve `record.base ?? record`
+first, then read from that — `src/cli/index.ts`'s `formatHistoryOutput` does this so the
+`-H/--history` table renders correctly for records saved by either adapter/era.
 
 **`src/valuation/`** — pure functions, no I/O. `shared/clampGrowthRate.ts` clamps every growth
 rate to `[-5%, 25%]` before either method uses it (both `lynch` and `ruleOne` call it
@@ -111,9 +125,10 @@ internally — callers pass the raw, unclamped rate). Both `calculateLynchValue`
 with a typed `ValuationError`, never a throw. `calculateRuleOneValue` additionally takes an
 optional `mosPercent` (Margin of Safety, default `0`) that discounts the sticker price down to
 a target buy price (`fairValue = stickerPrice * (1 - mosPercent / 100)`); the function itself
-accepts any value in `[0, 100)` (`INVALID_MOS` otherwise) — the web UI's four-value dropdown
-(0/10/25/50%) is a UI-level convention, not a constraint enforced by the function or by the
-CLI's free-text `-m/--mos <percent>` flag.
+accepts any value in `[0, 100)` (`INVALID_MOS` otherwise) — the web UI's four-value dropdowns
+(0/10/25/50%, one per scenario — see "Bear/Base/Bull scenarios" below) are a UI-level
+convention, not a constraint enforced by the function or by the CLI's free-text
+`-m/--mos <percent>` flag (which only ever sets the single base-scenario value the CLI computes).
 
 **Error handling convention**: both layers use `{ ok: boolean }` discriminated-union results
 end-to-end instead of exceptions crossing module boundaries — `src/cli/index.ts` and
@@ -132,13 +147,38 @@ behavior is to leave `effectiveGrowth` as `null` and let `calculateLynchValue`/
 `calculateRuleOneValue` return `MISSING_GROWTH_RATE` — never default to `0`, which produces a
 fabricated-but-`ok:true` $0 fair value with no error shown.
 
+**Bear/Base/Bull scenarios** (web only — `src/web/server.ts`): every `POST /api/valuate`
+computes all three scenarios for both methods in one request, returning `lynch`/`ruleOne` as
+`{ base, bear, bull }` (each a full `ValuationResult`) instead of a single flat result. Base
+uses exactly the request's own `growthRatePercent`/`exitPeMultiple`/`requiredReturnPercent`/
+`mosPercent` (the CLI-equivalent inputs). Bear and bull growth are **auto-derived** from the
+base scenario's `effectiveGrowth` — never a separate growth input — as `effectiveGrowth * 0.75`
+for bear and `* 1.25` for bull (or `-3`/`+3` respectively when `effectiveGrowth <= 0`, since a
+multiplier does nothing useful on a non-positive rate). Bear/bull's exit-P/E, required-return,
+and MoS are **not** auto-derived — they come from their own dedicated request-body fields
+(`bearExitPeMultiple`, `bearRequiredReturnPercent`, `bearMosPercent`, `bullExitPeMultiple`,
+`bullRequiredReturnPercent`, `bullMosPercent`), which the web UI's 3-row `scenario-assumptions`
+table lets the user edit independently per scenario (`src/web/public/index.html`) — **these
+must never be hardcoded on the server**; they were once (10/15/50 for bear, 20/12/10 for bull,
+silently ignoring whatever the user typed), which produced correct-looking but wrong fair values
+for any user who changed an assumption expecting it to apply everywhere, and was fixed with a
+regression test (`src/web/server.test.ts`, "uses the bear/bull exit-P/E, required-return, and
+MoS the user actually provided, not hardcoded defaults"). Only `?? <default>` fallbacks for
+clients that omit the fields entirely: bear defaults to exit P/E 10 / req. return 15% / MoS 50%,
+bull to exit P/E 20 / req. return 12% / MoS 10%. The CLI has no equivalent — it only ever
+computes the single base scenario.
+
 **CLI flags** (`src/cli/index.ts`): `-m/--mos <percent>` (Margin of Safety, see above),
 `-n/--notes <text>` (thesis attached to a saved valuation), `-s/--save` (save the result to
 history), `-H/--history [ticker]` (print saved valuations, optionally filtered by ticker).
 
-**Web REST surface** (`src/web/server.ts`): `POST /api/valuate` (body now also accepts
-`epsOverride`, `mosPercent`, `forceRefresh`), `GET /api/history?ticker=`, `POST /api/history`,
-`DELETE /api/history/:id`.
+**Web REST surface** (`src/web/server.ts`): `POST /api/valuate` body —
+`ticker` (required), `epsOverride?`, `growthRatePercent?`, `exitPeMultiple`,
+`requiredReturnPercent`, `years`, `mosPercent?`, `bearExitPeMultiple?`,
+`bearRequiredReturnPercent?`, `bearMosPercent?`, `bullExitPeMultiple?`,
+`bullRequiredReturnPercent?`, `bullMosPercent?`, `forceRefresh?` — see "Bear/Base/Bull
+scenarios" above for the six `bear*`/`bull*` fields. Also `GET /api/history?ticker=`,
+`POST /api/history`, `DELETE /api/history/:id`.
 
 ## Principles
 
@@ -219,10 +259,14 @@ span many sessions.
 - `growth_estimates` is gated behind Twelve Data's higher plan tiers — a non-Enterprise key
   gets a 403 there while every other endpoint succeeds. `fetchStockData` swallows that failure
   (`.catch(() => null)`); don't let a future change turn it back into a hard failure.
-- The `income_statement` endpoint rejects `period=quarterly&outputsize` above 6 below the
-  Enterprise plan (HTTP 400). `historicalPe` needs 7+ quarters for even a 1y average, so on a
-  lower-tier key `historicalPe` will always come back all-null — that's a plan-tier limit, not
-  a bug.
+- The `income_statement` endpoint has a hard ceiling of `outputsize=6` below the Enterprise
+  plan (HTTP 400 above it) — confirmed live. The quarterly call in `client.ts` deliberately
+  requests only `outputsize=4` (that's all `resolveTtmEps`'s net-income fallback needs), well
+  under the ceiling; the annual call requests the full `outputsize=6` the plan allows.
+  `historicalPe` needs 7+ quarters for even a 1y average, so on a lower-tier key
+  `historicalPe` will always come back all-null via the quarterly path — that's a plan-tier
+  limit, not a bug (which is why `historicalPe.ts` computes its P/E points from the annual
+  series instead, one point per fiscal year, not from quarterly data at all).
 - Twelve Data returns numeric fields as strings inconsistently; always go through
   `normalize.ts#parseNumber` rather than `Number(...)` or truthiness checks — a real `0` (e.g.
   breakeven EPS) must not be treated as missing.

@@ -190,4 +190,69 @@ describe('history module', () => {
       expect(res.error.type).toBe('INVALID_INPUT');
     }
   });
+
+  it('saves and reads back a 3-scenario (base/bear/bull) record, distinct from the legacy flat shape', async () => {
+    // Regression coverage: the web UI's 3-scenario save writes base/bear/bull ScenarioValuation
+    // objects instead of the legacy flat fields (src/history/types.ts). Nothing previously
+    // confirmed this shape actually round-trips through save/read/filter, only that it type-checks.
+    const saveResult = await saveValuation(
+      {
+        ticker: 'NVDA',
+        currentPrice: 300,
+        currency: 'USD',
+        epsTtm: 12.5,
+        years: 10,
+        base: {
+          growthRatePercent: 20,
+          exitPeMultiple: 15,
+          requiredReturnPercent: 15,
+          mosPercent: 25,
+          lynchFairValue: 250,
+          ruleOneFairValue: 270,
+        },
+        bear: {
+          growthRatePercent: 15,
+          exitPeMultiple: 10,
+          requiredReturnPercent: 15,
+          mosPercent: 50,
+          lynchFairValue: 187.5,
+          ruleOneFairValue: 140,
+        },
+        bull: {
+          growthRatePercent: 25,
+          exitPeMultiple: 20,
+          requiredReturnPercent: 12,
+          mosPercent: 10,
+          lynchFairValue: 312.5,
+          ruleOneFairValue: 400,
+        },
+        notes: 'scenario round-trip test',
+      },
+      TEST_FILE,
+    );
+
+    expect(saveResult.ok).toBe(true);
+    if (!saveResult.ok) return;
+    expect(saveResult.data.ticker).toBe('NVDA');
+    // The legacy flat fields must NOT be silently populated -- this record is scenario-shaped only.
+    expect(saveResult.data.lynchFairValue).toBeUndefined();
+    expect(saveResult.data.ruleOneFairValue).toBeUndefined();
+
+    const historyResult = await getHistory('NVDA', TEST_FILE);
+    expect(historyResult.ok).toBe(true);
+    if (!historyResult.ok) return;
+    expect(historyResult.data.length).toBe(1);
+
+    const record = historyResult.data[0];
+    expect(record.base).toEqual({
+      growthRatePercent: 20,
+      exitPeMultiple: 15,
+      requiredReturnPercent: 15,
+      mosPercent: 25,
+      lynchFairValue: 250,
+      ruleOneFairValue: 270,
+    });
+    expect(record.bear?.ruleOneFairValue).toBe(140);
+    expect(record.bull?.ruleOneFairValue).toBe(400);
+  });
 });

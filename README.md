@@ -39,12 +39,22 @@ npm run cli -- AAPL
 # Calculate valuation and save to history
 npm run cli -- AAPL --save
 
+# Apply a Margin of Safety to Rule #1's fair value (e.g. 25 for 25%)
+npm run cli -- AAPL --mos 25
+
+# Save with a note/investment thesis attached
+npm run cli -- AAPL --save --notes "Strong data-center demand"
+
 # View all saved historical valuations
 npm run cli -- --history
 
 # View history filtered by ticker
 npm run cli -- --history AAPL
 ```
+
+Flags: `-s, --save` (save the result to history), `-m, --mos <percent>` (Margin of Safety for
+Rule #1, default `0`), `-n, --notes <text>` (thesis attached to a saved valuation),
+`-H, --history [ticker]` (print saved valuations, optionally filtered by ticker).
 
 ### Web UI
 

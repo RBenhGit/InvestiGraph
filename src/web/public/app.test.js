@@ -8,7 +8,11 @@ import path from 'path';
 describe('app.js frontend', () => {
   let formatStockDataError;
   let renderAnalystTable;
+  let renderHistoryTable;
   let analystTableEl;
+  let historyTbodyEl;
+  let historyEmptyEl;
+  let historyTableContainerEl;
 
   beforeAll(() => {
     // Setup the DOM elements app.js expects
@@ -67,12 +71,16 @@ describe('app.js frontend', () => {
     // Create a function that executes the script and returns the local function
     const scriptExecutor = new Function(
       'window', 'document',
-      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable };`
+      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable };`
     );
     const exports = scriptExecutor(window, document);
     formatStockDataError = exports.formatStockDataError;
     renderAnalystTable = exports.renderAnalystTable;
+    renderHistoryTable = exports.renderHistoryTable;
     analystTableEl = document.getElementById('analyst-table');
+    historyTbodyEl = document.getElementById('history-tbody');
+    historyEmptyEl = document.getElementById('history-empty');
+    historyTableContainerEl = document.getElementById('history-table-container');
   });
 
   it('formatStockDataError handles NOT_FOUND', () => {
@@ -140,6 +148,101 @@ describe('app.js frontend', () => {
       expect(text).not.toContain('Financial Health');
       expect(text).not.toContain('Rule of 40');
       expect(text).not.toContain('Beta (Volatility)');
+    });
+  });
+
+  describe('renderHistoryTable — legacy vs. 3-scenario (base/bear/bull) record shapes', () => {
+    function legacyRecord(overrides = {}) {
+      return {
+        id: '1',
+        ticker: 'AAPL',
+        evaluatedAt: '2026-08-19T10:00:00.000Z',
+        currentPrice: 220,
+        currency: 'USD',
+        years: 5,
+        growthRatePercent: 12,
+        exitPeMultiple: 25,
+        requiredReturnPercent: 15,
+        mosPercent: 25,
+        lynchFairValue: 156,
+        ruleOneFairValue: 180,
+        notes: '',
+        ...overrides,
+      };
+    }
+
+    function scenario(overrides = {}) {
+      return {
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        mosPercent: 25,
+        lynchFairValue: 100,
+        ruleOneFairValue: 110,
+        ...overrides,
+      };
+    }
+
+    it('renders exactly one row for a legacy (pre-scenario) record', () => {
+      renderHistoryTable([legacyRecord()]);
+      const rows = historyTbodyEl.querySelectorAll('tr');
+      expect(rows.length).toBe(1);
+      expect(historyEmptyEl.hidden).toBe(true);
+      expect(historyTableContainerEl.hidden).toBe(false);
+      // Legacy records have no scenario badge — a single, un-labelled row.
+      expect(historyTbodyEl.querySelector('.badge-scenario')).toBeNull();
+    });
+
+    it('renders exactly three rows (Bear/Base/Bull), each labelled, for a full scenario record', () => {
+      const record = {
+        id: '2',
+        ticker: 'NVDA',
+        evaluatedAt: '2026-08-22T10:00:00.000Z',
+        currentPrice: 300,
+        currency: 'USD',
+        years: 10,
+        notes: 'test',
+        base: scenario({ ruleOneFairValue: 110 }),
+        bear: scenario({ exitPeMultiple: 8, ruleOneFairValue: 60 }),
+        bull: scenario({ exitPeMultiple: 22, ruleOneFairValue: 180 }),
+      };
+      renderHistoryTable([record]);
+      const rows = historyTbodyEl.querySelectorAll('tr');
+      expect(rows.length).toBe(3);
+      const labels = Array.from(historyTbodyEl.querySelectorAll('.badge-scenario')).map((el) => el.textContent);
+      expect(labels).toEqual(['Bear', 'Base', 'Bull']);
+      // Date/Price/Notes/Actions only render on the first row, with rowSpan covering the rest.
+      expect(rows[0].querySelector('.table-date').rowSpan).toBe(3);
+      expect(rows[1].querySelector('.table-date')).toBeNull();
+      expect(rows[2].querySelector('.table-date')).toBeNull();
+    });
+
+    it('falls back to the base scenario for a missing bear or bull (item.bear || item.base)', () => {
+      const record = {
+        id: '3',
+        ticker: 'MSFT',
+        evaluatedAt: '2026-08-22T11:00:00.000Z',
+        currentPrice: 400,
+        currency: 'USD',
+        years: 10,
+        base: scenario({ ruleOneFairValue: 420 }),
+        // bear/bull deliberately omitted
+      };
+      renderHistoryTable([record]);
+      const rows = historyTbodyEl.querySelectorAll('tr');
+      expect(rows.length).toBe(3);
+      // Bear and Bull rows both fall back to base's fair value (420) since neither was provided.
+      const ruleOneCells = Array.from(rows).map((r) => r.querySelectorAll('.table-val')[0].textContent);
+      expect(ruleOneCells[0]).toContain('420');
+      expect(ruleOneCells[1]).toContain('420');
+      expect(ruleOneCells[2]).toContain('420');
+    });
+
+    it('shows the empty state and hides the table when there are no records', () => {
+      renderHistoryTable([]);
+      expect(historyEmptyEl.hidden).toBe(false);
+      expect(historyTableContainerEl.hidden).toBe(true);
+      expect(historyTbodyEl.innerHTML).toBe('');
     });
   });
 });
