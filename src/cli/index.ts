@@ -44,14 +44,21 @@ export function formatHistoryOutput(records: SavedValuation[]): string {
   lines.push('Date                 Ticker   Price        Lynch FV   Rule #1 FV  Growth %   Assumptions            Notes');
   lines.push('----------------------------------------------------------------------------------------------------------------------------------');
   for (const r of records) {
+    // Web-saved records only populate base/bear/bull (added for the 3-scenario feature); the
+    // CLI's own --save still writes the legacy flat fields. Read whichever shape is present so
+    // this table renders correctly for records from either adapter.
+    const scenario = r.base ?? r;
     const d = r.evaluatedAt ? r.evaluatedAt.replace('T', ' ').slice(0, 16) : 'n/a';
     const ticker = r.ticker.padEnd(8);
     const price = `${r.currentPrice.toFixed(2)} ${r.currency || 'USD'}`.padEnd(12);
-    const lynch = (r.lynchFairValue !== null ? r.lynchFairValue.toFixed(2) : 'n/a').padEnd(10);
-    const ruleOne = (r.ruleOneFairValue !== null ? r.ruleOneFairValue.toFixed(2) : 'n/a').padEnd(11);
-    const growth = `${r.growthRatePercent !== null ? r.growthRatePercent.toFixed(2) : 'n/a'}%`.padEnd(10);
-    const mosStr = r.mosPercent ? ` MoS:${r.mosPercent}%` : '';
-    const assump = `PE:${r.exitPeMultiple} Req:${r.requiredReturnPercent}% ${r.years}y${mosStr}`.padEnd(22);
+    const lynchFv = scenario.lynchFairValue;
+    const ruleOneFv = scenario.ruleOneFairValue;
+    const growthPct = scenario.growthRatePercent;
+    const lynch = (lynchFv !== null && lynchFv !== undefined ? lynchFv.toFixed(2) : 'n/a').padEnd(10);
+    const ruleOne = (ruleOneFv !== null && ruleOneFv !== undefined ? ruleOneFv.toFixed(2) : 'n/a').padEnd(11);
+    const growth = `${growthPct !== null && growthPct !== undefined ? growthPct.toFixed(2) : 'n/a'}%`.padEnd(10);
+    const mosStr = scenario.mosPercent ? ` MoS:${scenario.mosPercent}%` : '';
+    const assump = `PE:${scenario.exitPeMultiple ?? 'n/a'} Req:${scenario.requiredReturnPercent ?? 'n/a'}% ${r.years}y${mosStr}`.padEnd(22);
     const notes = r.notes ? r.notes : '';
     lines.push(`${d.padEnd(20)} ${ticker} ${price} ${lynch} ${ruleOne} ${growth} ${assump} ${notes}`);
   }

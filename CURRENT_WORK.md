@@ -1,6 +1,6 @@
 # Current Work — Eps_Evaluation
 
-**Updated:** 2026-08-21
+**Updated:** 2026-08-22
 
 ## Where things stand
 
@@ -90,12 +90,11 @@ computed-style inspection).
 
 ## In flight
 
-Nothing in flight. CLAUDE.md and `wiki/` are in sync with the code (2026-08-21 re-evaluation).
-Two rounds of a user-requested calculation audit that same day found and fixed three real bugs:
-the web server's growth-rate fallback (defaulted to 0% instead of erroring; undocumented 15%
-cap on historical growth only on the web); and an empty "Financial Health" header rendering for
-tickers with no beta/Rule of 40 data. All fixed with regression tests, all verified live (not
-just unit tests) — see Log below. Suite is 125/125 green, lint clean, build clean.
+Nothing in flight. Web UI got a full editorial redesign (`feature/mature-editorial-redesign`
+branch) plus a 3-scenario (Bear/Base/Bull) side-by-side feature; the 3-scenario feature had a
+real correctness bug (bear/bull's exit-P/E, required-return, and MoS were hardcoded and ignored
+user input) and a broken build/4 failing tests, both fixed and verified live — see Log below.
+Suite is 127/127 green, lint clean, build clean.
 
 ## Known problems
 
@@ -269,3 +268,48 @@ changes and is faster when applicable.
   - Modified history table rendering to display 3 rows per saved valuation.
   - Applied CSS grid styling in src/web/public/style.css for the 3-column method cards and history table rows.
   - Updated wiki documentation (wiki/היסטוריית-הערכות-ומטמון.md and wiki/ארכיטקטורה.md) to reflect the new scenario generation logic and history persistence structure.
+- 2026-08-22 — Reviewed the 3-scenario feature above at user request ("בדוק את התוספת, ג'מיני
+  קידד") and found it was not actually done, despite the log entry above claiming completion:
+  `npm run build` failed outright (3 TS18048 errors in `cli/index.ts`'s `formatHistoryOutput`,
+  which still read the now-optional legacy `SavedValuation` fields directly), and 4/125 tests in
+  `server.test.ts` failed against the new nested `{base,bear,bull}` response shape the tests were
+  never updated for. Worse than the build break: **bear/bull's exit-P/E, required-return, and MoS
+  were hardcoded constants in `server.ts` (10/15/50, 20/12/10) that silently ignored whatever the
+  user actually typed into the form** — changing "Req. return" in the UI only ever affected the
+  base scenario; the same three hardcoded numbers were independently duplicated a second time in
+  `app.js` (history-save payload and the rule-one extras renderer), a second source of drift.
+  User confirmed the fix direction (three separate input rows, one per scenario, not a return to
+  the old toggle-button UX) and fixed root cause rather than papering over it:
+  - `index.html`/`style.css`: replaced the single Exit P/E/Req.return/MoS row with a 3-row
+    `scenario-assumptions` table (Bear/Base/Bull, each with its own Exit P/E, Req. return, MoS
+    inputs, defaulting to the old hardcoded values so behavior is unchanged until the user edits
+    them). Growth stays a single shared/derived field per user's explicit choice, not split per
+    scenario.
+  - `server.ts`: `ValuateRequestBody` gained `bear*`/`bull*` fields; bear/bull's
+    `calculateRuleOneValue` calls now read them (`?? <old default>` only as a fallback for
+    older/legacy clients that omit them) instead of hardcoding 10/15/50/20/12/10.
+  - `app.js`: wired the new inputs into the `/api/valuate` POST body; removed both hardcoded
+    duplicate copies of the bear/bull constants, replacing them with the server-echoed
+    `result.inputs` (falling back to the actual current form values, never a hardcoded number);
+    fixed a `|| null` that would have wrongly treated a real `0%` growth rate as missing (should
+    have been `??`); wired the "Load" history button to also restore a saved record's bear/bull
+    row values.
+  - `cli/index.ts`: `formatHistoryOutput` now reads `r.base ?? r` before falling back to
+    per-field `?? 'n/a'`, so it renders correctly for records saved by either the old (legacy
+    flat fields) or new (`base`/`bear`/`bull`) shape — fixes both the TS compile error and the
+    actual broken CLI `-H` output for any valuation saved through the web UI.
+  - `style.css`: `.history-row-bear`/`.history-row-bull` used hardcoded raw `rgba()` colors that
+    wouldn't adapt in dark mode; switched to `color-mix(in srgb, var(--bad|--good) 4%, transparent)`
+    matching the theme-token convention every other rule in the file follows.
+  - `server.test.ts`: fixed the 4 tests broken by the nested response shape
+    (`body.lynch.fairValue` → `body.lynch.base.fairValue`, etc.), and added 2 new regression
+    tests: one asserting bear/bull actually use request-provided exit-P/E/req.return/MoS (not
+    the old hardcoded numbers — the specific bug this session fixed), one asserting the
+    fallback-to-defaults path still works when a request omits the new fields.
+  - Verified: 127/127 tests (was 121/125 broken), lint clean, build clean (was broken), and a
+    live end-to-end browser check — set Bear's exit-P/E to 5 and required-return to 25%
+    (deliberately not the old defaults), submitted a real AAPL valuation, confirmed the
+    rendered "inputs used" text and the resulting fair value both reflect the custom values
+    (not 10/15), then saved to history and confirmed the persisted JSON record carries the same
+    custom bear values, and confirmed `npx tsx src/cli/index.ts -H AAPL` renders that
+    same web-saved record correctly alongside pre-existing legacy-shaped records with no crash.

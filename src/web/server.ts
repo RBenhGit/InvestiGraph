@@ -26,6 +26,15 @@ interface ValuateRequestBody {
   requiredReturnPercent: number;
   years: number;
   mosPercent?: number;
+  // Bear/bull scenarios use their own exit-P/E, required-return, and MoS from the form
+  // (see the "scenario-assumptions" rows in index.html) rather than hardcoded constants —
+  // fall back to sensible defaults only when the frontend omits them (e.g. an older client).
+  bearExitPeMultiple?: number;
+  bearRequiredReturnPercent?: number;
+  bearMosPercent?: number;
+  bullExitPeMultiple?: number;
+  bullRequiredReturnPercent?: number;
+  bullMosPercent?: number;
   forceRefresh?: boolean;
 }
 
@@ -45,6 +54,12 @@ export function buildServer() {
       requiredReturnPercent,
       years,
       mosPercent,
+      bearExitPeMultiple,
+      bearRequiredReturnPercent,
+      bearMosPercent,
+      bullExitPeMultiple,
+      bullRequiredReturnPercent,
+      bullMosPercent,
       forceRefresh,
     } = request.body;
 
@@ -91,7 +106,10 @@ export function buildServer() {
       mosPercent ?? 0,
     );
 
-    // Calculate bear scenario
+    // Calculate bear scenario. Growth is still auto-derived from the base scenario's growth
+    // (no separate growth input per scenario), but exit P/E, required return, and MoS come
+    // from the user's own bear-row inputs — never hardcoded, so changing them in the UI
+    // actually changes the bear column's fair value.
     const bearGrowth = effectiveGrowth !== null 
       ? Number((effectiveGrowth > 0 ? effectiveGrowth * 0.75 : effectiveGrowth - 3).toFixed(2)) 
       : null;
@@ -99,13 +117,14 @@ export function buildServer() {
     const ruleOneBear = calculateRuleOneValue(
       effectiveEps,
       bearGrowth,
-      10, // bearExitPe
-      15, // bearRequiredReturn
+      bearExitPeMultiple ?? 10,
+      bearRequiredReturnPercent ?? 15,
       years,
-      50, // bearMos
+      bearMosPercent ?? 50,
     );
 
-    // Calculate bull scenario
+    // Calculate bull scenario — same principle: only growth is auto-derived, the rest comes
+    // from the user's bull-row inputs.
     const bullGrowth = effectiveGrowth !== null 
       ? Number((effectiveGrowth > 0 ? effectiveGrowth * 1.25 : effectiveGrowth + 3).toFixed(2)) 
       : null;
@@ -113,10 +132,10 @@ export function buildServer() {
     const ruleOneBull = calculateRuleOneValue(
       effectiveEps,
       bullGrowth,
-      20, // bullExitPe
-      12, // bullRequiredReturn
+      bullExitPeMultiple ?? 20,
+      bullRequiredReturnPercent ?? 12,
       years,
-      10, // bullMos
+      bullMosPercent ?? 10,
     );
 
     const analystConsensus =

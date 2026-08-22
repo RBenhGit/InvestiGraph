@@ -95,8 +95,8 @@ describe('POST /api/valuate', () => {
     expect(expectedRuleOne.ok).toBe(true);
     if (!expectedLynch.ok || !expectedRuleOne.ok) return;
 
-    expect(body.lynch.fairValue).toBe(expectedLynch.fairValue);
-    expect(body.ruleOne.fairValue).toBe(expectedRuleOne.fairValue);
+    expect(body.lynch.base.fairValue).toBe(expectedLynch.fairValue);
+    expect(body.ruleOne.base.fairValue).toBe(expectedRuleOne.fairValue);
     expect(body.analystConsensus).toEqual(analystConsensus());
   });
 
@@ -123,8 +123,87 @@ describe('POST /api/valuate', () => {
     expect(body.ok).toBe(true);
     const expectedRuleOne = calculateRuleOneValue(10, 10, 15, 15, 10, 25);
     if (expectedRuleOne.ok) {
-      expect(body.ruleOne.fairValue).toBe(expectedRuleOne.fairValue);
+      expect(body.ruleOne.base.fairValue).toBe(expectedRuleOne.fairValue);
     }
+  });
+
+  it('uses the bear/bull exit-P/E, required-return, and MoS the user actually provided, not hardcoded defaults', async () => {
+    // Regression test: bear/bull scenarios previously ignored bearExitPeMultiple/bullExitPeMultiple
+    // etc. entirely and used fixed constants (10/15/50 and 20/12/10) no matter what the request
+    // sent. Growth is still auto-derived from the base scenario (0.75x/1.25x), but exit P/E,
+    // required return, and MoS must come straight from the request body.
+    vi.mocked(fetchStockData).mockResolvedValue({ ok: true, data: stockData() });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+        mosPercent: 25,
+        // Deliberately not the old hardcoded defaults, so this fails loudly if they leak back in.
+        bearExitPeMultiple: 8,
+        bearRequiredReturnPercent: 18,
+        bearMosPercent: 40,
+        bullExitPeMultiple: 22,
+        bullRequiredReturnPercent: 11,
+        bullMosPercent: 5,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.ok).toBe(true);
+
+    expect(body.ruleOne.bear.ok).toBe(true);
+    expect(body.ruleOne.bear.inputs.exitPeMultiple).toBe(8);
+    expect(body.ruleOne.bear.inputs.requiredReturnPercent).toBe(18);
+    expect(body.ruleOne.bear.inputs.mosPercent).toBe(40);
+
+    expect(body.ruleOne.bull.ok).toBe(true);
+    expect(body.ruleOne.bull.inputs.exitPeMultiple).toBe(22);
+    expect(body.ruleOne.bull.inputs.requiredReturnPercent).toBe(11);
+    expect(body.ruleOne.bull.inputs.mosPercent).toBe(5);
+
+    const expectedBear = calculateRuleOneValue(10, 7.5, 8, 18, 10, 40); // bearGrowth = 10 * 0.75
+    const expectedBull = calculateRuleOneValue(10, 12.5, 22, 11, 10, 5); // bullGrowth = 10 * 1.25
+    expect(expectedBear.ok).toBe(true);
+    expect(expectedBull.ok).toBe(true);
+    if (expectedBear.ok) expect(body.ruleOne.bear.fairValue).toBe(expectedBear.fairValue);
+    if (expectedBull.ok) expect(body.ruleOne.bull.fairValue).toBe(expectedBull.fairValue);
+  });
+
+  it('falls back to sane bear/bull defaults when the request omits the bear/bull fields', async () => {
+    vi.mocked(fetchStockData).mockResolvedValue({ ok: true, data: stockData() });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+        // bear*/bull* fields omitted entirely, as an older client would send
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.ruleOne.bear.inputs.exitPeMultiple).toBe(10);
+    expect(body.ruleOne.bear.inputs.requiredReturnPercent).toBe(15);
+    expect(body.ruleOne.bear.inputs.mosPercent).toBe(50);
+    expect(body.ruleOne.bull.inputs.exitPeMultiple).toBe(20);
+    expect(body.ruleOne.bull.inputs.requiredReturnPercent).toBe(12);
+    expect(body.ruleOne.bull.inputs.mosPercent).toBe(10);
   });
 
   it('forwards forceRefresh to data fetchers when requested', async () => {
@@ -263,7 +342,7 @@ describe('POST /api/valuate', () => {
     const expectedLynch = calculateLynchValue(10, 22);
     expect(expectedLynch.ok).toBe(true);
     if (expectedLynch.ok) {
-      expect(body.lynch.fairValue).toBe(expectedLynch.fairValue);
+      expect(body.lynch.base.fairValue).toBe(expectedLynch.fairValue);
     }
   });
 
@@ -300,8 +379,9 @@ describe('POST /api/valuate', () => {
     const body = response.json();
     expect(body.ok).toBe(true);
     expect(body.effectiveGrowth).toBeNull();
-    expect(body.lynch).toEqual({ ok: false, error: 'MISSING_GROWTH_RATE' });
-    expect(body.ruleOne).toEqual({ ok: false, error: 'MISSING_GROWTH_RATE' });
+    const missingGrowth = { ok: false, error: 'MISSING_GROWTH_RATE' };
+    expect(body.lynch).toEqual({ base: missingGrowth, bear: missingGrowth, bull: missingGrowth });
+    expect(body.ruleOne).toEqual({ base: missingGrowth, bear: missingGrowth, bull: missingGrowth });
   });
 });
 

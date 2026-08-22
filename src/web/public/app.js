@@ -9,6 +9,12 @@ const exitPeInput = document.getElementById('exit-pe-input');
 const requiredReturnInput = document.getElementById('required-return-input');
 const yearsInput = document.getElementById('years-input');
 const mosSelect = document.getElementById('mos-select');
+const bearExitPeInput = document.getElementById('bear-exit-pe-input');
+const bearRequiredReturnInput = document.getElementById('bear-required-return-input');
+const bearMosSelect = document.getElementById('bear-mos-select');
+const bullExitPeInput = document.getElementById('bull-exit-pe-input');
+const bullRequiredReturnInput = document.getElementById('bull-required-return-input');
+const bullMosSelect = document.getElementById('bull-mos-select');
 const notesInput = document.getElementById('notes-input');
 const growthChips = document.getElementById('growth-chips');
 const errorCard = document.getElementById('error-card');
@@ -504,6 +510,18 @@ function renderHistoryTable(records) {
           if (requiredReturnInput) requiredReturnInput.value = loadData.requiredReturnPercent;
           if (yearsInput) yearsInput.value = item.years;
           if (mosSelect && loadData.mosPercent !== undefined) mosSelect.value = String(loadData.mosPercent);
+          // Bear/bull rows: restore the saved values on a new-shaped record, otherwise leave
+          // the current defaults in place (a legacy record has no bear/bull data to load).
+          if (item.bear) {
+            if (bearExitPeInput && item.bear.exitPeMultiple !== undefined) bearExitPeInput.value = item.bear.exitPeMultiple;
+            if (bearRequiredReturnInput && item.bear.requiredReturnPercent !== undefined) bearRequiredReturnInput.value = item.bear.requiredReturnPercent;
+            if (bearMosSelect && item.bear.mosPercent !== undefined) bearMosSelect.value = String(item.bear.mosPercent);
+          }
+          if (item.bull) {
+            if (bullExitPeInput && item.bull.exitPeMultiple !== undefined) bullExitPeInput.value = item.bull.exitPeMultiple;
+            if (bullRequiredReturnInput && item.bull.requiredReturnPercent !== undefined) bullRequiredReturnInput.value = item.bull.requiredReturnPercent;
+            if (bullMosSelect && item.bull.mosPercent !== undefined) bullMosSelect.value = String(item.bull.mosPercent);
+          }
           if (notesInput) notesInput.value = item.notes || '';
           window.scrollTo({ top: 0, behavior: 'smooth' });
           handleSubmit(new Event('submit'));
@@ -598,6 +616,12 @@ async function handleSubmit(event, forceRefresh = false) {
   const requiredReturnPercent = requiredReturnInput ? Number(requiredReturnInput.value) : 15;
   const years = yearsInput ? Number(yearsInput.value) : 10;
   const mosPercent = mosSelect ? Number(mosSelect.value) : 0;
+  const bearExitPeMultiple = bearExitPeInput ? Number(bearExitPeInput.value) : 10;
+  const bearRequiredReturnPercent = bearRequiredReturnInput ? Number(bearRequiredReturnInput.value) : 15;
+  const bearMosPercent = bearMosSelect ? Number(bearMosSelect.value) : 50;
+  const bullExitPeMultiple = bullExitPeInput ? Number(bullExitPeInput.value) : 20;
+  const bullRequiredReturnPercent = bullRequiredReturnInput ? Number(bullRequiredReturnInput.value) : 12;
+  const bullMosPercent = bullMosSelect ? Number(bullMosSelect.value) : 10;
 
   try {
     const response = await fetch('/api/valuate', {
@@ -611,6 +635,12 @@ async function handleSubmit(event, forceRefresh = false) {
         requiredReturnPercent,
         years,
         mosPercent,
+        bearExitPeMultiple,
+        bearRequiredReturnPercent,
+        bearMosPercent,
+        bullExitPeMultiple,
+        bullRequiredReturnPercent,
+        bullMosPercent,
         forceRefresh,
       }),
     });
@@ -661,19 +691,22 @@ async function handleSubmit(event, forceRefresh = false) {
         lynchFairValue: lynch.base.ok ? lynch.base.fairValue : null,
         ruleOneFairValue: ruleOne.base.ok ? ruleOne.base.fairValue : null,
       },
+      // exitPeMultiple/requiredReturnPercent/mosPercent below are read from what the user
+      // actually typed into the Bear/Bull rows (not hardcoded) -- see the ruleOne.*.inputs
+      // the server echoes back, which reflect exactly what was sent in the request.
       bear: {
-        growthRatePercent: lynch.bear.ok && (lynch.bear.inputs.growthRatePercentRaw !== undefined ? lynch.bear.inputs.growthRatePercentRaw : lynch.bear.inputs.growthRatePercent) || null,
-        exitPeMultiple: 10,
-        requiredReturnPercent: 15,
-        mosPercent: 50,
+        growthRatePercent: ruleOne.bear.ok ? (ruleOne.bear.inputs.growthRatePercentClamped ?? null) : null,
+        exitPeMultiple: bearExitPeMultiple,
+        requiredReturnPercent: bearRequiredReturnPercent,
+        mosPercent: bearMosPercent,
         lynchFairValue: lynch.bear.ok ? lynch.bear.fairValue : null,
         ruleOneFairValue: ruleOne.bear.ok ? ruleOne.bear.fairValue : null,
       },
       bull: {
-        growthRatePercent: lynch.bull.ok && (lynch.bull.inputs.growthRatePercentRaw !== undefined ? lynch.bull.inputs.growthRatePercentRaw : lynch.bull.inputs.growthRatePercent) || null,
-        exitPeMultiple: 20,
-        requiredReturnPercent: 12,
-        mosPercent: 10,
+        growthRatePercent: ruleOne.bull.ok ? (ruleOne.bull.inputs.growthRatePercentClamped ?? null) : null,
+        exitPeMultiple: bullExitPeMultiple,
+        requiredReturnPercent: bullRequiredReturnPercent,
+        mosPercent: bullMosPercent,
         lynchFairValue: lynch.bull.ok ? lynch.bull.fairValue : null,
         ruleOneFairValue: ruleOne.bull.ok ? ruleOne.bull.fairValue : null,
       },
@@ -688,12 +721,21 @@ async function handleSubmit(event, forceRefresh = false) {
 
     renderMethodCard('lynch', lynch, data.currentPrice);
     
+    // exit P/E / req. return / MoS shown per scenario come from what the server actually used
+    // (scenarioResult.inputs, which echoes the exact bear/bull row values sent in the request)
+    // -- never hardcoded here, so they can never drift from the real inputs behind the number.
+    const scenarioAssumptions = {
+      bear: { exitPe: bearExitPeMultiple, reqRet: bearRequiredReturnPercent, mos: bearMosPercent },
+      base: { exitPe: exitPeMultiple, reqRet: requiredReturnPercent, mos: mosPercent },
+      bull: { exitPe: bullExitPeMultiple, reqRet: bullRequiredReturnPercent, mos: bullMosPercent },
+    };
     renderMethodCard('rule-one', ruleOne, data.currentPrice, (scenarioName, scenarioResult) => {
+      const fallback = scenarioAssumptions[scenarioName];
       const inputs = scenarioResult.ok ? scenarioResult.inputs : {};
-      const exitPe = inputs.exitPeMultiple || (scenarioName === 'bear' ? 10 : scenarioName === 'bull' ? 20 : exitPeMultiple);
-      const reqRet = inputs.requiredReturnPercent || (scenarioName === 'bear' ? 15 : scenarioName === 'bull' ? 12 : requiredReturnPercent);
-      const mos = inputs.mosPercent !== undefined ? inputs.mosPercent : (scenarioName === 'bear' ? 50 : scenarioName === 'bull' ? 10 : mosPercent);
-      
+      const exitPe = inputs.exitPeMultiple ?? fallback.exitPe;
+      const reqRet = inputs.requiredReturnPercent ?? fallback.reqRet;
+      const mos = inputs.mosPercent ?? fallback.mos;
+
       const extras = [
         ['exit P/E', fmt(exitPe)],
         ['req. return', `${fmt(reqRet)}%`],
