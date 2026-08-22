@@ -4,90 +4,132 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fair Value Ledger — EPS Evaluation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
+    />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <div class="wrap">
-      <div class="topbar">
-        <div class="wordmark">Fair Value Ledger <small>EPS × MULTIPLE</small></div>
+    <div class="masthead-bar"></div>
+    <div class="masthead">
+      <div class="wrap masthead-inner">
+        <div class="wordmark">
+          Fair Value Ledger <small>EPS × MULTIPLE VALUATION</small>
+        </div>
         <div class="method-key">
-          <span><span class="dot" style="background: var(--accent-a)"></span>Peter Lynch</span>
-          <span><span class="dot" style="background: var(--accent-b)"></span>Rule #1</span>
+          <span class="method-key-chip a"><span class="dot"></span>Rule #1</span>
+          <span class="method-key-chip b"><span class="dot"></span>Peter Lynch</span>
         </div>
       </div>
+    </div>
 
+    <div class="wrap">
       <div class="hero">
-        <h1>What's this stock actually worth?</h1>
         <p class="lede">
           Enter a ticker, pick a growth-rate source, and compare two EPS-growth × multiple fair
           value estimates side by side. No cash-flow modeling — just growth and a multiple.
         </p>
-        <form id="valuate-form" class="searchrow">
-          <input
-            id="ticker-input"
-            class="ticker-input"
-            type="text"
-            placeholder="TICKER"
-            autocomplete="off"
-            required
-          />
-          <button id="go-btn" class="go-btn" type="submit">Value it</button>
-          <button id="refresh-btn" class="chip" type="button" title="Fetch fresh live data from market" style="padding: 0.6rem 1rem; cursor: pointer; margin-left: 0.4rem; height: 100%;">🔄 Refresh Live</button>
-        </form>
 
-        <div class="scenario-container">
-          <span class="scenario-title">Scenario:</span>
-          <div class="scenario-toggle" id="scenario-toggle">
-            <button type="button" class="scenario-btn" data-scenario="bear" id="scenario-bear">🐻 Bear</button>
-            <button type="button" class="scenario-btn active" data-scenario="base" id="scenario-base">⚖️ Base</button>
-            <button type="button" class="scenario-btn" data-scenario="bull" id="scenario-bull">🐂 Bull</button>
+        <div class="querybar">
+          <div class="querybar-left">
+            <form id="valuate-form" class="ticker-form">
+              <div class="field">
+                <label class="label" for="ticker-input">Ticker</label>
+                <input
+                  id="ticker-input"
+                  class="ticker-input"
+                  type="text"
+                  placeholder="TICKER"
+                  autocomplete="off"
+                  required
+                />
+              </div>
+              <button id="go-btn" class="go-btn" type="submit">Value it</button>
+            </form>
+            <button id="refresh-btn" class="refresh-btn" type="button" title="Fetch fresh live data from market">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+              Refresh live data
+            </button>
+          </div>
+
+          <div class="field">
+            <div class="label">Scenario</div>
+            <div class="scenario-toggle" id="scenario-toggle">
+              <button type="button" class="scenario-btn" data-scenario="bear" id="scenario-bear">Bear</button>
+              <button type="button" class="scenario-btn active" data-scenario="base" id="scenario-base">Base</button>
+              <button type="button" class="scenario-btn" data-scenario="bull" id="scenario-bull">Bull</button>
+            </div>
           </div>
         </div>
 
-        <div class="searchrow" style="margin-top: 1rem">
-          <label class="assumption" title="Leave blank to use TTM GAAP EPS from API">
-            Adj. EPS
+        <div class="assumptions-line">
+          <span class="assumption-item" title="Leave blank to use TTM GAAP EPS from API">
+            EPS
             <input id="eps-input" class="assumption-input" type="number" step="0.01" placeholder="Auto" />
-          </label>
-          <label class="assumption">
-            Growth %
-            <input id="growth-input" class="assumption-input" type="number" step="0.1" />
-          </label>
-          <label class="assumption">
+          </span>
+          <span class="assumption-item">
+            Growth
+            <input id="growth-input" class="assumption-input" type="number" step="0.01" />%
+          </span>
+          <span class="assumption-item">
             Exit P/E
             <input id="exit-pe-input" class="assumption-input" type="number" step="0.1" value="15" />
-          </label>
-          <label class="assumption">
-            Req. return %
+          </span>
+          <span class="assumption-item">
+            Req. return
             <input
               id="required-return-input"
               class="assumption-input"
               type="number"
               step="0.1"
               value="15"
-            />
-          </label>
-          <label class="assumption">
+            />%
+          </span>
+          <span class="assumption-item">
             Years
             <input id="years-input" class="assumption-input" type="number" step="1" value="10" />
-          </label>
-          <label class="assumption">
-            MoS %
-            <select id="mos-select" class="assumption-input">
-              <option value="0">0% (None)</option>
+          </span>
+          <span class="assumption-item">
+            MoS
+            <select id="mos-select" class="assumption-input assumption-select">
+              <option value="0">0%</option>
               <option value="10">10%</option>
               <option value="25" selected>25%</option>
               <option value="50">50%</option>
             </select>
-          </label>
+          </span>
+          <span class="assumptions-spacer"></span>
+          <span class="growth-label">GROWTH —</span>
+          <div id="growth-chips" class="chips"></div>
         </div>
-
-        <div id="growth-chips" class="chips"></div>
       </div>
 
       <div id="error-card" class="card" hidden></div>
 
       <div id="result" hidden>
+        <div class="panel-heading">Reference data — not used in either valuation method</div>
+        <div class="panels">
+          <div class="panel panel-a">
+            <div class="panel-title">EPS growth rate — sources</div>
+            <div id="growth-table" class="mini-table"></div>
+          </div>
+          <div class="panel panel-neutral">
+            <div class="panel-title">
+              Valuation multiples <span class="panel-note">reference only</span>
+            </div>
+            <div id="multiples-table" class="mini-table"></div>
+          </div>
+          <div class="panel panel-b">
+            <div class="panel-title">
+              Analyst consensus &amp; health <span class="panel-note">via Yahoo Finance</span>
+            </div>
+            <div id="analyst-table" class="mini-table"></div>
+          </div>
+        </div>
+
         <div class="price-banner" id="price-banner">
           <div class="price-banner-main">
             <div class="stat-label">Current price</div>
@@ -97,36 +139,9 @@
           <div class="price-banner-deltas" id="price-deltas"></div>
         </div>
 
-        <div class="panels">
-          <div class="panel panel-primary">
-            <div class="panel-title">EPS growth rate — sources</div>
-            <div id="growth-table" class="mini-table"></div>
-          </div>
-          <div class="panel panel-reference">
-            <div class="panel-title">
-              Valuation multiples <span class="panel-note">reference only — not used in either method</span>
-            </div>
-            <div id="multiples-table" class="mini-table"></div>
-          </div>
-          <div class="panel panel-reference">
-            <div class="panel-title">
-              Analyst consensus <span class="panel-note">via Yahoo Finance — reference only</span>
-            </div>
-            <div id="analyst-table" class="mini-table"></div>
-          </div>
-        </div>
-
         <div id="cards" class="cards">
           <div class="card a">
             <div class="card-eyebrow">Method A</div>
-            <h2>Peter Lynch</h2>
-            <p class="method-desc">FairValue = EPS(ttm) × growth rate. No discounting.</p>
-            <div id="lynch-fair-value" class="fair-value">—</div>
-            <div id="lynch-verdict" class="verdict"></div>
-            <div id="lynch-inputs" class="inputs-used"></div>
-          </div>
-          <div class="card b">
-            <div class="card-eyebrow">Method B</div>
             <h2>Rule #1</h2>
             <p class="method-desc">
               Project EPS forward, apply an exit P/E, discount back at the required return.
@@ -134,6 +149,14 @@
             <div id="rule-one-fair-value" class="fair-value">—</div>
             <div id="rule-one-verdict" class="verdict"></div>
             <div id="rule-one-inputs" class="inputs-used"></div>
+          </div>
+          <div class="card b">
+            <div class="card-eyebrow">Method B</div>
+            <h2>Peter Lynch</h2>
+            <p class="method-desc">FairValue = EPS(ttm) × growth rate. No discounting.</p>
+            <div id="lynch-fair-value" class="fair-value">—</div>
+            <div id="lynch-verdict" class="verdict"></div>
+            <div id="lynch-inputs" class="inputs-used"></div>
           </div>
         </div>
 
@@ -144,9 +167,7 @@
             type="text"
             placeholder="Investment thesis / notes..."
           />
-          <button id="save-btn" class="save-btn" type="button">
-            <span>💾</span> Save this valuation
-          </button>
+          <button id="save-btn" class="save-btn" type="button">Save this valuation</button>
           <span id="save-status" class="save-status"></span>
         </div>
       </div>
@@ -159,7 +180,7 @@
           </div>
           <div class="history-actions">
             <input id="history-filter" class="assumption-input" type="text" placeholder="Filter ticker..." />
-            <button id="history-refresh-btn" class="chip" type="button">Refresh</button>
+            <button id="history-refresh-btn" class="refresh-link" type="button">Refresh</button>
           </div>
         </div>
         <div id="history-empty" class="history-empty">No saved valuations yet. Value a stock and click "Save this valuation".</div>
@@ -170,8 +191,8 @@
                 <th>Date</th>
                 <th>Ticker</th>
                 <th>Price</th>
-                <th>Lynch FV</th>
-                <th>Rule #1 FV</th>
+                <th class="th-a">Rule #1 FV</th>
+                <th class="th-b">Lynch FV</th>
                 <th>Growth</th>
                 <th>Assumptions</th>
                 <th>Notes</th>

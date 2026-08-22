@@ -195,7 +195,7 @@ function tableRow(label, value, opts) {
   labelDiv.textContent = label;
   const valueDiv = document.createElement('div');
   valueDiv.className = 'mini-value';
-  valueDiv.textContent = value;
+  valueDiv.innerHTML = value;
   row.append(labelDiv, valueDiv);
   if (opts && opts.highlight) row.classList.add('mini-row-active');
   if (opts && opts.barFill !== undefined) {
@@ -250,12 +250,19 @@ function renderMultiplesTable(data, effectiveGrowth, effectiveEps, analystConsen
     pegRatio = trailingPe / effectiveGrowth;
   }
 
+  let pegFormatted = fmt(pegRatio);
+  if (pegRatio !== null) {
+    const pegClass = pegRatio <= 1.0 ? 'good' : (pegRatio <= 1.5 ? 'warning' : 'bad');
+    pegFormatted = `<span class="health-badge ${pegClass}">${fmt(pegRatio)}</span>`;
+  }
+
   multiplesTableEl.append(
+    tableRow('EPS (TTM)', fmt(data.epsTtm)),
     tableRow('Median P/E, 1Y', fmt(data.historicalPe.avg1y)),
     tableRow('Median P/E, 3Y', fmt(data.historicalPe.avg3y)),
     tableRow('Median P/E, 5Y', fmt(data.historicalPe.avg5y)),
     tableRow('Trailing P/E (current)', fmt(trailingPe)),
-    tableRow('PEG ratio (local)', fmt(pegRatio)),
+    tableRow('PEG ratio (local)', pegFormatted),
   );
 
   if (analystConsensus && analystConsensus.priceToSales !== undefined) {
@@ -290,20 +297,22 @@ function renderAnalystTable(analystConsensus, currentPrice) {
     tableRow('Number of analysts', priceTarget.numberOfAnalysts ?? 'n/a'),
   );
 
-  // Financial Health Metrics. beta/ruleOf40 are typed `number | null` (never `undefined`) —
-  // gate the section header on `!== null` too, matching the row-level checks below, so the
-  // header isn't shown when both values are genuinely missing (e.g. a ticker Yahoo has no
-  // summaryDetail/financialData coverage for).
+  // beta/ruleOf40 are typed `number | null` (never `undefined`) -- gate the section header on
+  // `!== null` too, matching the row-level checks below, so the header isn't shown when both
+  // values are genuinely missing (e.g. a ticker Yahoo has no summaryDetail/financialData
+  // coverage for).
   if (beta !== null || ruleOf40 !== null) {
     const divider = document.createElement('tr');
     divider.innerHTML = '<td colspan="2" style="padding-top: 1rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Financial Health</td>';
     analystTableEl.append(divider);
 
     if (ruleOf40 !== undefined && ruleOf40 !== null) {
-      analystTableEl.append(tableRow('Rule of 40', `${fmt(ruleOf40)}%`));
+      const healthClass = ruleOf40 >= 40 ? 'good' : (ruleOf40 >= 20 ? 'warning' : 'bad');
+      analystTableEl.append(tableRow('Rule of 40', `<span class="health-badge ${healthClass}">${fmt(ruleOf40)}%</span>`));
     }
     if (beta !== undefined && beta !== null) {
-      analystTableEl.append(tableRow('Beta (Volatility)', fmt(beta)));
+      const betaClass = beta < 1.0 ? 'good' : (beta < 1.5 ? 'warning' : 'bad');
+      analystTableEl.append(tableRow('Beta (Volatility)', `<span class="health-badge ${betaClass}">${fmt(beta)}</span>`));
     }
   }
 }
@@ -334,8 +343,9 @@ function renderGrowthChips(growth) {
     chip.textContent = `${source.label}: ${fmt(value)}%`;
     chip.addEventListener('click', () => {
       if (growthInput) {
-        growthInput.value = value;
-        scenarioState[currentScenario].growth = value;
+        const rounded = Number(Number(value).toFixed(2));
+        growthInput.value = rounded;
+        scenarioState[currentScenario].growth = rounded;
       }
     });
     growthChips.append(chip);
@@ -465,7 +475,7 @@ function renderHistoryTable(records) {
     const tdAssump = document.createElement('td');
     tdAssump.className = 'table-assumptions';
     const mosText = item.mosPercent ? ` | MoS: ${item.mosPercent}%` : '';
-    const epsText = item.epsOverride ? ` | Adj.EPS: ${fmt(item.epsOverride)}` : '';
+    const epsText = item.epsOverride ? ` | Adj.EPS: ${fmt(item.epsOverride)}` : (item.epsTtm ? ` | EPS: ${fmt(item.epsTtm)}` : '');
     tdAssump.textContent = `PE: ${fmt(item.exitPeMultiple)} | Req: ${fmt(item.requiredReturnPercent)}% | ${item.years}y${mosText}${epsText}`;
 
     // Notes
@@ -487,7 +497,11 @@ function renderHistoryTable(records) {
       if (epsInput) {
         epsInput.value = item.epsOverride !== undefined && item.epsOverride !== null ? item.epsOverride : '';
       }
-      if (growthInput) growthInput.value = item.growthRatePercent;
+      if (growthInput) {
+        growthInput.value = item.growthRatePercent !== null && item.growthRatePercent !== undefined 
+          ? Number(Number(item.growthRatePercent).toFixed(2)) 
+          : '';
+      }
       if (exitPeInput) exitPeInput.value = item.exitPeMultiple;
       if (requiredReturnInput) requiredReturnInput.value = item.requiredReturnPercent;
       if (yearsInput) yearsInput.value = item.years;
@@ -513,7 +527,7 @@ function renderHistoryTable(records) {
 
     tdActions.append(loadBtn, delBtn);
 
-    tr.append(tdDate, tdTicker, tdPrice, tdLynch, tdRuleOne, tdGrowth, tdAssump, tdNotes, tdActions);
+    tr.append(tdDate, tdTicker, tdPrice, tdRuleOne, tdLynch, tdGrowth, tdAssump, tdNotes, tdActions);
     historyTbody.append(tr);
   }
 }
@@ -614,10 +628,15 @@ async function handleSubmit(event, forceRefresh = false) {
     // effectiveGrowth so the UI can show the exact value used, including null when no source
     // was available at all (lynch/ruleOne will then report MISSING_GROWTH_RATE below).
     let effectiveGrowth = body.effectiveGrowth ?? growthRatePercent;
+    if (effectiveGrowth !== null && effectiveGrowth !== undefined) {
+      effectiveGrowth = Number(Number(effectiveGrowth).toFixed(2));
+    }
 
     // Show the actual EPS used if the user left it on Auto
     if (epsInput && epsInput.value === '') {
-      epsInput.value = data.epsTtm;
+      epsInput.value = data.epsTtm !== null && data.epsTtm !== undefined 
+        ? Number(Number(data.epsTtm).toFixed(2)) 
+        : '';
     }
 
     // Populate the growth input if the user left it empty, so they see the exact seed used.
