@@ -155,9 +155,9 @@ a:hover { color: var(--ink); }
 .assumption-item { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
 .assumption-input {
   font: inherit; font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
-  font-weight: 600; font-size: 0.85rem; text-transform: none;
+  font-weight: 600; font-size: 0.95rem; text-transform: none;
   background: var(--surface-2); border: 1.5px solid var(--line); color: var(--ink);
-  padding: 0.25rem 0.5rem; width: 4.4rem; outline: none;
+  padding: 0.3rem 0.55rem; width: 5.6rem; outline: none;
   transition: border-color 0.15s ease;
 }
 .assumption-input:focus { border-color: var(--accent-b); }
