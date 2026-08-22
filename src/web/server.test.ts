@@ -127,11 +127,11 @@ describe('POST /api/valuate', () => {
     }
   });
 
-  it('uses the bear/bull exit-P/E, required-return, and MoS the user actually provided, not hardcoded defaults', async () => {
+  it('uses the bear/bull growth, exit-P/E, and required-return the user actually provided, not hardcoded defaults', async () => {
     // Regression test: bear/bull scenarios previously ignored bearExitPeMultiple/bullExitPeMultiple
-    // etc. entirely and used fixed constants (10/15/50 and 20/12/10) no matter what the request
-    // sent. Growth is still auto-derived from the base scenario (0.75x/1.25x), but exit P/E,
-    // required return, and MoS must come straight from the request body.
+    // etc. entirely and used fixed constants no matter what the request sent. Growth is now also
+    // independently editable per scenario (bearGrowthRatePercent/bullGrowthRatePercent) rather
+    // than always auto-derived from base. MoS is shared -- one value for all three scenarios.
     vi.mocked(fetchStockData).mockResolvedValue({ ok: true, data: stockData() });
     vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
     const fastify = buildServer();
@@ -146,13 +146,13 @@ describe('POST /api/valuate', () => {
         requiredReturnPercent: 15,
         years: 10,
         mosPercent: 25,
-        // Deliberately not the old hardcoded defaults, so this fails loudly if they leak back in.
+        // Deliberately not the old hardcoded/derived defaults, so this fails loudly if they leak back in.
+        bearGrowthRatePercent: 3,
         bearExitPeMultiple: 8,
         bearRequiredReturnPercent: 18,
-        bearMosPercent: 40,
+        bullGrowthRatePercent: 19,
         bullExitPeMultiple: 22,
         bullRequiredReturnPercent: 11,
-        bullMosPercent: 5,
       },
     });
 
@@ -161,24 +161,26 @@ describe('POST /api/valuate', () => {
     expect(body.ok).toBe(true);
 
     expect(body.ruleOne.bear.ok).toBe(true);
+    expect(body.ruleOne.bear.inputs.growthRatePercentClamped).toBe(3);
     expect(body.ruleOne.bear.inputs.exitPeMultiple).toBe(8);
     expect(body.ruleOne.bear.inputs.requiredReturnPercent).toBe(18);
-    expect(body.ruleOne.bear.inputs.mosPercent).toBe(40);
+    expect(body.ruleOne.bear.inputs.mosPercent).toBe(25);
 
     expect(body.ruleOne.bull.ok).toBe(true);
+    expect(body.ruleOne.bull.inputs.growthRatePercentClamped).toBe(19);
     expect(body.ruleOne.bull.inputs.exitPeMultiple).toBe(22);
     expect(body.ruleOne.bull.inputs.requiredReturnPercent).toBe(11);
-    expect(body.ruleOne.bull.inputs.mosPercent).toBe(5);
+    expect(body.ruleOne.bull.inputs.mosPercent).toBe(25);
 
-    const expectedBear = calculateRuleOneValue(10, 7.5, 8, 18, 10, 40); // bearGrowth = 10 * 0.75
-    const expectedBull = calculateRuleOneValue(10, 12.5, 22, 11, 10, 5); // bullGrowth = 10 * 1.25
+    const expectedBear = calculateRuleOneValue(10, 3, 8, 18, 10, 25);
+    const expectedBull = calculateRuleOneValue(10, 19, 22, 11, 10, 25);
     expect(expectedBear.ok).toBe(true);
     expect(expectedBull.ok).toBe(true);
     if (expectedBear.ok) expect(body.ruleOne.bear.fairValue).toBe(expectedBear.fairValue);
     if (expectedBull.ok) expect(body.ruleOne.bull.fairValue).toBe(expectedBull.fairValue);
   });
 
-  it('falls back to sane bear/bull defaults when the request omits the bear/bull fields', async () => {
+  it('derives bear/bull growth from the base scenario and falls back to sane defaults when the request omits the bear/bull fields', async () => {
     vi.mocked(fetchStockData).mockResolvedValue({ ok: true, data: stockData() });
     vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
     const fastify = buildServer();
@@ -198,12 +200,14 @@ describe('POST /api/valuate', () => {
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
+    expect(body.ruleOne.bear.inputs.growthRatePercentClamped).toBe(7.5); // 10 * 0.75, derived
     expect(body.ruleOne.bear.inputs.exitPeMultiple).toBe(10);
     expect(body.ruleOne.bear.inputs.requiredReturnPercent).toBe(15);
-    expect(body.ruleOne.bear.inputs.mosPercent).toBe(50);
+    expect(body.ruleOne.bear.inputs.mosPercent).toBe(0); // mosPercent omitted -> shared default 0
+    expect(body.ruleOne.bull.inputs.growthRatePercentClamped).toBe(12.5); // 10 * 1.25, derived
     expect(body.ruleOne.bull.inputs.exitPeMultiple).toBe(20);
     expect(body.ruleOne.bull.inputs.requiredReturnPercent).toBe(12);
-    expect(body.ruleOne.bull.inputs.mosPercent).toBe(10);
+    expect(body.ruleOne.bull.inputs.mosPercent).toBe(0);
   });
 
   it('forwards forceRefresh to data fetchers when requested', async () => {

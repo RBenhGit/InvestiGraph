@@ -59,17 +59,22 @@
         </div>
 
         <div class="assumptions-line">
-          <span class="assumption-item" title="Leave blank to use TTM GAAP EPS from API">
+          <span class="assumption-item" title="TTM GAAP EPS from API — not editable">
             EPS
-            <input id="eps-input" class="assumption-input" type="number" step="0.01" placeholder="Auto" />
-          </span>
-          <span class="assumption-item">
-            Growth
-            <input id="growth-input" class="assumption-input" type="number" step="0.01" />%
+            <input id="eps-input" class="assumption-input" type="number" step="0.01" placeholder="Auto" readonly disabled />
           </span>
           <span class="assumption-item">
             Years
             <input id="years-input" class="assumption-input" type="number" step="1" value="10" />
+          </span>
+          <span class="assumption-item">
+            MoS
+            <select id="mos-select" class="assumption-input assumption-select">
+              <option value="0">0%</option>
+              <option value="10">10%</option>
+              <option value="25" selected>25%</option>
+              <option value="50">50%</option>
+            </select>
           </span>
           <span class="assumptions-spacer"></span>
           <span class="growth-label">GROWTH —</span>
@@ -79,42 +84,27 @@
         <div class="scenario-assumptions" id="scenario-assumptions">
           <div class="scenario-assumptions-row scenario-assumptions-head">
             <span></span>
+            <span class="label">Growth</span>
             <span class="label">Exit P/E</span>
             <span class="label">Req. return</span>
-            <span class="label">MoS</span>
           </div>
           <div class="scenario-assumptions-row">
             <span class="scenario-assumptions-name bear-col">Bear</span>
+            <span class="pct-input"><input id="bear-growth-input" class="assumption-input" type="number" step="0.01" />%</span>
             <input id="bear-exit-pe-input" class="assumption-input" type="number" step="0.1" value="10" />
             <span class="pct-input"><input id="bear-required-return-input" class="assumption-input" type="number" step="0.1" value="15" />%</span>
-            <select id="bear-mos-select" class="assumption-input assumption-select">
-              <option value="0">0%</option>
-              <option value="10">10%</option>
-              <option value="25">25%</option>
-              <option value="50" selected>50%</option>
-            </select>
           </div>
           <div class="scenario-assumptions-row">
             <span class="scenario-assumptions-name base-col">Base</span>
+            <span class="pct-input"><input id="growth-input" class="assumption-input" type="number" step="0.01" />%</span>
             <input id="exit-pe-input" class="assumption-input" type="number" step="0.1" value="15" />
             <span class="pct-input"><input id="required-return-input" class="assumption-input" type="number" step="0.1" value="15" />%</span>
-            <select id="mos-select" class="assumption-input assumption-select">
-              <option value="0">0%</option>
-              <option value="10">10%</option>
-              <option value="25" selected>25%</option>
-              <option value="50">50%</option>
-            </select>
           </div>
           <div class="scenario-assumptions-row">
             <span class="scenario-assumptions-name bull-col">Bull</span>
+            <span class="pct-input"><input id="bull-growth-input" class="assumption-input" type="number" step="0.01" />%</span>
             <input id="bull-exit-pe-input" class="assumption-input" type="number" step="0.1" value="20" />
             <span class="pct-input"><input id="bull-required-return-input" class="assumption-input" type="number" step="0.1" value="12" />%</span>
-            <select id="bull-mos-select" class="assumption-input assumption-select">
-              <option value="0">0%</option>
-              <option value="10" selected>10%</option>
-              <option value="25">25%</option>
-              <option value="50">50%</option>
-            </select>
           </div>
         </div>
       </div>

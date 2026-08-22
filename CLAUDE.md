@@ -125,10 +125,10 @@ internally — callers pass the raw, unclamped rate). Both `calculateLynchValue`
 with a typed `ValuationError`, never a throw. `calculateRuleOneValue` additionally takes an
 optional `mosPercent` (Margin of Safety, default `0`) that discounts the sticker price down to
 a target buy price (`fairValue = stickerPrice * (1 - mosPercent / 100)`); the function itself
-accepts any value in `[0, 100)` (`INVALID_MOS` otherwise) — the web UI's four-value dropdowns
-(0/10/25/50%, one per scenario — see "Bear/Base/Bull scenarios" below) are a UI-level
-convention, not a constraint enforced by the function or by the CLI's free-text
-`-m/--mos <percent>` flag (which only ever sets the single base-scenario value the CLI computes).
+accepts any value in `[0, 100)` (`INVALID_MOS` otherwise) — the web UI's four-value MoS
+dropdown (0/10/25/50%) is a UI-level convention, not a constraint enforced by the function or
+by the CLI's free-text `-m/--mos <percent>` flag. MoS is a single value shared across all three
+scenarios (see "Bear/Base/Bull scenarios" below) — there is no per-scenario MoS override.
 
 **Error handling convention**: both layers use `{ ok: boolean }` discriminated-union results
 end-to-end instead of exceptions crossing module boundaries — `src/cli/index.ts` and
@@ -150,23 +150,23 @@ fabricated-but-`ok:true` $0 fair value with no error shown.
 **Bear/Base/Bull scenarios** (web only — `src/web/server.ts`): every `POST /api/valuate`
 computes all three scenarios for both methods in one request, returning `lynch`/`ruleOne` as
 `{ base, bear, bull }` (each a full `ValuationResult`) instead of a single flat result. Base
-uses exactly the request's own `growthRatePercent`/`exitPeMultiple`/`requiredReturnPercent`/
-`mosPercent` (the CLI-equivalent inputs). Bear and bull growth are **auto-derived** from the
-base scenario's `effectiveGrowth` — never a separate growth input — as `effectiveGrowth * 0.75`
-for bear and `* 1.25` for bull (or `-3`/`+3` respectively when `effectiveGrowth <= 0`, since a
-multiplier does nothing useful on a non-positive rate). Bear/bull's exit-P/E, required-return,
-and MoS are **not** auto-derived — they come from their own dedicated request-body fields
-(`bearExitPeMultiple`, `bearRequiredReturnPercent`, `bearMosPercent`, `bullExitPeMultiple`,
-`bullRequiredReturnPercent`, `bullMosPercent`), which the web UI's 3-row `scenario-assumptions`
-table lets the user edit independently per scenario (`src/web/public/index.html`) — **these
-must never be hardcoded on the server**; they were once (10/15/50 for bear, 20/12/10 for bull,
-silently ignoring whatever the user typed), which produced correct-looking but wrong fair values
-for any user who changed an assumption expecting it to apply everywhere, and was fixed with a
-regression test (`src/web/server.test.ts`, "uses the bear/bull exit-P/E, required-return, and
-MoS the user actually provided, not hardcoded defaults"). Only `?? <default>` fallbacks for
-clients that omit the fields entirely: bear defaults to exit P/E 10 / req. return 15% / MoS 50%,
-bull to exit P/E 20 / req. return 12% / MoS 10%. The CLI has no equivalent — it only ever
-computes the single base scenario.
+uses exactly the request's own `growthRatePercent`/`exitPeMultiple`/`requiredReturnPercent`
+(the CLI-equivalent inputs). **Growth, exit-P/E, and required-return are all independently
+editable per scenario** — the web UI's 3-row `scenario-assumptions` table
+(`src/web/public/index.html`) gives Bear/Base/Bull each their own Growth/Exit P/E/Req. return
+inputs, sent as `bearGrowthRatePercent`/`bearExitPeMultiple`/`bearRequiredReturnPercent` and
+the `bull*` equivalents. **MoS is the one exception — a single value shared across all three
+scenarios**, set once in the top assumptions row (`mosPercent`) and applied identically to
+base/bear/bull; there is no `bearMosPercent`/`bullMosPercent`. Bear/bull growth falls back to
+being derived from the base scenario's `effectiveGrowth` (`* 0.75` for bear, `* 1.25` for bull,
+or `-3`/`+3` when `effectiveGrowth <= 0`) only when the request omits
+`bearGrowthRatePercent`/`bullGrowthRatePercent` entirely (e.g. an older client); exit-P/E and
+required-return likewise only fall back to fixed defaults (bear: 10 / 15%, bull: 20 / 12%) when
+their fields are omitted — **none of these must ever be hardcoded when the field is present**,
+since that previously shipped as a real bug (server ignored the user's own bear/bull inputs
+entirely), caught and fixed with a regression test (`src/web/server.test.ts`, "uses the
+bear/bull growth, exit-P/E, and required-return the user actually provided, not hardcoded
+defaults"). The CLI has no equivalent — it only ever computes the single base scenario.
 
 **CLI flags** (`src/cli/index.ts`): `-m/--mos <percent>` (Margin of Safety, see above),
 `-n/--notes <text>` (thesis attached to a saved valuation), `-s/--save` (save the result to
@@ -174,10 +174,10 @@ history), `-H/--history [ticker]` (print saved valuations, optionally filtered b
 
 **Web REST surface** (`src/web/server.ts`): `POST /api/valuate` body —
 `ticker` (required), `epsOverride?`, `growthRatePercent?`, `exitPeMultiple`,
-`requiredReturnPercent`, `years`, `mosPercent?`, `bearExitPeMultiple?`,
-`bearRequiredReturnPercent?`, `bearMosPercent?`, `bullExitPeMultiple?`,
-`bullRequiredReturnPercent?`, `bullMosPercent?`, `forceRefresh?` — see "Bear/Base/Bull
-scenarios" above for the six `bear*`/`bull*` fields. Also `GET /api/history?ticker=`,
+`requiredReturnPercent`, `years`, `mosPercent?` (shared by all three scenarios),
+`bearGrowthRatePercent?`, `bearExitPeMultiple?`, `bearRequiredReturnPercent?`,
+`bullGrowthRatePercent?`, `bullExitPeMultiple?`, `bullRequiredReturnPercent?`,
+`forceRefresh?` — see "Bear/Base/Bull scenarios" above. Also `GET /api/history?ticker=`,
 `POST /api/history`, `DELETE /api/history/:id`.
 
 ## Principles

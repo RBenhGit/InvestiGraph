@@ -9,12 +9,12 @@ const exitPeInput = document.getElementById('exit-pe-input');
 const requiredReturnInput = document.getElementById('required-return-input');
 const yearsInput = document.getElementById('years-input');
 const mosSelect = document.getElementById('mos-select');
+const bearGrowthInput = document.getElementById('bear-growth-input');
 const bearExitPeInput = document.getElementById('bear-exit-pe-input');
 const bearRequiredReturnInput = document.getElementById('bear-required-return-input');
-const bearMosSelect = document.getElementById('bear-mos-select');
+const bullGrowthInput = document.getElementById('bull-growth-input');
 const bullExitPeInput = document.getElementById('bull-exit-pe-input');
 const bullRequiredReturnInput = document.getElementById('bull-required-return-input');
-const bullMosSelect = document.getElementById('bull-mos-select');
 const notesInput = document.getElementById('notes-input');
 const growthChips = document.getElementById('growth-chips');
 const errorCard = document.getElementById('error-card');
@@ -288,9 +288,7 @@ function renderGrowthChips(growth) {
     chip.textContent = `${source.label}: ${fmt(value)}%`;
     chip.addEventListener('click', () => {
       if (growthInput) {
-        const rounded = Number(Number(value).toFixed(2));
-        growthInput.value = rounded;
-        scenarioState[currentScenario].growth = rounded;
+        growthInput.value = Number(Number(value).toFixed(2));
       }
     });
     growthChips.append(chip);
@@ -510,17 +508,22 @@ function renderHistoryTable(records) {
           if (requiredReturnInput) requiredReturnInput.value = loadData.requiredReturnPercent;
           if (yearsInput) yearsInput.value = item.years;
           if (mosSelect && loadData.mosPercent !== undefined) mosSelect.value = String(loadData.mosPercent);
-          // Bear/bull rows: restore the saved values on a new-shaped record, otherwise leave
-          // the current defaults in place (a legacy record has no bear/bull data to load).
+          // Bear/bull rows: restore the saved values (growth, exit P/E, req. return) on a
+          // new-shaped record, otherwise leave the current defaults in place (a legacy record
+          // has no bear/bull data to load). MoS is shared -- already restored above via mosSelect.
           if (item.bear) {
+            if (bearGrowthInput && item.bear.growthRatePercent !== null && item.bear.growthRatePercent !== undefined) {
+              bearGrowthInput.value = Number(Number(item.bear.growthRatePercent).toFixed(2));
+            }
             if (bearExitPeInput && item.bear.exitPeMultiple !== undefined) bearExitPeInput.value = item.bear.exitPeMultiple;
             if (bearRequiredReturnInput && item.bear.requiredReturnPercent !== undefined) bearRequiredReturnInput.value = item.bear.requiredReturnPercent;
-            if (bearMosSelect && item.bear.mosPercent !== undefined) bearMosSelect.value = String(item.bear.mosPercent);
           }
           if (item.bull) {
+            if (bullGrowthInput && item.bull.growthRatePercent !== null && item.bull.growthRatePercent !== undefined) {
+              bullGrowthInput.value = Number(Number(item.bull.growthRatePercent).toFixed(2));
+            }
             if (bullExitPeInput && item.bull.exitPeMultiple !== undefined) bullExitPeInput.value = item.bull.exitPeMultiple;
             if (bullRequiredReturnInput && item.bull.requiredReturnPercent !== undefined) bullRequiredReturnInput.value = item.bull.requiredReturnPercent;
-            if (bullMosSelect && item.bull.mosPercent !== undefined) bullMosSelect.value = String(item.bull.mosPercent);
           }
           if (notesInput) notesInput.value = item.notes || '';
           window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -616,12 +619,12 @@ async function handleSubmit(event, forceRefresh = false) {
   const requiredReturnPercent = requiredReturnInput ? Number(requiredReturnInput.value) : 15;
   const years = yearsInput ? Number(yearsInput.value) : 10;
   const mosPercent = mosSelect ? Number(mosSelect.value) : 0;
+  const bearGrowthRatePercent = bearGrowthInput && bearGrowthInput.value !== '' ? Number(bearGrowthInput.value) : null;
   const bearExitPeMultiple = bearExitPeInput ? Number(bearExitPeInput.value) : 10;
   const bearRequiredReturnPercent = bearRequiredReturnInput ? Number(bearRequiredReturnInput.value) : 15;
-  const bearMosPercent = bearMosSelect ? Number(bearMosSelect.value) : 50;
+  const bullGrowthRatePercent = bullGrowthInput && bullGrowthInput.value !== '' ? Number(bullGrowthInput.value) : null;
   const bullExitPeMultiple = bullExitPeInput ? Number(bullExitPeInput.value) : 20;
   const bullRequiredReturnPercent = bullRequiredReturnInput ? Number(bullRequiredReturnInput.value) : 12;
-  const bullMosPercent = bullMosSelect ? Number(bullMosSelect.value) : 10;
 
   try {
     const response = await fetch('/api/valuate', {
@@ -635,12 +638,12 @@ async function handleSubmit(event, forceRefresh = false) {
         requiredReturnPercent,
         years,
         mosPercent,
+        bearGrowthRatePercent,
         bearExitPeMultiple,
         bearRequiredReturnPercent,
-        bearMosPercent,
+        bullGrowthRatePercent,
         bullExitPeMultiple,
         bullRequiredReturnPercent,
-        bullMosPercent,
         forceRefresh,
       }),
     });
@@ -674,6 +677,19 @@ async function handleSubmit(event, forceRefresh = false) {
       growthInput.value = effectiveGrowth !== null ? effectiveGrowth : '';
     }
 
+    // Bear/bull growth are independently editable, but when a row is left blank the server
+    // still derives it from the base scenario (0.75x/1.25x) -- populate the field with that
+    // derived value afterwards, same pattern as the base growth input above, so the user sees
+    // exactly what was used rather than an empty box next to a real fair value.
+    const bearGrowthUsed = ruleOne.bear.ok ? ruleOne.bear.inputs.growthRatePercentClamped : null;
+    if (bearGrowthInput && bearGrowthInput.value === '' && bearGrowthUsed !== null && bearGrowthUsed !== undefined) {
+      bearGrowthInput.value = Number(Number(bearGrowthUsed).toFixed(2));
+    }
+    const bullGrowthUsed = ruleOne.bull.ok ? ruleOne.bull.inputs.growthRatePercentClamped : null;
+    if (bullGrowthInput && bullGrowthInput.value === '' && bullGrowthUsed !== null && bullGrowthUsed !== undefined) {
+      bullGrowthInput.value = Number(Number(bullGrowthUsed).toFixed(2));
+    }
+
     // Cache current valuation state for saving
     currentValuation = {
       ticker: data.ticker,
@@ -682,7 +698,7 @@ async function handleSubmit(event, forceRefresh = false) {
       epsTtm: data.epsTtm,
       epsOverride,
       years,
-      
+
       base: {
         growthRatePercent: effectiveGrowth,
         exitPeMultiple: exitPeMultiple,
@@ -691,14 +707,15 @@ async function handleSubmit(event, forceRefresh = false) {
         lynchFairValue: lynch.base.ok ? lynch.base.fairValue : null,
         ruleOneFairValue: ruleOne.base.ok ? ruleOne.base.fairValue : null,
       },
-      // exitPeMultiple/requiredReturnPercent/mosPercent below are read from what the user
-      // actually typed into the Bear/Bull rows (not hardcoded) -- see the ruleOne.*.inputs
-      // the server echoes back, which reflect exactly what was sent in the request.
+      // exitPeMultiple/requiredReturnPercent below are read from what the user actually typed
+      // into the Bear/Bull rows (not hardcoded) -- see the ruleOne.*.inputs the server echoes
+      // back, which reflect exactly what was sent in the request. mosPercent is the single
+      // shared value from the top row -- there is no separate bear/bull MoS.
       bear: {
         growthRatePercent: ruleOne.bear.ok ? (ruleOne.bear.inputs.growthRatePercentClamped ?? null) : null,
         exitPeMultiple: bearExitPeMultiple,
         requiredReturnPercent: bearRequiredReturnPercent,
-        mosPercent: bearMosPercent,
+        mosPercent: mosPercent,
         lynchFairValue: lynch.bear.ok ? lynch.bear.fairValue : null,
         ruleOneFairValue: ruleOne.bear.ok ? ruleOne.bear.fairValue : null,
       },
@@ -706,7 +723,7 @@ async function handleSubmit(event, forceRefresh = false) {
         growthRatePercent: ruleOne.bull.ok ? (ruleOne.bull.inputs.growthRatePercentClamped ?? null) : null,
         exitPeMultiple: bullExitPeMultiple,
         requiredReturnPercent: bullRequiredReturnPercent,
-        mosPercent: bullMosPercent,
+        mosPercent: mosPercent,
         lynchFairValue: lynch.bull.ok ? lynch.bull.fairValue : null,
         ruleOneFairValue: ruleOne.bull.ok ? ruleOne.bull.fairValue : null,
       },
@@ -721,13 +738,14 @@ async function handleSubmit(event, forceRefresh = false) {
 
     renderMethodCard('lynch', lynch, data.currentPrice);
     
-    // exit P/E / req. return / MoS shown per scenario come from what the server actually used
+    // exit P/E / req. return shown per scenario come from what the server actually used
     // (scenarioResult.inputs, which echoes the exact bear/bull row values sent in the request)
     // -- never hardcoded here, so they can never drift from the real inputs behind the number.
+    // MoS is the single shared value from the top row -- same for all three scenarios.
     const scenarioAssumptions = {
-      bear: { exitPe: bearExitPeMultiple, reqRet: bearRequiredReturnPercent, mos: bearMosPercent },
+      bear: { exitPe: bearExitPeMultiple, reqRet: bearRequiredReturnPercent, mos: mosPercent },
       base: { exitPe: exitPeMultiple, reqRet: requiredReturnPercent, mos: mosPercent },
-      bull: { exitPe: bullExitPeMultiple, reqRet: bullRequiredReturnPercent, mos: bullMosPercent },
+      bull: { exitPe: bullExitPeMultiple, reqRet: bullRequiredReturnPercent, mos: mosPercent },
     };
     renderMethodCard('rule-one', ruleOne, data.currentPrice, (scenarioName, scenarioResult) => {
       const fallback = scenarioAssumptions[scenarioName];
@@ -766,6 +784,8 @@ if (tickerInput) {
   tickerInput.addEventListener('input', () => {
     if (epsInput) epsInput.value = '';
     if (growthInput) growthInput.value = '';
+    if (bearGrowthInput) bearGrowthInput.value = '';
+    if (bullGrowthInput) bullGrowthInput.value = '';
   });
 }
 

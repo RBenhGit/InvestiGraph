@@ -161,6 +161,7 @@ a:hover { color: var(--ink); }
   transition: border-color 0.15s ease;
 }
 .assumption-input:focus { border-color: var(--accent-b); }
+.assumption-input:disabled { color: var(--ink-faint); cursor: default; border-style: dashed; }
 .assumption-select { width: auto; padding-right: 0.3rem; }
 .assumptions-spacer { flex: 1 1 auto; min-width: 1.25rem; }
 .growth-label { font-family: ui-monospace, monospace; font-size: 0.68rem; color: var(--ink-faint); }

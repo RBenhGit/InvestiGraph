@@ -25,16 +25,19 @@ interface ValuateRequestBody {
   exitPeMultiple: number;
   requiredReturnPercent: number;
   years: number;
+  // MoS is a single value shared across all three scenarios (set once in the top assumptions
+  // row) — there is no per-scenario MoS override.
   mosPercent?: number;
-  // Bear/bull scenarios use their own exit-P/E, required-return, and MoS from the form
-  // (see the "scenario-assumptions" rows in index.html) rather than hardcoded constants —
-  // fall back to sensible defaults only when the frontend omits them (e.g. an older client).
+  // Bear/bull scenarios each have their own independent growth rate and their own exit-P/E /
+  // required-return (see the "scenario-assumptions" rows in index.html) rather than being
+  // derived from the base scenario or hardcoded — fall back to deriving from effectiveGrowth
+  // (0.75x/1.25x) only when the frontend omits them (e.g. an older client).
+  bearGrowthRatePercent?: number | null;
   bearExitPeMultiple?: number;
   bearRequiredReturnPercent?: number;
-  bearMosPercent?: number;
+  bullGrowthRatePercent?: number | null;
   bullExitPeMultiple?: number;
   bullRequiredReturnPercent?: number;
-  bullMosPercent?: number;
   forceRefresh?: boolean;
 }
 
@@ -54,12 +57,12 @@ export function buildServer() {
       requiredReturnPercent,
       years,
       mosPercent,
+      bearGrowthRatePercent,
       bearExitPeMultiple,
       bearRequiredReturnPercent,
-      bearMosPercent,
+      bullGrowthRatePercent,
       bullExitPeMultiple,
       bullRequiredReturnPercent,
-      bullMosPercent,
       forceRefresh,
     } = request.body;
 
@@ -106,13 +109,17 @@ export function buildServer() {
       mosPercent ?? 0,
     );
 
-    // Calculate bear scenario. Growth is still auto-derived from the base scenario's growth
-    // (no separate growth input per scenario), but exit P/E, required return, and MoS come
-    // from the user's own bear-row inputs — never hardcoded, so changing them in the UI
-    // actually changes the bear column's fair value.
-    const bearGrowth = effectiveGrowth !== null 
-      ? Number((effectiveGrowth > 0 ? effectiveGrowth * 0.75 : effectiveGrowth - 3).toFixed(2)) 
-      : null;
+    // Calculate bear scenario. Growth is now fully independent, editable per scenario (the
+    // user's own bear-row Growth input) — it is only ever auto-derived from the base
+    // scenario's growth (effectiveGrowth * 0.75) when the frontend omits the field entirely
+    // (e.g. an older client). Exit P/E and required return likewise come from the user's own
+    // bear-row inputs — never hardcoded. MoS is shared across all three scenarios (a single
+    // top-level value, no per-scenario override).
+    const bearGrowth = typeof bearGrowthRatePercent === 'number'
+      ? bearGrowthRatePercent
+      : (effectiveGrowth !== null
+          ? Number((effectiveGrowth > 0 ? effectiveGrowth * 0.75 : effectiveGrowth - 3).toFixed(2))
+          : null);
     const lynchBear = calculateLynchValue(effectiveEps, bearGrowth);
     const ruleOneBear = calculateRuleOneValue(
       effectiveEps,
@@ -120,14 +127,17 @@ export function buildServer() {
       bearExitPeMultiple ?? 10,
       bearRequiredReturnPercent ?? 15,
       years,
-      bearMosPercent ?? 50,
+      mosPercent ?? 0,
     );
 
-    // Calculate bull scenario — same principle: only growth is auto-derived, the rest comes
-    // from the user's bull-row inputs.
-    const bullGrowth = effectiveGrowth !== null 
-      ? Number((effectiveGrowth > 0 ? effectiveGrowth * 1.25 : effectiveGrowth + 3).toFixed(2)) 
-      : null;
+    // Calculate bull scenario — same principle: growth defaults to deriving from the base
+    // scenario (effectiveGrowth * 1.25) only when the frontend omits the field; exit P/E and
+    // required return come from the user's bull-row inputs; MoS is the shared top-level value.
+    const bullGrowth = typeof bullGrowthRatePercent === 'number'
+      ? bullGrowthRatePercent
+      : (effectiveGrowth !== null
+          ? Number((effectiveGrowth > 0 ? effectiveGrowth * 1.25 : effectiveGrowth + 3).toFixed(2))
+          : null);
     const lynchBull = calculateLynchValue(effectiveEps, bullGrowth);
     const ruleOneBull = calculateRuleOneValue(
       effectiveEps,
@@ -135,7 +145,7 @@ export function buildServer() {
       bullExitPeMultiple ?? 20,
       bullRequiredReturnPercent ?? 12,
       years,
-      bullMosPercent ?? 10,
+      mosPercent ?? 0,
     );
 
     const analystConsensus =
