@@ -323,6 +323,69 @@ describe('app.js frontend', () => {
     });
   });
 
+  describe('handleSubmit — concurrent requests', () => {
+    // The Go button is disabled while a request is in flight, but the "Refresh Live" button is
+    // not, and nothing sequences responses. Two overlapping lookups therefore race: whichever
+    // response arrives LAST wins the DOM, even if it belongs to the EARLIER request. A user who
+    // types AAPL, hits Go, then switches to MSFT and hits Go again can be shown MSFT's price
+    // banner with AAPL's fair values, or vice versa, with no indication anything is wrong.
+    function responseFor(ticker, epsTtm, fairValue) {
+      return {
+        ok: true,
+        ticker,
+        data: { ticker, currentPrice: 100, currency: 'USD', epsTtm, asOf: '2026-08-22', growth: {}, historicalPe: {} },
+        effectiveEps: epsTtm,
+        effectiveGrowth: 10,
+        analystConsensus: null,
+        lynch: {
+          bear: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 } },
+          base: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 } },
+          bull: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 } },
+        },
+        ruleOne: {
+          bear: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10, exitPeMultiple: 10, requiredReturnPercent: 15, mosPercent: 0 } },
+          base: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10, exitPeMultiple: 15, requiredReturnPercent: 15, mosPercent: 0 } },
+          bull: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10, exitPeMultiple: 20, requiredReturnPercent: 12, mosPercent: 0 } },
+        },
+      };
+    }
+
+    it('ignores a slow earlier response once a newer request has been issued', async () => {
+      document.getElementById('ticker-input').value = 'AAPL';
+      document.getElementById('growth-input').value = '';
+      document.getElementById('bear-growth-input').value = '';
+      document.getElementById('bull-growth-input').value = '';
+
+      let resolveFirst;
+      const firstBody = new Promise((resolve) => { resolveFirst = resolve; });
+      let call = 0;
+      global.fetch = () => {
+        call += 1;
+        // First call resolves late (slow network); second resolves immediately.
+        return call === 1
+          ? Promise.resolve({ json: () => firstBody })
+          : Promise.resolve({ json: () => Promise.resolve(responseFor('MSFT', 12, 999)) });
+      };
+
+      // Kick off the slow AAPL lookup, then immediately start the MSFT one -- exactly what the
+      // always-enabled Refresh button allows.
+      const slow = handleSubmit({ preventDefault() {} });
+      document.getElementById('ticker-input').value = 'MSFT';
+      await handleSubmit({ preventDefault() {} });
+
+      // MSFT has landed and owns the DOM.
+      expect(document.getElementById('eps-input').value).toBe('12');
+      expect(getCurrentValuation().ticker).toBe('MSFT');
+
+      // Now the stale AAPL response finally arrives. It must NOT overwrite MSFT.
+      resolveFirst(responseFor('AAPL', 6.5, 111));
+      await slow;
+
+      expect(getCurrentValuation().ticker).toBe('MSFT');
+      expect(document.getElementById('eps-input').value).toBe('12');
+    });
+  });
+
   describe('renderAnalystTable — untrusted strings from the Yahoo API', () => {
     // Regression: recommendationKey is a string that arrives from a third-party API, and it
     // flowed through tableRow()'s `valueDiv.innerHTML = value` with no escaping, so markup in

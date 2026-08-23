@@ -38,6 +38,13 @@ const historyRefreshBtn = document.getElementById('history-refresh-btn');
 
 let currentValuation = null;
 
+// Monotonic id for /api/valuate requests. The Go button is disabled while one is in flight,
+// but "Refresh Live" is not, and responses can arrive out of order -- so without this the LAST
+// response to land wins the DOM even when it belongs to an EARLIER request, painting one
+// ticker's banner next to another ticker's fair values. Every response checks that it is still
+// the newest before touching anything.
+let latestValuateRequestId = 0;
+
 
 
 /** Mirrors cli/index.ts's formatStockDataError, for display purposes only. */
@@ -80,6 +87,11 @@ function formatDate(isoString) {
 
 function setLoading(isLoading) {
   if (goBtn) goBtn.disabled = isLoading;
+  // Refresh Live triggers the same request as Go, so it has to be disabled alongside it --
+  // leaving it live is what let two lookups overlap in the first place. The requestId guard in
+  // handleSubmit still backstops any race this doesn't prevent (e.g. Enter in the ticker field).
+  const refreshBtnEl = document.getElementById('refresh-btn');
+  if (refreshBtnEl) refreshBtnEl.disabled = isLoading;
   if (result) result.style.opacity = isLoading ? '0.5' : '1';
 }
 
@@ -641,6 +653,8 @@ async function handleSubmit(event, forceRefresh = false) {
   setLoading(true);
   if (saveStatus) saveStatus.textContent = '';
 
+  const requestId = ++latestValuateRequestId;
+
   const ticker = tickerInput ? tickerInput.value.trim() : '';
   // No epsOverride is ever sent: eps-input is locked (readonly/disabled) and only ever
   // displays the live TTM EPS the server returned. A disabled input still retains a
@@ -680,6 +694,10 @@ async function handleSubmit(event, forceRefresh = false) {
       }),
     });
     const body = await response.json();
+
+    // A newer lookup started while this one was in flight: its result is already on screen, so
+    // this stale response must not repaint anything.
+    if (requestId !== latestValuateRequestId) return;
 
     if (!body.ok) {
       showError(formatStockDataError(body.error));
@@ -826,9 +844,12 @@ async function handleSubmit(event, forceRefresh = false) {
 
     if (result) result.hidden = false;
   } catch (err) {
+    if (requestId !== latestValuateRequestId) return;
     showError(`Request failed: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
-    setLoading(false);
+    // Only the newest request owns the loading state; a superseded one must not re-enable the
+    // form while its replacement is still running.
+    if (requestId === latestValuateRequestId) setLoading(false);
   }
 }
 

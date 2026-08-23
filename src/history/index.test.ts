@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { saveValuation, getHistory, deleteValuation } from './index';
 
 const TEST_FILE = path.resolve(process.cwd(), 'history-test.json');
@@ -254,5 +255,38 @@ describe('history module', () => {
     });
     expect(record.bear?.ruleOneFairValue).toBe(140);
     expect(record.bull?.ruleOneFairValue).toBe(400);
+  });
+});
+
+describe('readHistoryFile resilience to a hand-edited file', () => {
+  it('skips malformed entries instead of throwing on the whole history', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hist-corrupt-'));
+    const file = path.join(dir, 'history.json');
+    try {
+      await fs.writeFile(
+        file,
+        JSON.stringify([
+          null,
+          'not-a-record',
+          42,
+          { id: 'good-1', ticker: 'AAPL', evaluatedAt: '2026-08-01T00:00:00.000Z', years: 10 },
+        ]),
+        'utf8',
+      );
+
+      // Without the guard this throws "Cannot read properties of null (reading 'ticker')".
+      const all = await getHistory(undefined, file);
+      expect(all.ok).toBe(true);
+      if (all.ok) {
+        expect(all.data).toHaveLength(1);
+        expect(all.data[0].id).toBe('good-1');
+      }
+
+      const filtered = await getHistory('AAPL', file);
+      expect(filtered.ok).toBe(true);
+      if (filtered.ok) expect(filtered.data).toHaveLength(1);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
   });
 });

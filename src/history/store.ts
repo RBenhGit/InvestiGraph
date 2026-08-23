@@ -21,7 +21,15 @@ export async function readHistoryFile(filePath?: string): Promise<SavedValuation
     if (!Array.isArray(parsed)) {
       return [];
     }
-    return parsed;
+    // history.json is a plain file a user can hand-edit, and Array.isArray says nothing about
+    // the ELEMENTS: a stray `null` or a bare string sails through and then throws on the first
+    // property access downstream (`getHistory`'s ticker filter, and the web UI's history table,
+    // which loses the whole render). Drop entries that cannot be records; a corrupt line should
+    // cost its own row, not the entire history.
+    return parsed.filter(
+      (item): item is SavedValuation =>
+        typeof item === 'object' && item !== null && typeof (item as SavedValuation).ticker === 'string',
+    );
   } catch (err: unknown) {
     if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'ENOENT') {
       return [];

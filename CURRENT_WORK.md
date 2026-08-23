@@ -129,6 +129,20 @@ zero-price divisions. Line-by-line pass added three more:
    spans (whose only interpolated parts are numbers via `fmt()`) opt in with `{ html: true }`.
    `notes` and `ticker` were already safe — they use `textContent`.
 
+5. **Stale-response race in `handleSubmit`** (`app.js`) — the Go button was disabled during a
+   request but **"Refresh Live" was not**, and nothing sequenced responses, so the LAST response
+   to land won the DOM even when it belonged to an EARLIER request. Reproduced in a test: start
+   an AAPL lookup, start an MSFT lookup before it returns, let AAPL resolve last — the page
+   showed MSFT's banner with AAPL's data and `currentValuation.ticker` reverted to AAPL, so a
+   Save would have persisted the wrong pairing. Fixed with a monotonic `latestValuateRequestId`
+   (a superseded response returns before touching the DOM or the loading state), and
+   `setLoading` now disables the Refresh button alongside Go.
+6. **A `null` entry in `history.json` broke the entire history** — `readHistoryFile` checked
+   `Array.isArray` but never the elements, so one stray `null` from a hand-edit threw on the
+   first property access in BOTH `getHistory`'s ticker filter and the web UI's table render
+   (losing every row, not just the bad one). `readHistoryFile` now drops entries that aren't
+   objects with a string `ticker`.
+
 **Audited and found sound:** `lynch`/`ruleOne` guards (`!(x > 0)` correctly rejects `NaN`),
 `clampGrowthRate`, `resolveTtmEps`, `parseNumber`, the history endpoints (all malformed-input
 cases return typed 400/404, verified by probe), and `saveValuation`/`deleteValuation` validation.
@@ -136,7 +150,12 @@ Also on the later pass: `historicalPe.ts` (guards non-positive EPS, correct medi
 hazard), `client.ts` (every ticker goes through `encodeURIComponent`; errors carry only the
 endpoint and HTTP status, so the API key cannot leak into a message the browser sees), the
 DOM-id contract between `index.html` and `app.js` (all static and all 18 dynamically-built
-scenario ids match), and every other `innerHTML` site (all numeric via `fmt()`).
+scenario ids match), and every other `innerHTML` site (all numeric via `fmt()`). Fourth pass
+also cleared: the CLI/server growth fallback chains (still byte-identical), NaN handling across
+the wire (`JSON.stringify` turns NaN into null, so a garbage numeric input reaches the server as
+null and the auto-seed runs correctly), and the CSS class inventory — every class used in
+markup or JS has a rule except `panel-neutral` (`index.html:121`), which is cosmetic dead code,
+recorded not fixed.
 
 **Known, accepted, not fixed** (low severity, documented rather than changed):
 - `saveValuation`'s id is `Date.now()-TICKER`; two saves of the same ticker inside one
@@ -446,3 +465,10 @@ changes and is faster when applicable.
   no, "bug-free" is still not a supportable claim — each deeper pass has found something the
   previous one missed, including in files previously declared clean. 187/187 tests, lint clean,
   build clean.
+- 2026-08-23 — Fourth audit round at user request. Deliberately targeted what single-function
+  review structurally cannot catch: async/state behaviour, cross-file contracts, and the CSS
+  inventory. Found two more real bugs — the stale-response race (items 5) and the `null`
+  history record (item 6) — both reproduced with failing tests first, both guards confirmed to
+  fail when reverted. The race is the notable one: it is invisible to any per-function review
+  because every function involved is individually correct; only the interleaving is wrong.
+  189/189 tests, lint clean, build clean.
