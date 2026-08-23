@@ -323,6 +323,44 @@ describe('app.js frontend', () => {
     });
   });
 
+  describe('renderAnalystTable — untrusted strings from the Yahoo API', () => {
+    // Regression: recommendationKey is a string that arrives from a third-party API, and it
+    // flowed through tableRow()'s `valueDiv.innerHTML = value` with no escaping, so markup in
+    // it was parsed as live HTML rather than shown as text. Verified in jsdom: the payload
+    // below produced a real <img> element carrying an onerror handler.
+    function consensus(overrides = {}) {
+      return {
+        nextYearEpsGrowthPercent: null,
+        recommendationKey: 'buy',
+        priceTarget: { mean: null, high: null, low: null, numberOfAnalysts: null },
+        beta: null, priceToSales: null, ruleOf40: null,
+        ...overrides,
+      };
+    }
+
+    it('does not build DOM elements out of markup in recommendationKey', () => {
+      renderAnalystTable(consensus({ recommendationKey: '<img src=x onerror=BOOM>' }), 100);
+
+      const table = document.getElementById('analyst-table');
+      expect(table.querySelectorAll('img')).toHaveLength(0);
+      // The raw text should still be visible to the user, just inert. (renderAnalystTable
+      // title-cases the key, so the payload reads "<Img ..." by the time it is displayed.)
+      expect(table.textContent).toMatch(/<img/i);
+    });
+
+    it('does not execute a script tag smuggled through recommendationKey', () => {
+      renderAnalystTable(consensus({ recommendationKey: '<script>BOOM</script>' }), 100);
+
+      const table = document.getElementById('analyst-table');
+      expect(table.querySelectorAll('script')).toHaveLength(0);
+    });
+
+    it('still renders an ordinary recommendation normally', () => {
+      renderAnalystTable(consensus({ recommendationKey: 'strong_buy' }), 100);
+      expect(document.getElementById('analyst-table').textContent).toContain('Strong Buy');
+    });
+  });
+
   describe('renderPriceBanner — zero/invalid current price', () => {
     // Regression: renderPriceDelta computed (fairValue / currentPrice - 1) * 100 with no guard
     // on currentPrice. parseNumber deliberately treats a real 0 as a value (not missing) and

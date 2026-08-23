@@ -137,7 +137,16 @@ function renderPriceBanner(data, lynch, ruleOne) {
   );
 }
 
-/** Small label/value row for the growth-sources and multiples panels. */
+/**
+ * Small label/value row for the growth-sources and multiples panels.
+ *
+ * `value` is rendered as TEXT by default. It used to be assigned straight to `innerHTML`, but
+ * some values are strings that arrive from a third-party API (`recommendationKey` from Yahoo),
+ * so markup in them was parsed into live DOM instead of being displayed -- a `<img src=x
+ * onerror=...>` in that field really did become an element with a working handler. Callers that
+ * genuinely need markup (the locally-built `health-badge` spans, whose only interpolated parts
+ * are numbers through `fmt()`) must opt in explicitly with `{ html: true }`.
+ */
 function tableRow(label, value, opts) {
   const row = document.createElement('div');
   row.className = 'mini-row';
@@ -146,7 +155,11 @@ function tableRow(label, value, opts) {
   labelDiv.textContent = label;
   const valueDiv = document.createElement('div');
   valueDiv.className = 'mini-value';
-  valueDiv.innerHTML = value;
+  if (opts && opts.html) {
+    valueDiv.innerHTML = value;
+  } else {
+    valueDiv.textContent = value;
+  }
   row.append(labelDiv, valueDiv);
   if (opts && opts.highlight) row.classList.add('mini-row-active');
   if (opts && opts.barFill !== undefined) {
@@ -213,7 +226,7 @@ function renderMultiplesTable(data, effectiveGrowth, effectiveEps, analystConsen
     tableRow('Median P/E, 3Y', fmt(data.historicalPe.avg3y)),
     tableRow('Median P/E, 5Y', fmt(data.historicalPe.avg5y)),
     tableRow('Trailing P/E (current)', fmt(trailingPe)),
-    tableRow('PEG ratio (local)', pegFormatted),
+    tableRow('PEG ratio (local)', pegFormatted, { html: true }),
   );
 
   // priceToSales is typed `number | null` and is never `undefined`, so a `!== undefined`
@@ -262,11 +275,11 @@ function renderAnalystTable(analystConsensus, currentPrice) {
 
     if (ruleOf40 !== undefined && ruleOf40 !== null) {
       const healthClass = ruleOf40 >= 40 ? 'good' : (ruleOf40 >= 20 ? 'warning' : 'bad');
-      analystTableEl.append(tableRow('Rule of 40', `<span class="health-badge ${healthClass}">${fmt(ruleOf40)}%</span>`));
+      analystTableEl.append(tableRow('Rule of 40', `<span class="health-badge ${healthClass}">${fmt(ruleOf40)}%</span>`, { html: true }));
     }
     if (beta !== undefined && beta !== null) {
       const betaClass = beta < 1.0 ? 'good' : (beta < 1.5 ? 'warning' : 'bad');
-      analystTableEl.append(tableRow('Beta (Volatility)', `<span class="health-badge ${betaClass}">${fmt(beta)}</span>`));
+      analystTableEl.append(tableRow('Beta (Volatility)', `<span class="health-badge ${betaClass}">${fmt(beta)}</span>`, { html: true }));
     }
   }
 }

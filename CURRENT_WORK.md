@@ -120,9 +120,23 @@ zero-price divisions. Line-by-line pass added three more:
    `undefined`, so the check was always true and rendered a permanent "P/S ratio (TTM): n/a"
    row for every ticker Yahoo has no P/S coverage for.
 
+4. **HTML injection via `recommendationKey`** (`app.js`) — the most serious bug found all day,
+   and found only on a *third* pass over a file already audited twice. `tableRow` assigned its
+   `value` straight to `innerHTML`, and one caller passes `recommendationKey`, a string that
+   arrives verbatim from the Yahoo API. Verified in jsdom, not theorised: a payload of
+   `<img src=x onerror=BOOM>` produced a real `<img>` element carrying a live `onerror`
+   attribute. `tableRow` now renders text by default; the three locally-built `health-badge`
+   spans (whose only interpolated parts are numbers via `fmt()`) opt in with `{ html: true }`.
+   `notes` and `ticker` were already safe — they use `textContent`.
+
 **Audited and found sound:** `lynch`/`ruleOne` guards (`!(x > 0)` correctly rejects `NaN`),
 `clampGrowthRate`, `resolveTtmEps`, `parseNumber`, the history endpoints (all malformed-input
 cases return typed 400/404, verified by probe), and `saveValuation`/`deleteValuation` validation.
+Also on the later pass: `historicalPe.ts` (guards non-positive EPS, correct median, no division
+hazard), `client.ts` (every ticker goes through `encodeURIComponent`; errors carry only the
+endpoint and HTTP status, so the API key cannot leak into a message the browser sees), the
+DOM-id contract between `index.html` and `app.js` (all static and all 18 dynamically-built
+scenario ids match), and every other `innerHTML` site (all numeric via `fmt()`).
 
 **Known, accepted, not fixed** (low severity, documented rather than changed):
 - `saveValuation`'s id is `Date.now()-TICKER`; two saves of the same ticker inside one
@@ -423,3 +437,12 @@ changes and is faster when applicable.
   three low-severity issues as accepted rather than silently fixing them. Each of the three new
   guards was confirmed to fail its test when reverted, then restored. 184/184 tests, lint
   clean, build clean, all verified over SSH.
+- 2026-08-23 — User asked whether the code is bug-free apart from the three accepted issues.
+  Rather than answer from memory, audited the files not yet read line by line (`historicalPe.ts`,
+  `client.ts`, `index.html`, the DOM-id contract, and every `innerHTML` site) — and found a
+  **fourth real bug, the most serious of the day: HTML injection through `recommendationKey`**,
+  in `app.js`, a file already audited twice. Confirmed in jsdom that the payload becomes a live
+  `<img onerror=...>` element, then fixed `tableRow` to render text by default. Answer given:
+  no, "bug-free" is still not a supportable claim — each deeper pass has found something the
+  previous one missed, including in files previously declared clean. 187/187 tests, lint clean,
+  build clean.
