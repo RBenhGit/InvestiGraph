@@ -11,7 +11,18 @@ describe('app.js frontend', () => {
   let renderHistoryTable;
   let handleSubmit;
   let renderPriceBanner;
+  let renderGrowthTable;
+  let renderMultiplesTable;
+  let renderGrowthChips;
+  let renderScenarioColumn;
+  let renderMethodCard;
+  let handleSaveValuation;
+  let fetchHistory;
+  let fmt;
+  let fmtPercent;
+  let formatDate;
   let getCurrentValuation;
+  let setCurrentValuation;
   let analystTableEl;
   let historyTbodyEl;
   let historyEmptyEl;
@@ -87,7 +98,7 @@ describe('app.js frontend', () => {
     // Create a function that executes the script and returns the local function
     const scriptExecutor = new Function(
       'window', 'document',
-      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, renderPriceBanner, getCurrentValuation: () => currentValuation };`
+      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, renderPriceBanner, renderGrowthTable, renderMultiplesTable, renderGrowthChips, renderScenarioColumn, renderMethodCard, handleSaveValuation, fetchHistory, fmt, fmtPercent, formatDate, getCurrentValuation: () => currentValuation, setCurrentValuation: (v) => { currentValuation = v; } };`
     );
     const exports = scriptExecutor(window, document);
     formatStockDataError = exports.formatStockDataError;
@@ -95,7 +106,18 @@ describe('app.js frontend', () => {
     renderHistoryTable = exports.renderHistoryTable;
     handleSubmit = exports.handleSubmit;
     renderPriceBanner = exports.renderPriceBanner;
+    renderGrowthTable = exports.renderGrowthTable;
+    renderMultiplesTable = exports.renderMultiplesTable;
+    renderGrowthChips = exports.renderGrowthChips;
+    renderScenarioColumn = exports.renderScenarioColumn;
+    renderMethodCard = exports.renderMethodCard;
+    handleSaveValuation = exports.handleSaveValuation;
+    fetchHistory = exports.fetchHistory;
+    fmt = exports.fmt;
+    fmtPercent = exports.fmtPercent;
+    formatDate = exports.formatDate;
     getCurrentValuation = exports.getCurrentValuation;
+    setCurrentValuation = exports.setCurrentValuation;
     analystTableEl = document.getElementById('analyst-table');
     historyTbodyEl = document.getElementById('history-tbody');
     historyEmptyEl = document.getElementById('history-empty');
@@ -339,6 +361,303 @@ describe('app.js frontend', () => {
       expect(text).not.toMatch(/Infinity|n\/a/);
       expect(text).toMatch(/\+50\.00%/);
       expect(text).toMatch(/-50\.00%/);
+    });
+  });
+
+  describe('fmt / fmtPercent / formatDate', () => {
+    it('renders n/a for null and undefined, but a real 0 as a value', () => {
+      expect(fmt(null)).toBe('n/a');
+      expect(fmt(undefined)).toBe('n/a');
+      expect(fmt(0)).toBe('0.00');
+      expect(fmtPercent(null)).toBe('n/a');
+      expect(fmtPercent(0)).toBe('0.00%');
+      expect(fmt(12.345)).toBe('12.35');
+      expect(fmtPercent(-4.5)).toBe('-4.50%');
+    });
+
+    it('formatDate returns n/a for empty input and formats a real ISO string', () => {
+      expect(formatDate('')).toBe('n/a');
+      expect(formatDate(null)).toBe('n/a');
+      expect(formatDate('2026-08-22T14:30:00.000Z')).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    });
+  });
+
+  describe('renderGrowthTable', () => {
+    const growth = {
+      historical1yPercent: 10,
+      historical3yPercent: 20,
+      historical5yPercent: null,
+      analystEstimate5yPercent: -5,
+    };
+
+    it('renders one row per source, with n/a for missing ones', () => {
+      renderGrowthTable(growth, 20);
+      const rows = document.getElementById('growth-table').querySelectorAll('.mini-row');
+      expect(rows).toHaveLength(4);
+      const text = document.getElementById('growth-table').textContent;
+      expect(text).toContain('Historical, 1Y');
+      expect(text).toContain('10.00%');
+      expect(text).toContain('n/a');
+      expect(text).toContain('-5.00%');
+    });
+
+    it('highlights exactly the source matching growthUsed', () => {
+      renderGrowthTable(growth, 20);
+      const active = document.getElementById('growth-table').querySelectorAll('.mini-row-active');
+      expect(active).toHaveLength(1);
+      expect(active[0].textContent).toContain('Historical, 3Y');
+    });
+
+    it('sizes bar fill by magnitude relative to the largest absolute value', () => {
+      renderGrowthTable(growth, 20);
+      const rows = document.getElementById('growth-table').querySelectorAll('.mini-row');
+      // max magnitude is 20 (the 3Y source); 1Y is 10 -> 0.5, analyst is -5 -> 0.25 (abs).
+      expect(rows[0].style.getPropertyValue('--bar-fill')).toBe('0.5');
+      expect(rows[1].style.getPropertyValue('--bar-fill')).toBe('1');
+      expect(rows[3].style.getPropertyValue('--bar-fill')).toBe('0.25');
+    });
+
+    it('does not divide by zero when every source is null', () => {
+      renderGrowthTable(
+        { historical1yPercent: null, historical3yPercent: null, historical5yPercent: null, analystEstimate5yPercent: null },
+        null,
+      );
+      const text = document.getElementById('growth-table').textContent;
+      expect(text).not.toMatch(/NaN|Infinity/);
+      expect(document.getElementById('growth-table').querySelectorAll('.mini-row')).toHaveLength(4);
+      expect(document.getElementById('growth-table').querySelectorAll('.mini-row-active')).toHaveLength(0);
+    });
+
+    it('highlights nothing when growthUsed matches no source', () => {
+      renderGrowthTable(growth, 99);
+      expect(document.getElementById('growth-table').querySelectorAll('.mini-row-active')).toHaveLength(0);
+    });
+  });
+
+  describe('renderMultiplesTable', () => {
+    function multiplesData(overrides = {}) {
+      return {
+        ticker: 'AAPL', currentPrice: 100, currency: 'USD', epsTtm: 5, asOf: '2026-08-22',
+        historicalPe: { avg1y: 20, avg3y: 22, avg5y: 25 },
+        ...overrides,
+      };
+    }
+
+    it('computes trailing P/E from the effective EPS, not always epsTtm', () => {
+      renderMultiplesTable(multiplesData(), 10, 4, null);
+      // price 100 / effectiveEps 4 = 25.00
+      expect(document.getElementById('multiples-table').textContent).toContain('25.00');
+    });
+
+    it('falls back to epsTtm when effectiveEps is null', () => {
+      renderMultiplesTable(multiplesData(), 10, null, null);
+      // price 100 / epsTtm 5 = 20.00
+      expect(document.getElementById('multiples-table').textContent).toContain('20.00');
+    });
+
+    it('renders PEG without Infinity when growth is zero or negative', () => {
+      renderMultiplesTable(multiplesData(), 0, 5, null);
+      expect(document.getElementById('multiples-table').textContent).not.toMatch(/Infinity|NaN/);
+      renderMultiplesTable(multiplesData(), -3, 5, null);
+      expect(document.getElementById('multiples-table').textContent).not.toMatch(/Infinity|NaN/);
+    });
+
+    it('renders trailing P/E without Infinity when EPS is zero or negative', () => {
+      renderMultiplesTable(multiplesData({ epsTtm: 0 }), 10, null, null);
+      expect(document.getElementById('multiples-table').textContent).not.toMatch(/Infinity|NaN/);
+      renderMultiplesTable(multiplesData({ epsTtm: -2 }), 10, null, null);
+      expect(document.getElementById('multiples-table').textContent).not.toMatch(/Infinity|NaN/);
+    });
+
+    it('appends the P/S row only when analyst data carries one', () => {
+      renderMultiplesTable(multiplesData(), 10, 5, null);
+      expect(document.getElementById('multiples-table').textContent).not.toContain('P/S ratio');
+
+      renderMultiplesTable(multiplesData(), 10, 5, { priceToSales: 9.65 });
+      expect(document.getElementById('multiples-table').textContent).toContain('P/S ratio');
+    });
+
+    it('does not render a P/S row for a null priceToSales', () => {
+      renderMultiplesTable(multiplesData(), 10, 5, { priceToSales: null });
+      expect(document.getElementById('multiples-table').textContent).not.toContain('P/S ratio');
+    });
+  });
+
+  describe('renderGrowthChips', () => {
+    it('renders a chip per available source and skips null ones', () => {
+      renderGrowthChips({
+        historical1yPercent: 10, historical3yPercent: null,
+        historical5yPercent: 8, analystEstimate5yPercent: null,
+      });
+      const chips = document.getElementById('growth-chips').querySelectorAll('.chip');
+      expect(chips).toHaveLength(2);
+      expect(chips[0].textContent).toBe('1Y: 10.00%');
+      expect(chips[1].textContent).toBe('5Y hist: 8.00%');
+    });
+
+    it('writes the chip value into the growth input when clicked', () => {
+      document.getElementById('growth-input').value = '';
+      renderGrowthChips({
+        historical1yPercent: 12.345, historical3yPercent: null,
+        historical5yPercent: null, analystEstimate5yPercent: null,
+      });
+      document.getElementById('growth-chips').querySelector('.chip').click();
+      expect(document.getElementById('growth-input').value).toBe('12.35');
+    });
+
+    it('renders a chip for a real 0 rather than skipping it', () => {
+      renderGrowthChips({
+        historical1yPercent: 0, historical3yPercent: null,
+        historical5yPercent: null, analystEstimate5yPercent: null,
+      });
+      const chips = document.getElementById('growth-chips').querySelectorAll('.chip');
+      expect(chips).toHaveLength(1);
+      expect(chips[0].textContent).toBe('1Y: 0.00%');
+    });
+  });
+
+  describe('renderScenarioColumn / renderMethodCard', () => {
+    const okResult = {
+      ok: true, fairValue: 150,
+      inputs: { epsTtm: 6, growthRatePercentRaw: 40, growthRatePercentClamped: 25 },
+    };
+
+    it('shows the fair value and an Undervalued verdict when above the price', () => {
+      renderScenarioColumn('lynch', 'base', okResult, 100);
+      expect(document.getElementById('lynch-base-fv').textContent).toBe('150.00');
+      expect(document.getElementById('lynch-base-verdict').textContent).toBe('Undervalued');
+      expect(document.getElementById('lynch-base-verdict').className).toContain('good');
+    });
+
+    it('shows Overvalued when the fair value is below the price', () => {
+      renderScenarioColumn('lynch', 'base', okResult, 200);
+      expect(document.getElementById('lynch-base-verdict').textContent).toBe('Overvalued');
+      expect(document.getElementById('lynch-base-verdict').className).toContain('bad');
+    });
+
+    it('surfaces the error code and clears inputs on a failed scenario', () => {
+      renderScenarioColumn('lynch', 'bear', { ok: false, error: 'MISSING_GROWTH_RATE' }, 100);
+      expect(document.getElementById('lynch-bear-fv').textContent).toBe('n/a');
+      expect(document.getElementById('lynch-bear-verdict').textContent).toBe('FAILED (MISSING_GROWTH_RATE)');
+      expect(document.getElementById('lynch-bear-inputs').innerHTML).toBe('');
+    });
+
+    it('shows both raw and clamped growth when the clamp actually applied', () => {
+      renderScenarioColumn('lynch', 'base', okResult, 100);
+      const html = document.getElementById('lynch-base-inputs').innerHTML;
+      expect(html).toContain('40.00%');
+      expect(html).toContain('25.00%');
+    });
+
+    it('shows a single growth figure when no clamping occurred', () => {
+      renderScenarioColumn('lynch', 'base', {
+        ok: true, fairValue: 120,
+        inputs: { epsTtm: 6, growthRatePercentRaw: 20, growthRatePercentClamped: 20 },
+      }, 100);
+      const html = document.getElementById('lynch-base-inputs').innerHTML;
+      expect(html).toContain('growth:');
+      expect(html).toContain('20.00%');
+    });
+
+    it('renderMethodCard fills all three scenario columns', () => {
+      renderMethodCard('rule-one', { bear: okResult, base: okResult, bull: okResult }, 100);
+      expect(document.getElementById('rule-one-bear-fv').textContent).toBe('150.00');
+      expect(document.getElementById('rule-one-base-fv').textContent).toBe('150.00');
+      expect(document.getElementById('rule-one-bull-fv').textContent).toBe('150.00');
+    });
+
+    it('renderMethodCard passes per-scenario extras through to each column', () => {
+      renderMethodCard('rule-one', { bear: okResult, base: okResult, bull: okResult }, 100,
+        (name) => [['exit P/E', name === 'bear' ? '10' : '20']]);
+      expect(document.getElementById('rule-one-bear-inputs').innerHTML).toContain('10');
+      expect(document.getElementById('rule-one-bull-inputs').innerHTML).toContain('20');
+    });
+  });
+
+  describe('fetchHistory', () => {
+    it('requests the unfiltered endpoint when no filter is given', async () => {
+      let calledUrl = null;
+      global.fetch = (url) => {
+        calledUrl = url;
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
+      };
+      await fetchHistory('');
+      expect(calledUrl).toBe('/api/history');
+    });
+
+    it('url-encodes a ticker filter', async () => {
+      let calledUrl = null;
+      global.fetch = (url) => {
+        calledUrl = url;
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
+      };
+      await fetchHistory('BRK B&');
+      expect(calledUrl).toBe('/api/history?ticker=BRK%20B%26');
+    });
+
+    it('swallows a rejected fetch without throwing', async () => {
+      global.fetch = () => Promise.reject(new Error('network down'));
+      await expect(fetchHistory('')).resolves.toBeUndefined();
+    });
+
+    it('does not render when the response is not ok', async () => {
+      global.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: false }) });
+      document.getElementById('history-tbody').innerHTML = '<tr id="sentinel"></tr>';
+      await fetchHistory('');
+      expect(document.getElementById('sentinel')).not.toBeNull();
+    });
+  });
+
+  describe('handleSaveValuation', () => {
+    it('does nothing when there is no current valuation', async () => {
+      setCurrentValuation(null);
+      let called = false;
+      global.fetch = () => { called = true; return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); };
+      await handleSaveValuation();
+      expect(called).toBe(false);
+    });
+
+    it('posts the current valuation and reports success', async () => {
+      setCurrentValuation({ ticker: 'AAPL', years: 10 });
+      document.getElementById('notes-input').value = '  my thesis  ';
+      const calls = [];
+      global.fetch = (url, opts) => {
+        calls.push([url, opts]);
+        if (opts && opts.method === 'POST') {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+        }
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
+      };
+
+      await handleSaveValuation();
+
+      const post = calls.find(([, o]) => o && o.method === 'POST');
+      expect(post).toBeDefined();
+      expect(JSON.parse(post[1].body).notes).toBe('my thesis');
+      expect(document.getElementById('save-status').textContent).toContain('saved');
+      expect(document.getElementById('save-btn').disabled).toBe(false);
+    });
+
+    it('surfaces a server-side failure message and re-enables the button', async () => {
+      setCurrentValuation({ ticker: 'AAPL', years: 10 });
+      global.fetch = () => Promise.resolve({ ok: false, json: () => Promise.resolve({ ok: false, error: { message: 'disk full' } }) });
+
+      await handleSaveValuation();
+
+      expect(document.getElementById('save-status').textContent).toBe('disk full');
+      expect(document.getElementById('save-status').className).toContain('bad');
+      expect(document.getElementById('save-btn').disabled).toBe(false);
+    });
+
+    it('surfaces a thrown network error and re-enables the button', async () => {
+      setCurrentValuation({ ticker: 'AAPL', years: 10 });
+      global.fetch = () => Promise.reject(new Error('offline'));
+
+      await handleSaveValuation();
+
+      expect(document.getElementById('save-status').textContent).toContain('offline');
+      expect(document.getElementById('save-status').className).toContain('bad');
+      expect(document.getElementById('save-btn').disabled).toBe(false);
     });
   });
 

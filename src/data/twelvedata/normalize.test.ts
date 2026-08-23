@@ -104,4 +104,25 @@ describe('calculateCagrPercent', () => {
     expect(calculateCagrPercent(null, 1.0, 3)).toBeNull();
     expect(calculateCagrPercent(1.0, null, 3)).toBeNull();
   });
+
+  // Regression: a company that swung from profit to loss gives epsLatest < 0 with epsPast > 0,
+  // which passes the epsPast guard but makes Math.pow(negative, 1/years) return NaN for any
+  // years > 1. That NaN then leaked into StockData.growth, where both the CLI's
+  // `!== null` fallback chain and the server's `??` chain treat it as a usable value -- so it
+  // SHADOWED a perfectly good 1y CAGR further down the chain, and the valuation came back
+  // MISSING_GROWTH_RATE even though real growth data was available. Absence must be null.
+  it('returns null (never NaN) when the latest EPS is negative', () => {
+    expect(calculateCagrPercent(-2, 5, 3)).toBeNull();
+    expect(calculateCagrPercent(-0.01, 1, 5)).toBeNull();
+  });
+
+  it('still computes a real -100% for a swing to exactly zero EPS', () => {
+    // 0 is a legitimate endpoint: the value fell to nothing, i.e. -100%, not "unknown".
+    expect(calculateCagrPercent(0, 5, 3)).toBeCloseTo(-100, 10);
+  });
+
+  it('returns null rather than Infinity for a non-positive years window', () => {
+    expect(calculateCagrPercent(10, 5, 0)).toBeNull();
+    expect(calculateCagrPercent(10, 5, -3)).toBeNull();
+  });
 });

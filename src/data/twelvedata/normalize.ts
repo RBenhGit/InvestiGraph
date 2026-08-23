@@ -138,6 +138,14 @@ export function validateCurrency(priceCurrency: string, fundamentalsCurrency: st
  * CAGR is undefined (would require a complex root) when the earlier EPS was zero or negative —
  * a company that swung from a loss to a profit doesn't have a meaningful "growth rate" in this
  * formula. Returns `null` rather than a misleading number.
+ *
+ * The same is true in the other direction: a swing from profit to LOSS makes the ratio
+ * negative, and `Math.pow(negative, 1/years)` is `NaN` for any `years > 1`. That must also
+ * become `null`, not `NaN` — a `NaN` here is far worse than a missing value, because every
+ * downstream consumer treats "not null" as "usable": the CLI's `!== null` fallback chain and
+ * the server's `??` chain would both select the NaN and SHADOW a valid 1y CAGR sitting below
+ * it, producing MISSING_GROWTH_RATE for a stock that had perfectly good growth data.
+ * Absence is represented by `null` throughout this codebase; NaN must never escape.
  */
 export function calculateCagrPercent(
   epsLatest: number | null,
@@ -146,5 +154,8 @@ export function calculateCagrPercent(
 ): number | null {
   if (epsLatest === null || epsPast === null) return null;
   if (epsPast <= 0) return null;
-  return (Math.pow(epsLatest / epsPast, 1 / years) - 1) * 100;
+  // A zero/negative window would divide by zero in the exponent (Infinity/NaN).
+  if (!(years > 0)) return null;
+  const result = (Math.pow(epsLatest / epsPast, 1 / years) - 1) * 100;
+  return Number.isFinite(result) ? result : null;
 }

@@ -216,7 +216,10 @@ function renderMultiplesTable(data, effectiveGrowth, effectiveEps, analystConsen
     tableRow('PEG ratio (local)', pegFormatted),
   );
 
-  if (analystConsensus && analystConsensus.priceToSales !== undefined) {
+  // priceToSales is typed `number | null` and is never `undefined`, so a `!== undefined`
+  // check is always true and rendered a permanent "P/S ratio (TTM): n/a" row for every
+  // ticker Yahoo has no P/S coverage for. Same trap as the Financial Health header below.
+  if (analystConsensus && analystConsensus.priceToSales !== null && analystConsensus.priceToSales !== undefined) {
     multiplesTableEl.append(
       tableRow('P/S ratio (TTM)', fmt(analystConsensus.priceToSales))
     );

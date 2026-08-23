@@ -22,6 +22,49 @@ describe('cache layer', () => {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   });
 
+  // Regression: `ticker` was interpolated straight into path.join() with no sanitisation, so a
+  // traversal sequence escaped the cache directory entirely -- path.join(dir,
+  // 'twelvedata_' + 'A/../../B' + '.json') resolves ABOVE dir. getCachedStockData is called
+  // before any network request in fetchStockData, so an attacker-controlled ticker reaches this
+  // read path on every lookup. A ticker is [A-Z0-9.:-] in practice; anything else is not a
+  // ticker and must not become a filesystem path.
+  it('refuses a traversal ticker instead of reading outside the cache directory', async () => {
+    const outsideDir = path.dirname(tempDir);
+    const plantedPath = path.join(outsideDir, 'PWNED.json');
+    await fs.writeFile(plantedPath, JSON.stringify({ ticker: 'PWNED', epsTtm: 1 }), 'utf8');
+
+    try {
+      const result = await getCachedStockData('twelvedata_x/../../PWNED', tempDir);
+      expect(result).toBeNull();
+
+      const yahooResult = await getCachedYahooData('yahoo_x/../../PWNED', tempDir);
+      expect(yahooResult).toBeNull();
+    } finally {
+      await fs.rm(plantedPath, { force: true }).catch(() => {});
+    }
+  });
+
+  it('refuses to write a cache file outside the cache directory', async () => {
+    const outsideDir = path.dirname(tempDir);
+    const escapeName = path.basename(tempDir) + '/../ESCAPED';
+
+    await saveCachedStockData(escapeName, { ticker: 'X', epsTtm: 1 } as unknown as StockData, tempDir);
+
+    const escaped = await fs
+      .readFile(path.join(outsideDir, 'twelvedata_ESCAPED.json'), 'utf8')
+      .then(() => true)
+      .catch(() => false);
+    expect(escaped).toBe(false);
+  });
+
+  it('still accepts the punctuation real tickers contain', async () => {
+    const mock = { ticker: 'BRK.B', epsTtm: 1 } as unknown as StockData;
+    await saveCachedStockData('BRK.B', mock, tempDir);
+    const back = await getCachedStockData('BRK.B', tempDir);
+    expect(back).not.toBeNull();
+    expect(back?.ticker).toBe('BRK.B');
+  });
+
   it('saves and retrieves StockData successfully', async () => {
     const mockStock: StockData = {
       ticker: 'AAPL',

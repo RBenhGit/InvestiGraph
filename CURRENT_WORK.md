@@ -98,23 +98,45 @@ Suite is 127/127 green, lint clean, build clean.
 
 ## Known problems
 
-**Bugs found in the 2026-08-23 audit — both FIXED (commit below):**
+**Bugs found in the 2026-08-23 audits — all FIXED.** Earlier pass (API-boundary): the
+`POST /api/valuate` 500s on malformed input, and the `renderPriceDelta`/`priceTargetValue`
+zero-price divisions. Line-by-line pass added three more:
 
-1. ~~`POST /api/valuate` returned unhandled 500s on malformed input.~~ **Fixed.** The handler
-   now validates `ticker` is a non-empty string before touching the data layer, returning the
-   codebase's standard typed `{ok:false, error:{type:'INSUFFICIENT_DATA', ...}}` with a 400.
-   Note `{ticker:""}` changed from 404 to 400 — a malformed request, not a missing resource.
-2. ~~`renderPriceDelta` divided by `currentPrice` with no zero guard (`+Infinity%`).~~ **Fixed**
-   — and the audit for it turned up a **second, identical site**: `priceTargetValue`
-   (`app.js:271`), which feeds the analyst table's mean/high/low target rows and had the same
-   unguarded division. Both now render `n/a` / a bare target instead of `Infinity`. The two
-   other divisions in that file (`trailingPe`, `pegRatio`) were already correctly guarded.
+1. **`calculateCagrPercent` returned `NaN` for a swing to a loss** (`normalize.ts`). `epsPast`
+   was guarded but `epsLatest` was not, so a negative ratio made `Math.pow(negative, 1/years)`
+   return `NaN` for any `years > 1`. That `NaN` then reached `StockData.growth`, where BOTH
+   adapters treat "not null" as usable — the CLI's `!== null` chain and the server's `??` chain
+   would each select the `NaN` and **shadow a perfectly valid 1y CAGR below it**, so the
+   valuation returned `MISSING_GROWTH_RATE` for a stock that had real growth data. Now returns
+   `null` (plus a `years > 0` guard against an `Infinity` exponent). This one was invisible over
+   HTTP because `JSON.stringify` turns `NaN` into `null` — it only bit the selection logic.
+2. **Path traversal in the cache layer** (`cache.ts`). `ticker` was interpolated straight into
+   `path.join`, so `X/../../PWNED` resolved *above* the cache directory. `getCachedStockData`
+   runs *before* any network call in `fetchStockData`, so a caller-supplied ticker reached that
+   read path on every lookup. Added `safeTickerSegment` (`^[A-Z0-9.:-]{1,20}$`, no `..`) at all
+   four call sites; real punctuated tickers like `BRK.B` still work.
+3. **`priceToSales !== undefined`** (`app.js`) — the *exact* trap CLAUDE.md documents for the
+   Financial Health header, surviving in a second spot. The field is `number | null` and never
+   `undefined`, so the check was always true and rendered a permanent "P/S ratio (TTM): n/a"
+   row for every ticker Yahoo has no P/S coverage for.
 
-**Test-coverage gap (partially closed):** `src/web/public/app.js` is 841 lines / 23 functions.
-The audit added direct coverage for `renderPriceBanner`/`renderPriceDelta`/`priceTargetValue`,
-but `handleSaveValuation`, `renderGrowthTable`, `renderMultiplesTable`, `renderGrowthChips`,
-`renderScenarioColumn`, and `fetchHistory` still have no direct tests.
+**Audited and found sound:** `lynch`/`ruleOne` guards (`!(x > 0)` correctly rejects `NaN`),
+`clampGrowthRate`, `resolveTtmEps`, `parseNumber`, the history endpoints (all malformed-input
+cases return typed 400/404, verified by probe), and `saveValuation`/`deleteValuation` validation.
 
+**Known, accepted, not fixed** (low severity, documented rather than changed):
+- `saveValuation`'s id is `Date.now()-TICKER`; two saves of the same ticker inside one
+  millisecond collide, and the existing record is silently replaced.
+- `getHistory` sorts by `new Date(evaluatedAt)`; a hand-edited record with a missing/garbage
+  `evaluatedAt` yields a `NaN` comparator and an arbitrary order. `saveValuation` always sets
+  the field, so this needs a hand-edited `history.json` to trigger.
+- The CLI's `-m/--mos` runs through a bare `Number()`; a non-numeric value becomes `NaN`, which
+  `calculateRuleOneValue` correctly rejects as `INVALID_MOS`, and `JSON.stringify` nulls on save.
+
+**Test coverage:** `app.js`'s gap is closed — `renderGrowthTable`, `renderMultiplesTable`,
+`renderGrowthChips`, `renderScenarioColumn`, `renderMethodCard`, `fetchHistory`,
+`handleSaveValuation`, and the `fmt`/`fmtPercent`/`formatDate` helpers all now have direct
+tests. 184 tests total (was 138 at the start of the day).
 
 
 **This machine's `Z:` drive (Windows) is an SSHFS mount of the same filesystem this project
@@ -390,3 +412,14 @@ changes and is faster when applicable.
   target rows — both of which rendered `+Infinity%` for a 0 price. 3 new tests. Confirmed each
   of the three new guards genuinely fails when reverted, then restored. 147/147 tests (was 138,
   +9), lint clean, build clean.
+- 2026-08-23 — Closed the `app.js` test-coverage gap and then ran a line-by-line audit, per
+  user request. Coverage: exposed the previously-untested render/fetch/save functions to the
+  jsdom harness and added 34 tests covering them; one of those tests failed on first run and
+  turned out to be a real bug (`priceToSales !== undefined`, item 3 above) rather than a bad
+  assertion. Audit: read the valuation layer, `normalize.ts`, `cache.ts`, `history/`, the CLI
+  argument handling, and the server endpoints line by line, probing behaviour with live
+  `app.inject` calls rather than reasoning from the source alone. Found and fixed two more real
+  bugs (the `NaN` CAGR shadowing valid growth data, and the cache path traversal) and recorded
+  three low-severity issues as accepted rather than silently fixing them. Each of the three new
+  guards was confirmed to fail its test when reverted, then restored. 184/184 tests, lint
+  clean, build clean, all verified over SSH.
