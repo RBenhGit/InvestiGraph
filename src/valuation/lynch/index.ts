@@ -27,6 +27,16 @@ export function calculateLynchValue(
     return { ok: false, error: 'MISSING_GROWTH_RATE' };
   }
 
+  // `EPS x growth%` is a PEG-style heuristic defined only for a growing company. With a
+  // non-positive rate it returns 0 or a negative dollar amount -- e.g. ABBV's real -29.03% 3y
+  // CAGR (clamped to -5%) gave a "fair value" of -17.69, which the CLI and the web UI both
+  // rendered as a legitimate number with a -108% "downside". That is not a cheap stock, it is
+  // an inapplicable formula, so it must surface as an error. Rule #1 is unaffected: compounding
+  // a positive EPS at a negative rate shrinks it without flipping the sign.
+  if (growthRatePercent <= 0) {
+    return { ok: false, error: 'NEGATIVE_GROWTH_RATE' };
+  }
+
   const growthRatePercentClamped = clampGrowthRate(growthRatePercent);
   const fairValue = epsTtm * growthRatePercentClamped;
 

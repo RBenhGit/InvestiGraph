@@ -123,7 +123,16 @@ internally — callers pass the raw, unclamped rate). Both `calculateLynchValue`
 `calculateRuleOneValue` accept `epsTtm`/`growthRatePercent` as `number | null | undefined`
 (they flow in directly from `StockData`'s independently-nullable growth fields) and return a
 `ValuationResult`: `{ ok: true, fairValue, inputs, intermediate? }` or `{ ok: false, error }`
-with a typed `ValuationError`, never a throw. `calculateRuleOneValue` additionally takes an
+with a typed `ValuationError`, never a throw. **The two methods do NOT share an identical guard
+set**: `calculateLynchValue` additionally rejects a non-positive growth rate with
+`NEGATIVE_GROWTH_RATE`, because `EPS x growth%` is a PEG-style heuristic defined only for a
+growing company — with a negative rate it returns a negative *dollar* figure, which is not a
+cheap valuation but a meaningless one (real case: ABBV's -29.03% 3y CAGR clamped to -5% yielded
+a "fair value" of -17.69, shown by both adapters as legitimate until this was caught). Rule #1
+is unaffected and still returns a sane number, since compounding a positive EPS at a negative
+rate shrinks it without flipping the sign. Consequence for callers: `ruleOne` is the more
+permissive method, so `lynch.ok` does **not** imply `ruleOne.ok` and vice versa — code that
+falls back from one to the other must not assume they fail together. `calculateRuleOneValue` additionally takes an
 optional `mosPercent` (Margin of Safety, default `0`) that discounts the sticker price down to
 a target buy price (`fairValue = stickerPrice * (1 - mosPercent / 100)`); the function itself
 accepts any value in `[0, 100)` (`INVALID_MOS` otherwise) — the web UI's four-value MoS

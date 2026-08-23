@@ -735,13 +735,15 @@ async function handleSubmit(event, forceRefresh = false) {
     // (unclamped) growth, same as the base growth input's own backfill (body.effectiveGrowth) --
     // using growthRatePercentClamped here would silently rewrite the field to the clamp
     // boundary (-5/25) and pin the scenario there on the next submit instead of re-deriving.
-    // Prefer ruleOne's inputs, falling back to lynch's for the narrow case where ruleOne
-    // alone failed. Both methods share identical MISSING_EPS/NEGATIVE_OR_ZERO_EPS/
-    // MISSING_GROWTH_RATE guards over the same inputs, so lynch.ok implies ruleOne.ok except
-    // for ruleOne's own INVALID_EXIT_PE/INVALID_REQUIRED_RETURN/INVALID_YEARS/INVALID_MOS --
-    // i.e. a bad exit-P/E or required-return typed into that row (clearing the input gives
-    // Number('') === 0, which trips INVALID_EXIT_PE). That is the only case this rescues; when
-    // EPS or growth is the problem both fail together and the field correctly stays blank.
+    // Prefer ruleOne's inputs, falling back to lynch's when only ruleOne failed. ruleOne is now
+    // the MORE permissive of the two: they share the MISSING_EPS/NEGATIVE_OR_ZERO_EPS/
+    // MISSING_GROWTH_RATE guards, but lynch additionally rejects NEGATIVE_GROWTH_RATE (its
+    // `EPS x growth%` is undefined for a shrinking company) while ruleOne handles negative
+    // growth fine. So the lynch fallback only ever rescues ruleOne's own
+    // INVALID_EXIT_PE/INVALID_REQUIRED_RETURN/INVALID_YEARS/INVALID_MOS -- e.g. clearing the
+    // bear row's exit-P/E gives Number('') === 0 and trips INVALID_EXIT_PE. When EPS or growth
+    // is the problem both fail together and the field correctly stays blank; when growth is
+    // merely negative, ruleOne succeeds and supplies the value, so lynch is never consulted.
     const bearGrowthUsed = ruleOne.bear.ok
       ? ruleOne.bear.inputs.growthRatePercentRaw
       : (lynch.bear.ok ? lynch.bear.inputs.growthRatePercentRaw : null);

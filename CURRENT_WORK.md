@@ -143,6 +143,17 @@ zero-price divisions. Line-by-line pass added three more:
    (losing every row, not just the bad one). `readHistoryFile` now drops entries that aren't
    objects with a string `ticker`.
 
+7. **Lynch returned a NEGATIVE DOLLAR fair value for any shrinking company** — found only by
+   running both methods over the 26 real cached tickers rather than by reading code. ABBV has a
+   genuine -29.03% 3y EPS CAGR (clamped to -5%), and `EPS x growth%` then gave **-17.69 with
+   `ok: true`**: the CLI printed "Method A (Lynch) fair value: -17.69" and the web banner showed
+   a -108.85% "downside", both as if legitimate. The Lynch/PEG heuristic is only defined for a
+   growing company, so this is now `NEGATIVE_GROWTH_RATE`. Rule #1 is unaffected (compounding a
+   positive EPS at a negative rate shrinks it without flipping the sign — ABBV still yields a
+   sane 7.86). **Consequence recorded in CLAUDE.md: the two methods no longer share a guard
+   set**, so `lynch.ok` does not imply `ruleOne.ok`; the bear/bull fallback comment in `app.js`
+   that asserted they fail together was corrected in the same commit.
+
 **Audited and found sound:** `lynch`/`ruleOne` guards (`!(x > 0)` correctly rejects `NaN`),
 `clampGrowthRate`, `resolveTtmEps`, `parseNumber`, the history endpoints (all malformed-input
 cases return typed 400/404, verified by probe), and `saveValuation`/`deleteValuation` validation.
@@ -472,3 +483,13 @@ changes and is faster when applicable.
   fail when reverted. The race is the notable one: it is invisible to any per-function review
   because every function involved is individually correct; only the interleaving is wrong.
   189/189 tests, lint clean, build clean.
+- 2026-08-23 — Fifth audit round, aimed at the one area repeatedly named as unexamined: real
+  API data rather than code reading. Ran both valuation methods across all 26 cached tickers
+  and diffed the outputs for anything non-finite or nonsensical. That surfaced item 7 — a
+  negative dollar fair value shipped as a valid result — which four passes of line-by-line
+  review had not found, because every line of `calculateLynchValue` is individually correct;
+  only the formula's DOMAIN was wrong. Also confirmed via the same sweep that the three
+  loss-making tickers in the cache (IONQ/RKLB/ZETA, all with negative EPS) correctly return
+  NEGATIVE_OR_ZERO_EPS, and that no cached record carries a non-finite number. Per user
+  decision, chose the error over clamping to 0 (a $0 fair value still reads as a real
+  valuation). 192/192 tests, lint clean, build clean.
