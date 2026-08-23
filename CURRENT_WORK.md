@@ -98,6 +98,31 @@ Suite is 127/127 green, lint clean, build clean.
 
 ## Known problems
 
+**Open bugs found in the 2026-08-23 audit (none fixed yet — all pre-existing, none from the
+locked-EPS commit):**
+
+1. **`POST /api/valuate` returns unhandled 500s on malformed input.** `ValuateRequestBody` is a
+   TypeScript interface — compile-time only, no runtime validation — and `request.body` is
+   trusted directly. Verified live via `app.inject`: `{}` and `{ticker: null}` return
+   `500 "Cannot read properties of..."`, `{ticker: 12345}` returns
+   `500 "ticker.toUpperCase is not a function"`. All three leak raw internal error text
+   instead of a typed `{ok: false, error}` like every other failure path in the codebase.
+   `{ticker: ""}` correctly returns 404. Fix: validate `ticker` is a non-empty string at the
+   top of the handler (a Fastify JSON schema would cover the numeric fields too).
+2. **`renderPriceDelta` divides by `currentPrice` with no zero guard** (`app.js:113`).
+   `currentPrice === 0` renders `+Infinity%` as an upside figure. `parseNumber` deliberately
+   treats a real `0` as a value (not missing), and `fetchStockData` only rejects `null`, so a
+   `"0.00"` close price flows through. Low likelihood (a live ticker never trades at exactly
+   0) but the render path has no defence.
+
+**Test-coverage gap:** `src/web/public/app.js` is 841 lines / 23 functions, but `app.test.js`
+only exercises ~5 of them (`formatStockDataError`, `renderAnalystTable`, `renderHistoryTable`,
+`handleSubmit`, plus the Load button). `handleSaveValuation`, `renderPriceBanner`,
+`renderPriceDelta`, `renderGrowthTable`, `renderMultiplesTable`, `renderGrowthChips`,
+`renderScenarioColumn`, and `fetchHistory` have no direct tests. Bug 2 above sits in that gap.
+
+
+
 **This machine's `Z:` drive (Windows) is an SSHFS mount of the same filesystem this project
 lives on, and its Windows driver returns `EPERM` instead of the POSIX-standard `EEXIST` when
 something calls `mkdir` on a directory that already exists** — breaks `npm install`/`test`/
@@ -124,9 +149,12 @@ changes and is faster when applicable.
 1. The implementation is otherwise complete: the app covers the EPS×multiple valuation flow with
    two independent data sources (Twelve Data fundamentals + Yahoo analyst consensus) and a
    hierarchy-aware web UI.
-3. Separately flagged (not blocking): `npm audit` reports 8 known vulnerabilities in
-   fastify/@fastify/static/vitest's transitive deps, pre-existing and unrelated to any single
-   feature — spun off as its own background task rather than bundled into any change.
+3. ~~`npm audit` reports 8 known vulnerabilities~~ — **resolved.** Re-checked 2026-08-23:
+   `npm audit` now reports 0 vulnerabilities (fixed by the 2026-08-16 `npm audit fix --force`
+   upgrade of fastify/@fastify/static/vitest). Kept here only so the stale claim isn't
+   re-flagged by a future session.
+4. Open bugs from the 2026-08-23 audit — see "Known problems" above (input validation on
+   `POST /api/valuate`; `renderPriceDelta` zero-price guard).
 
 ## Log
 
@@ -345,3 +373,12 @@ changes and is faster when applicable.
   after a too-shallow `ls ~/Eps_Evaluation ~/*Eps*` missed the nested path. Also confirmed the
   LAN address `192.168.1.224` is NOT reachable on port 22 from this machine (times out); only
   the Tailscale address `100.76.172.46` works. Suite verified in place: 137/137 across 15 files.
+- 2026-08-23 — Audited the project for completeness/correctness at user request ("האם התוכנה
+  שלימה וללא באגים?"). Baseline confirmed green (138 tests, lint, build, and `npm audit`
+  now reports **0 vulnerabilities** — the "8 pre-existing CVEs" noted under "Next up" is stale
+  and was resolved by the 2026-08-16 `npm audit fix --force`). Found two real pre-existing bugs
+  and one coverage gap, all recorded under "Known problems" above; the headline one is that
+  `POST /api/valuate` has **no runtime input validation** and returns raw 500s for a missing,
+  null, or non-string `ticker` — verified live via `app.inject`, not inferred. Nothing found
+  in the valuation math or the data layer. Answer given to the user: the app is feature-complete
+  and its core is sound, but "ללא באגים" is not a claim the evidence supports.
