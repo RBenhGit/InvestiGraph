@@ -387,6 +387,55 @@ describe('POST /api/valuate', () => {
     expect(body.lynch).toEqual({ base: missingGrowth, bear: missingGrowth, bull: missingGrowth });
     expect(body.ruleOne).toEqual({ base: missingGrowth, bear: missingGrowth, bull: missingGrowth });
   });
+
+  // Regression: ValuateRequestBody is a TypeScript interface, i.e. compile-time only. Nothing
+  // validated request.body at runtime, so a malformed ticker reached fetchStockData and blew up
+  // inside it -- returning a raw 500 ("Cannot read properties of...", "ticker.toUpperCase is
+  // not a function") that leaked internal error text instead of this codebase's typed
+  // { ok: false, error } shape. An API caller (or an older/buggy client) can send any of these.
+  it.each([
+    ['a missing ticker', {}],
+    ['a null ticker', { ticker: null }],
+    ['a numeric ticker', { ticker: 12345 }],
+    ['an object ticker', { ticker: { evil: true } }],
+    ['a whitespace-only ticker', { ticker: '   ' }],
+  ])('returns a typed 400 (not an unhandled 500) for %s', async (_label, payload) => {
+    vi.mocked(fetchStockData).mockResolvedValue({ ok: true, data: stockData() });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: { exitPeMultiple: 15, requiredReturnPercent: 15, years: 10, ...(payload as object) },
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.type).toBe('INSUFFICIENT_DATA');
+    // The whole point: a typed error, not a leaked stack/TypeError message.
+    expect(body.error.reason).toMatch(/ticker/i);
+    expect(JSON.stringify(body)).not.toMatch(/Cannot read propert|is not a function/);
+    // A request rejected at the door must never have reached the data layer.
+    expect(fetchStockData).not.toHaveBeenCalled();
+  });
+
+  it('still accepts a valid ticker that needs trimming/upper-casing', async () => {
+    vi.mocked(fetchStockData).mockResolvedValue({ ok: true, data: stockData() });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: { ticker: '  aapl  ', exitPeMultiple: 15, requiredReturnPercent: 15, years: 10 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().ok).toBe(true);
+    expect(fetchStockData).toHaveBeenCalled();
+  });
 });
 
 describe('GET /api/history', () => {

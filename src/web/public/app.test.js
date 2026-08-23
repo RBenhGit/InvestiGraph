@@ -10,6 +10,7 @@ describe('app.js frontend', () => {
   let renderAnalystTable;
   let renderHistoryTable;
   let handleSubmit;
+  let renderPriceBanner;
   let getCurrentValuation;
   let analystTableEl;
   let historyTbodyEl;
@@ -86,13 +87,14 @@ describe('app.js frontend', () => {
     // Create a function that executes the script and returns the local function
     const scriptExecutor = new Function(
       'window', 'document',
-      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, getCurrentValuation: () => currentValuation };`
+      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, renderPriceBanner, getCurrentValuation: () => currentValuation };`
     );
     const exports = scriptExecutor(window, document);
     formatStockDataError = exports.formatStockDataError;
     renderAnalystTable = exports.renderAnalystTable;
     renderHistoryTable = exports.renderHistoryTable;
     handleSubmit = exports.handleSubmit;
+    renderPriceBanner = exports.renderPriceBanner;
     getCurrentValuation = exports.getCurrentValuation;
     analystTableEl = document.getElementById('analyst-table');
     historyTbodyEl = document.getElementById('history-tbody');
@@ -296,6 +298,47 @@ describe('app.js frontend', () => {
       // lynch.bear.inputs.growthRatePercentRaw is 30 in the mock.
       expect(document.getElementById('bear-growth-input').value).toBe('30');
       expect(getCurrentValuation().bear.growthRatePercent).toBe(30);
+    });
+  });
+
+  describe('renderPriceBanner — zero/invalid current price', () => {
+    // Regression: renderPriceDelta computed (fairValue / currentPrice - 1) * 100 with no guard
+    // on currentPrice. parseNumber deliberately treats a real 0 as a value (not missing) and
+    // fetchStockData only rejects null, so a "0.00" close price reaches the renderer and
+    // produces Infinity -- displayed to the user as a "+Infinity%" upside.
+    function bannerData(currentPrice) {
+      return { ticker: 'AAPL', currentPrice, currency: 'USD', epsTtm: 6.5, asOf: '2026-08-22' };
+    }
+
+    it('renders n/a rather than Infinity% when the current price is zero', () => {
+      renderPriceBanner(bannerData(0), { ok: true, fairValue: 50 }, { ok: true, fairValue: 40 });
+
+      const text = document.getElementById('price-deltas').textContent;
+      expect(text).not.toMatch(/Infinity/);
+      expect(text).toMatch(/n\/a/);
+    });
+
+    it('renders analyst price targets without a delta when the price is zero', () => {
+      // Same guard, second site: priceTargetValue() feeds the analyst table's target rows.
+      renderAnalystTable(
+        { nextYearEpsGrowthPercent: null, recommendationKey: 'buy',
+          priceTarget: { mean: 250, high: 300, low: 200, numberOfAnalysts: 40 },
+          beta: null, priceToSales: null, ruleOf40: null },
+        0,
+      );
+
+      const text = document.getElementById('analyst-table').textContent;
+      expect(text).not.toMatch(/Infinity/);
+      expect(text).toMatch(/250\.00/);
+    });
+
+    it('still renders a real percentage for a normal price', () => {
+      renderPriceBanner(bannerData(100), { ok: true, fairValue: 150 }, { ok: true, fairValue: 50 });
+
+      const text = document.getElementById('price-deltas').textContent;
+      expect(text).not.toMatch(/Infinity|n\/a/);
+      expect(text).toMatch(/\+50\.00%/);
+      expect(text).toMatch(/-50\.00%/);
     });
   });
 

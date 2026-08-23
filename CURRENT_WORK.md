@@ -98,28 +98,22 @@ Suite is 127/127 green, lint clean, build clean.
 
 ## Known problems
 
-**Open bugs found in the 2026-08-23 audit (none fixed yet — all pre-existing, none from the
-locked-EPS commit):**
+**Bugs found in the 2026-08-23 audit — both FIXED (commit below):**
 
-1. **`POST /api/valuate` returns unhandled 500s on malformed input.** `ValuateRequestBody` is a
-   TypeScript interface — compile-time only, no runtime validation — and `request.body` is
-   trusted directly. Verified live via `app.inject`: `{}` and `{ticker: null}` return
-   `500 "Cannot read properties of..."`, `{ticker: 12345}` returns
-   `500 "ticker.toUpperCase is not a function"`. All three leak raw internal error text
-   instead of a typed `{ok: false, error}` like every other failure path in the codebase.
-   `{ticker: ""}` correctly returns 404. Fix: validate `ticker` is a non-empty string at the
-   top of the handler (a Fastify JSON schema would cover the numeric fields too).
-2. **`renderPriceDelta` divides by `currentPrice` with no zero guard** (`app.js:113`).
-   `currentPrice === 0` renders `+Infinity%` as an upside figure. `parseNumber` deliberately
-   treats a real `0` as a value (not missing), and `fetchStockData` only rejects `null`, so a
-   `"0.00"` close price flows through. Low likelihood (a live ticker never trades at exactly
-   0) but the render path has no defence.
+1. ~~`POST /api/valuate` returned unhandled 500s on malformed input.~~ **Fixed.** The handler
+   now validates `ticker` is a non-empty string before touching the data layer, returning the
+   codebase's standard typed `{ok:false, error:{type:'INSUFFICIENT_DATA', ...}}` with a 400.
+   Note `{ticker:""}` changed from 404 to 400 — a malformed request, not a missing resource.
+2. ~~`renderPriceDelta` divided by `currentPrice` with no zero guard (`+Infinity%`).~~ **Fixed**
+   — and the audit for it turned up a **second, identical site**: `priceTargetValue`
+   (`app.js:271`), which feeds the analyst table's mean/high/low target rows and had the same
+   unguarded division. Both now render `n/a` / a bare target instead of `Infinity`. The two
+   other divisions in that file (`trailingPe`, `pegRatio`) were already correctly guarded.
 
-**Test-coverage gap:** `src/web/public/app.js` is 841 lines / 23 functions, but `app.test.js`
-only exercises ~5 of them (`formatStockDataError`, `renderAnalystTable`, `renderHistoryTable`,
-`handleSubmit`, plus the Load button). `handleSaveValuation`, `renderPriceBanner`,
-`renderPriceDelta`, `renderGrowthTable`, `renderMultiplesTable`, `renderGrowthChips`,
-`renderScenarioColumn`, and `fetchHistory` have no direct tests. Bug 2 above sits in that gap.
+**Test-coverage gap (partially closed):** `src/web/public/app.js` is 841 lines / 23 functions.
+The audit added direct coverage for `renderPriceBanner`/`renderPriceDelta`/`priceTargetValue`,
+but `handleSaveValuation`, `renderGrowthTable`, `renderMultiplesTable`, `renderGrowthChips`,
+`renderScenarioColumn`, and `fetchHistory` still have no direct tests.
 
 
 
@@ -153,8 +147,8 @@ changes and is faster when applicable.
    `npm audit` now reports 0 vulnerabilities (fixed by the 2026-08-16 `npm audit fix --force`
    upgrade of fastify/@fastify/static/vitest). Kept here only so the stale claim isn't
    re-flagged by a future session.
-4. Open bugs from the 2026-08-23 audit — see "Known problems" above (input validation on
-   `POST /api/valuate`; `renderPriceDelta` zero-price guard).
+4. ~~Open bugs from the 2026-08-23 audit~~ — both fixed, see "Known problems" above. What
+   remains is the `app.js` coverage gap listed there, not a known defect.
 
 ## Log
 
@@ -382,3 +376,17 @@ changes and is faster when applicable.
   null, or non-string `ticker` — verified live via `app.inject`, not inferred. Nothing found
   in the valuation math or the data layer. Answer given to the user: the app is feature-complete
   and its core is sound, but "ללא באגים" is not a claim the evidence supports.
+- 2026-08-23 — Fixed both bugs from the audit above, failing-test-first per the bug-fix policy.
+  (a) `POST /api/valuate` now validates `ticker` is a non-empty string before reaching the data
+  layer — `ValuateRequestBody` is a TS interface, compile-time only, so a missing/null/numeric
+  ticker previously threw inside `fetchStockData` and surfaced as a raw 500 leaking
+  "ticker.toUpperCase is not a function". 6 new tests (5 malformed shapes + one asserting a
+  valid `"  aapl  "` still works). Worth noting for future sessions: the new tests fail with
+  **200, not 500**, because `fetchStockData` is mocked in `server.test.ts` — the real 500 only
+  happened in the unmocked data layer, which is exactly why this gap survived a green suite.
+  Verified the real path separately with an unmocked `app.inject` probe: all 6 malformed shapes
+  now return typed 400s. (b) `renderPriceDelta`'s missing zero-denominator guard, plus a second
+  identical site the fix-audit uncovered — `priceTargetValue`, feeding the analyst table's
+  target rows — both of which rendered `+Infinity%` for a 0 price. 3 new tests. Confirmed each
+  of the three new guards genuinely fails when reverted, then restored. 147/147 tests (was 138,
+  +9), lint clean, build clean.

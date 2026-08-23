@@ -107,7 +107,13 @@ function renderPriceDelta(label, fairValue, currentPrice, dotColorVar) {
   const valueDiv = document.createElement('div');
   valueDiv.className = 'price-delta-value';
 
-  if (fairValue === null || fairValue === undefined || Number.isNaN(fairValue)) {
+  // currentPrice must be a usable divisor: parseNumber treats a real 0 as a value (not
+  // missing) and fetchStockData only rejects null, so a "0.00" close price can reach here and
+  // would render Infinity as a "+Infinity%" upside. Guard the denominator, not just fairValue.
+  const priceUsable =
+    currentPrice !== null && currentPrice !== undefined && !Number.isNaN(currentPrice) && currentPrice > 0;
+
+  if (fairValue === null || fairValue === undefined || Number.isNaN(fairValue) || !priceUsable) {
     valueDiv.textContent = 'n/a';
   } else {
     const diffPercent = (fairValue / currentPrice - 1) * 100;
@@ -264,6 +270,11 @@ function renderAnalystTable(analystConsensus, currentPrice) {
 
 function priceTargetValue(target, currentPrice) {
   if (target === null || target === undefined) return 'n/a';
+  // Same zero-denominator guard as renderPriceDelta above -- a 0 currentPrice would render the
+  // analyst price target's delta as "+Infinity%". Show the target without a delta instead.
+  if (currentPrice === null || currentPrice === undefined || Number.isNaN(currentPrice) || currentPrice <= 0) {
+    return fmt(target);
+  }
   const diffPercent = (target / currentPrice - 1) * 100;
   const sign = diffPercent > 0 ? '+' : '';
   return `${fmt(target)} (${sign}${fmt(diffPercent)}%)`;

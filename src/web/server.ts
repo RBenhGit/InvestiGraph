@@ -66,6 +66,22 @@ export function buildServer() {
       forceRefresh,
     } = request.body;
 
+    // ValuateRequestBody is a TypeScript interface — compile-time only — so nothing stops a
+    // caller from POSTing a missing/null/non-string ticker. Without this guard it reached
+    // fetchStockData and threw inside the data layer, surfacing as an unhandled 500 with raw
+    // internal text ("ticker.toUpperCase is not a function") instead of the typed
+    // { ok: false, error } shape every other failure path in this codebase returns.
+    if (typeof ticker !== 'string' || ticker.trim() === '') {
+      return reply.status(400).send({
+        ok: false,
+        error: {
+          type: 'INSUFFICIENT_DATA',
+          ticker: typeof ticker === 'string' ? ticker : '',
+          reason: 'ticker is required and must be a non-empty string',
+        },
+      });
+    }
+
     // twelvedata is the required source — a failure there fails the whole request (see below).
     // yahoo (analyst consensus/price targets) is supplementary and independently fetched in
     // parallel: its failure must never take down a valuation that only needed twelvedata's
