@@ -11,8 +11,9 @@ two independent "fair value" estimates from EPS × growth rate — Lynch/PEG-sty
 ## Commands
 
 - Build: `npm run build` (`tsc -p tsconfig.json`)
-- Test (all): `npm test` (`vitest run`)
-- Test (single): `npx vitest run <path>`
+- Test (all): `npm test` (`vitest run`) — **cannot be run from `Z:` (EPERM); run it over SSH,
+  see Gotchas:** `ssh aviv@100.76.172.46 'cd ~/shared_disk/Cursor_apps/Eps_Evaluation && npm test'`
+- Test (single): `npx vitest run <path>` (same `Z:` limitation — same SSH hop)
 - Lint: `npm run lint` (`eslint .`)
 - Format: `npm run format` (`prettier --write .`)
 - Run locally: `npm run cli -- TICKER` (e.g. `npm run cli -- AAPL`), `npm run web` (Fastify on `PORT`, default 3210 — chosen to avoid colliding with other local projects on 3000/3001/3100)
@@ -275,3 +276,21 @@ span many sessions.
 - `CACHE_DIR_PATH` and `HISTORY_FILE_PATH` (`src/data/cache.ts`, `src/history/store.ts`) are
   optional env vars with safe defaults (`cache/` and `history.json` under the project root) —
   listed commented-out in `.env.example` the same way `PORT` is; almost nobody needs to set them.
+- **Tests/build/lint cannot run from the `Z:` drive — run them over SSH instead.** `Z:` is a
+  Windows SSHFS mount of the very same filesystem the project lives on (see CURRENT_WORK.md's
+  "Known problems"); its driver returns `EPERM` instead of `EEXIST` when something calls
+  `mkdir` on an existing directory, so vitest dies at startup with
+  `EPERM: operation not permitted, mkdir 'node_modules/.vite-temp'`. `TMPDIR` does not help
+  (Vite derives that path from the project root) and `npx vitest` fails identically. Because it
+  is the same filesystem, there is nothing to copy — SSH in and run in place:
+
+  ```bash
+  ssh aviv@100.76.172.46 'cd ~/shared_disk/Cursor_apps/Eps_Evaluation && npm test'
+  ```
+
+  Host details: user `aviv`, Tailscale `100.76.172.46`, Ubuntu 26.04 LTS, Node v24.15.0,
+  npm 11.17.0, key-based auth already in `~/.ssh/config` (`StrictHostKeyChecking no`). The LAN
+  address `192.168.1.224` appears in `ip addr` on that box but **port 22 there times out from
+  this machine — always use the Tailscale address**. `.claude/hooks/stop-test-gate.sh` already
+  routes its `TEST_CMD` through this same hop (commit `0d6082b`). Verified 2026-08-23:
+  137 tests across 15 files, all passing.

@@ -495,9 +495,11 @@ function renderHistoryTable(records) {
         loadBtn.textContent = 'Load';
         loadBtn.addEventListener('click', () => {
           if (tickerInput) tickerInput.value = item.ticker;
-          if (epsInput) {
-            epsInput.value = item.epsOverride !== undefined && item.epsOverride !== null ? item.epsOverride : '';
-          }
+          // eps-input is locked/display-only -- deliberately NOT restored from the record.
+          // Legacy/CLI-saved records can carry an epsOverride, but the web UI no longer has an
+          // override path (handleSubmit never sends the field at all), so writing it
+          // here would only flash a value the server will never use before handleSubmit below
+          // overwrites the field with the live data.epsTtm anyway.
           const loadData = item.base || item; // Use base for loading inputs if new, otherwise legacy
           if (growthInput) {
             growthInput.value = loadData.growthRatePercent !== null && loadData.growthRatePercent !== undefined 
@@ -613,7 +615,11 @@ async function handleSubmit(event, forceRefresh = false) {
   if (saveStatus) saveStatus.textContent = '';
 
   const ticker = tickerInput ? tickerInput.value.trim() : '';
-  const epsOverride = epsInput && epsInput.value !== '' ? Number(epsInput.value) : undefined;
+  // No epsOverride is ever sent: eps-input is locked (readonly/disabled) and only ever
+  // displays the live TTM EPS the server returned. A disabled input still retains a
+  // JS-assigned value, so reading it back would silently resend a stale EPS from a previous
+  // ticker lookup once the field had been populated below. The server treats an absent
+  // epsOverride as "use data.epsTtm", which is exactly what the locked field shows.
   const growthRatePercent = growthInput && growthInput.value !== '' ? Number(growthInput.value) : null;
   const exitPeMultiple = exitPeInput ? Number(exitPeInput.value) : 15;
   const requiredReturnPercent = requiredReturnInput ? Number(requiredReturnInput.value) : 15;
@@ -632,7 +638,6 @@ async function handleSubmit(event, forceRefresh = false) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ticker,
-        epsOverride,
         growthRatePercent,
         exitPeMultiple,
         requiredReturnPercent,
@@ -665,10 +670,11 @@ async function handleSubmit(event, forceRefresh = false) {
       effectiveGrowth = Number(Number(effectiveGrowth).toFixed(2));
     }
 
-    // Show the actual EPS used if the user left it on Auto
-    if (epsInput && epsInput.value === '') {
-      epsInput.value = data.epsTtm !== null && data.epsTtm !== undefined 
-        ? Number(Number(data.epsTtm).toFixed(2)) 
+    // eps-input is locked/display-only -- always show the live TTM EPS the server just used
+    // (there is no "user left it on Auto" case anymore now that the field can't be edited).
+    if (epsInput) {
+      epsInput.value = data.epsTtm !== null && data.epsTtm !== undefined
+        ? Number(Number(data.epsTtm).toFixed(2))
         : '';
     }
 
@@ -680,12 +686,26 @@ async function handleSubmit(event, forceRefresh = false) {
     // Bear/bull growth are independently editable, but when a row is left blank the server
     // still derives it from the base scenario (0.75x/1.25x) -- populate the field with that
     // derived value afterwards, same pattern as the base growth input above, so the user sees
-    // exactly what was used rather than an empty box next to a real fair value.
-    const bearGrowthUsed = ruleOne.bear.ok ? ruleOne.bear.inputs.growthRatePercentClamped : null;
+    // exactly what was used rather than an empty box next to a real fair value. Use the RAW
+    // (unclamped) growth, same as the base growth input's own backfill (body.effectiveGrowth) --
+    // using growthRatePercentClamped here would silently rewrite the field to the clamp
+    // boundary (-5/25) and pin the scenario there on the next submit instead of re-deriving.
+    // Prefer ruleOne's inputs, falling back to lynch's for the narrow case where ruleOne
+    // alone failed. Both methods share identical MISSING_EPS/NEGATIVE_OR_ZERO_EPS/
+    // MISSING_GROWTH_RATE guards over the same inputs, so lynch.ok implies ruleOne.ok except
+    // for ruleOne's own INVALID_EXIT_PE/INVALID_REQUIRED_RETURN/INVALID_YEARS/INVALID_MOS --
+    // i.e. a bad exit-P/E or required-return typed into that row (clearing the input gives
+    // Number('') === 0, which trips INVALID_EXIT_PE). That is the only case this rescues; when
+    // EPS or growth is the problem both fail together and the field correctly stays blank.
+    const bearGrowthUsed = ruleOne.bear.ok
+      ? ruleOne.bear.inputs.growthRatePercentRaw
+      : (lynch.bear.ok ? lynch.bear.inputs.growthRatePercentRaw : null);
     if (bearGrowthInput && bearGrowthInput.value === '' && bearGrowthUsed !== null && bearGrowthUsed !== undefined) {
       bearGrowthInput.value = Number(Number(bearGrowthUsed).toFixed(2));
     }
-    const bullGrowthUsed = ruleOne.bull.ok ? ruleOne.bull.inputs.growthRatePercentClamped : null;
+    const bullGrowthUsed = ruleOne.bull.ok
+      ? ruleOne.bull.inputs.growthRatePercentRaw
+      : (lynch.bull.ok ? lynch.bull.inputs.growthRatePercentRaw : null);
     if (bullGrowthInput && bullGrowthInput.value === '' && bullGrowthUsed !== null && bullGrowthUsed !== undefined) {
       bullGrowthInput.value = Number(Number(bullGrowthUsed).toFixed(2));
     }
@@ -696,7 +716,9 @@ async function handleSubmit(event, forceRefresh = false) {
       currentPrice: data.currentPrice,
       currency: data.currency,
       epsTtm: data.epsTtm,
-      epsOverride,
+      // No epsOverride key: the field is locked and handleSubmit never sends one, so a
+      // web-saved record always reflects the live TTM EPS. Legacy/CLI records may still carry
+      // epsOverride, which renderHistoryTable continues to honour when displaying them.
       years,
 
       base: {
@@ -712,7 +734,12 @@ async function handleSubmit(event, forceRefresh = false) {
       // back, which reflect exactly what was sent in the request. mosPercent is the single
       // shared value from the top row -- there is no separate bear/bull MoS.
       bear: {
-        growthRatePercent: ruleOne.bear.ok ? (ruleOne.bear.inputs.growthRatePercentClamped ?? null) : null,
+        // Raw (unclamped), matching base's own save above (effectiveGrowth) -- saving the
+        // clamped value here would mean reloading this record later re-populates the input
+        // with the clamp boundary instead of the growth that actually produced this result.
+        growthRatePercent: ruleOne.bear.ok
+          ? (ruleOne.bear.inputs.growthRatePercentRaw ?? null)
+          : (lynch.bear.ok ? (lynch.bear.inputs.growthRatePercentRaw ?? null) : null),
         exitPeMultiple: bearExitPeMultiple,
         requiredReturnPercent: bearRequiredReturnPercent,
         mosPercent: mosPercent,
@@ -720,7 +747,9 @@ async function handleSubmit(event, forceRefresh = false) {
         ruleOneFairValue: ruleOne.bear.ok ? ruleOne.bear.fairValue : null,
       },
       bull: {
-        growthRatePercent: ruleOne.bull.ok ? (ruleOne.bull.inputs.growthRatePercentClamped ?? null) : null,
+        growthRatePercent: ruleOne.bull.ok
+          ? (ruleOne.bull.inputs.growthRatePercentRaw ?? null)
+          : (lynch.bull.ok ? (lynch.bull.inputs.growthRatePercentRaw ?? null) : null),
         exitPeMultiple: bullExitPeMultiple,
         requiredReturnPercent: bullRequiredReturnPercent,
         mosPercent: mosPercent,

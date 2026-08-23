@@ -1,6 +1,6 @@
 # Current Work — Eps_Evaluation
 
-**Updated:** 2026-08-22
+**Updated:** 2026-08-23
 
 ## Where things stand
 
@@ -313,3 +313,35 @@ changes and is faster when applicable.
     (not 10/15), then saved to history and confirmed the persisted JSON record carries the same
     custom bear values, and confirmed `npx tsx src/cli/index.ts -H AAPL` renders that
     same web-saved record correctly alongside pre-existing legacy-shaped records with no crash.
+- 2026-08-23 — Ran `/code-review` on the uncommitted `app.js`/`app.test.js` changes (EPS field
+  locked as display-only; bear/bull growth backfill + history-save switched from
+  `growthRatePercentClamped` to `growthRatePercentRaw`). The change itself is correct — the
+  raw-vs-clamped switch fixes a real asymmetry, since base saves `effectiveGrowth` (pre-clamp)
+  while bear/bull were saving the clamped value, which would pin those scenarios to the
+  clamp boundary (25/-5) on the next submit. 3 minor findings, none blocking: (1) the history
+  "Load" button at `app.js:499` still writes `item.epsOverride` into the now-locked EPS field
+  (harmless — `handleSubmit` overwrites it with `data.epsTtm` — but dead-by-intent, since no
+  web-saved record can carry `epsOverride` anymore); (2) `currentValuation.epsOverride` at
+  `app.js:714` is now permanently `undefined` and silently dropped by `JSON.stringify`, so the
+  property is assembled as if it still carried meaning — cleaner to remove it; (3) the new
+  lynch-fallback comment at `app.js:727` reads as a broad safety net but only actually fires
+  for ruleOne-exclusive errors (`INVALID_EXIT_PE` etc.), since both methods share identical
+  EPS/growth guards — the branch is correct, the comment oversells its scope.
+  **All three fixed in the same pass:** the Load handler no longer touches the locked EPS
+  field; `epsOverride` is gone from both the POST body and `currentValuation` (the local
+  `const epsOverride = undefined` indirection removed entirely — an absent field already means
+  "use data.epsTtm" server-side), with `renderHistoryTable`'s legacy-record display path left
+  untouched; and the fallback comment now states its actual (narrow) scope. Added a regression
+  test for the Load path that asserts **synchronously**, before the `handleSubmit()` the
+  handler kicks off can repaint the field — an assertion after the await passes either way,
+  which is exactly why the old behaviour looked harmless. Confirmed the test genuinely fails
+  when the fix is reverted, then restored. 138/138 tests (was 137, +1), lint clean, build
+  clean, all via the SSH host.
+- 2026-08-23 — Re-confirmed the `Z:`-drive test blocker and documented the SSH workaround in
+  `CLAUDE.md` (Commands + Gotchas), which previously claimed `npm test` worked unqualified.
+  Note for future sessions: the repo **is** present on the SSH host at
+  `~/shared_disk/Cursor_apps/Eps_Evaluation` (same filesystem `Z:` mounts) — there is nothing
+  to copy, just `cd` and run. A first attempt this session wasted a tarball+scp round-trip
+  after a too-shallow `ls ~/Eps_Evaluation ~/*Eps*` missed the nested path. Also confirmed the
+  LAN address `192.168.1.224` is NOT reachable on port 22 from this machine (times out); only
+  the Tailscale address `100.76.172.46` works. Suite verified in place: 137/137 across 15 files.
