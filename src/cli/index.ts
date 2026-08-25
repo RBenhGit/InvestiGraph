@@ -4,12 +4,7 @@ import type { StockDataError } from '../data/twelvedata/types';
 import { calculateLynchValue } from '../valuation/lynch';
 import { calculateRuleOneValue } from '../valuation/ruleOne';
 import { formatOutput } from './formatOutput';
-import {
-  saveValuation,
-  getHistory,
-  formatHistoryError,
-  type SavedValuation,
-} from '../history';
+import { saveValuation, getHistory, formatHistoryError, type SavedValuation } from '../history';
 
 // Assumption defaults for Method B (Rule #1) — live here, not in the valuation layer, so the
 // core function stays pure and takes every input explicitly.
@@ -40,9 +35,15 @@ export function formatHistoryOutput(records: SavedValuation[]): string {
     return 'No saved valuations found.';
   }
   const lines: string[] = [];
-  lines.push('----------------------------------------------------------------------------------------------------------------------------------');
-  lines.push('Date                 Ticker   Price        Lynch FV   Rule #1 FV  Growth %   Assumptions            Notes');
-  lines.push('----------------------------------------------------------------------------------------------------------------------------------');
+  lines.push(
+    '----------------------------------------------------------------------------------------------------------------------------------',
+  );
+  lines.push(
+    'Date                 Ticker   Price        Lynch FV   Rule #1 FV  Growth %   Assumptions            Notes',
+  );
+  lines.push(
+    '----------------------------------------------------------------------------------------------------------------------------------',
+  );
   for (const r of records) {
     // Web-saved records only populate base/bear/bull (added for the 3-scenario feature); the
     // CLI's own --save still writes the legacy flat fields. Read whichever shape is present so
@@ -50,19 +51,39 @@ export function formatHistoryOutput(records: SavedValuation[]): string {
     const scenario = r.base ?? r;
     const d = r.evaluatedAt ? r.evaluatedAt.replace('T', ' ').slice(0, 16) : 'n/a';
     const ticker = r.ticker.padEnd(8);
-    const price = `${r.currentPrice.toFixed(2)} ${r.currency || 'USD'}`.padEnd(12);
+    // readHistoryFile only guarantees a string `ticker` on a hand-edited history.json -- a
+    // record missing currentPrice (or any other field) still passes that filter, so this must
+    // not assume currentPrice is a number the way the rest of this function already treats every
+    // other optional field as possibly absent.
+    const price = (
+      typeof r.currentPrice === 'number'
+        ? `${r.currentPrice.toFixed(2)} ${r.currency || 'USD'}`
+        : 'n/a'
+    ).padEnd(12);
     const lynchFv = scenario.lynchFairValue;
     const ruleOneFv = scenario.ruleOneFairValue;
     const growthPct = scenario.growthRatePercent;
-    const lynch = (lynchFv !== null && lynchFv !== undefined ? lynchFv.toFixed(2) : 'n/a').padEnd(10);
-    const ruleOne = (ruleOneFv !== null && ruleOneFv !== undefined ? ruleOneFv.toFixed(2) : 'n/a').padEnd(11);
-    const growth = `${growthPct !== null && growthPct !== undefined ? growthPct.toFixed(2) : 'n/a'}%`.padEnd(10);
+    const lynch = (lynchFv !== null && lynchFv !== undefined ? lynchFv.toFixed(2) : 'n/a').padEnd(
+      10,
+    );
+    const ruleOne = (
+      ruleOneFv !== null && ruleOneFv !== undefined ? ruleOneFv.toFixed(2) : 'n/a'
+    ).padEnd(11);
+    const growth =
+      `${growthPct !== null && growthPct !== undefined ? growthPct.toFixed(2) : 'n/a'}%`.padEnd(10);
     const mosStr = scenario.mosPercent ? ` MoS:${scenario.mosPercent}%` : '';
-    const assump = `PE:${scenario.exitPeMultiple ?? 'n/a'} Req:${scenario.requiredReturnPercent ?? 'n/a'}% ${r.years}y${mosStr}`.padEnd(22);
+    const assump =
+      `PE:${scenario.exitPeMultiple ?? 'n/a'} Req:${scenario.requiredReturnPercent ?? 'n/a'}% ${r.years}y${mosStr}`.padEnd(
+        22,
+      );
     const notes = r.notes ? r.notes : '';
-    lines.push(`${d.padEnd(20)} ${ticker} ${price} ${lynch} ${ruleOne} ${growth} ${assump} ${notes}`);
+    lines.push(
+      `${d.padEnd(20)} ${ticker} ${price} ${lynch} ${ruleOne} ${growth} ${assump} ${notes}`,
+    );
   }
-  lines.push('----------------------------------------------------------------------------------------------------------------------------------');
+  lines.push(
+    '----------------------------------------------------------------------------------------------------------------------------------',
+  );
   return lines.join('\n');
 }
 
@@ -129,7 +150,9 @@ async function run(
     if (saveResult.ok) {
       console.log('\n✓ Valuation saved to history.');
     } else {
-      console.error(`\nFailed to save valuation to history: ${formatHistoryError(saveResult.error)}`);
+      console.error(
+        `\nFailed to save valuation to history: ${formatHistoryError(saveResult.error)}`,
+      );
     }
   }
 }
@@ -155,9 +178,7 @@ program
     ) => {
       if (options?.history !== undefined) {
         const filter =
-          typeof options.history === 'string'
-            ? options.history
-            : tickerArg || undefined;
+          typeof options.history === 'string' ? options.history : tickerArg || undefined;
         await showHistory(filter);
         return;
       }

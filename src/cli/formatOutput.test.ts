@@ -16,6 +16,7 @@ const baseData: StockData = {
   historicalPe: { avg1y: 28.5, avg3y: null, avg5y: null },
   trailingPe: 29.79,
   providerReference: { trailingPe: 27.3, pegRatio: 2.1 },
+  staleTtmWarning: false,
   asOf: '2026-08-14T00:00:00.000Z',
 };
 
@@ -83,6 +84,24 @@ describe('formatOutput', () => {
     expect(output).toContain('n/a');
     expect(output).toContain('FAILED (MISSING_GROWTH_RATE)');
     expect(output).toContain('none available');
+  });
+
+  it('shows a stale-EPS warning when staleTtmWarning is true, and omits it otherwise', () => {
+    const lynchResult = {
+      ok: true as const,
+      fairValue: 160.5,
+      inputs: { epsTtm: 6.42, growthRatePercentRaw: 40, growthRatePercentClamped: 25 },
+    };
+    const ruleOneResult = { ok: false as const, error: 'INVALID_YEARS' as const };
+
+    const staleData: StockData = { ...baseData, staleTtmWarning: true };
+
+    const staleOutput = formatOutput(staleData, lynchResult, ruleOneResult);
+    const freshOutput = formatOutput(baseData, lynchResult, ruleOneResult);
+
+    expect(staleOutput).toContain('WARNING');
+    expect(staleOutput).toContain('may be stale');
+    expect(freshOutput).not.toContain('WARNING');
   });
 
   it('labels the growth source used', () => {

@@ -63,6 +63,11 @@ export function formatOutput(
   lines.push(`Ticker: ${data.ticker}`);
   lines.push(`Current price: ${fmt(data.currentPrice)} ${data.currency}`);
   lines.push(`EPS (TTM): ${fmt(data.epsTtm)}`);
+  if (data.staleTtmWarning) {
+    lines.push(
+      '  ⚠ WARNING: EPS (TTM) may be stale — it diverges >5% from the provider\'s own trailing P/E-implied EPS. This can happen when a ticker\'s income-statement data has not yet rolled in a recent earnings release.',
+    );
+  }
   lines.push('');
   lines.push(`Growth rate used: ${fmt(growthSource.value)}% (source: ${growthSource.label})`);
   if (inputsUsed) {

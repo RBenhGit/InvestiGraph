@@ -42,6 +42,10 @@ export interface StockData {
     trailingPe: number | null;
     pegRatio: number | null;
   };
+  // True when `trailingPe` (built from `epsTtm`) diverges >5% from `providerReference.trailingPe`
+  // — a signal that `income_statement`'s quarterly data is a stale quarter behind a real earnings
+  // release (see `detectStaleTtmEps` in normalize.ts). Not proof, just a flag for the UI/CLI.
+  staleTtmWarning: boolean;
   asOf: string;
 }
 

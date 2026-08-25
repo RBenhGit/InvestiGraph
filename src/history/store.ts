@@ -26,12 +26,28 @@ export async function readHistoryFile(filePath?: string): Promise<SavedValuation
     // property access downstream (`getHistory`'s ticker filter, and the web UI's history table,
     // which loses the whole render). Drop entries that cannot be records; a corrupt line should
     // cost its own row, not the entire history.
-    return parsed.filter(
+    const valid = parsed.filter(
       (item): item is SavedValuation =>
-        typeof item === 'object' && item !== null && typeof (item as SavedValuation).ticker === 'string',
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as SavedValuation).ticker === 'string',
     );
+    // A dropped entry here is gone for good the next time anything calls writeHistoryFile (the
+    // next unrelated save/delete persists the filtered array back to disk) -- silently turning
+    // "this row won't render" into permanent data loss. Not silent any more.
+    if (valid.length !== parsed.length) {
+      console.warn(
+        `history.json: dropped ${parsed.length - valid.length} malformed entr${parsed.length - valid.length === 1 ? 'y' : 'ies'} (missing/non-string ticker)`,
+      );
+    }
+    return valid;
   } catch (err: unknown) {
-    if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'ENOENT') {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code: string }).code === 'ENOENT'
+    ) {
       return [];
     }
     throw err;

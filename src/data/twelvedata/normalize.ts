@@ -159,3 +159,24 @@ export function calculateCagrPercent(
   const result = (Math.pow(epsLatest / epsPast, 1 / years) - 1) * 100;
   return Number.isFinite(result) ? result : null;
 }
+
+/**
+ * Flags a likely-stale `epsTtm`: the quarterly `income_statement` endpoint (which `epsTtm` is
+ * built from) has been observed lagging a real earnings release by 10+ days — e.g. CSCO's Q4
+ * FY2026 report on 2026-08-12 still wasn't reflected in `income_statement` 13 days later, while
+ * `statistics.trailing_pe` (a separate Twelve Data pipeline that updates faster) already implied
+ * the new quarter. Live-calibrated: two healthy (non-stale) cached tickers showed 1.5% (AAPL) and
+ * 0.04% (MSFT) divergence between computed and provider trailing P/E, while the actual stale CSCO
+ * case showed 7.3%. 5% sits between ordinary noise and that real gap — an earlier 15% threshold
+ * was checked against this same CSCO case live and did NOT fire, which is why this was
+ * recalibrated down rather than left at a guessed value.
+ */
+export function detectStaleTtmEps(
+  computedTrailingPe: number | null,
+  providerTrailingPe: number | null,
+): boolean {
+  if (computedTrailingPe === null || providerTrailingPe === null) return false;
+  if (computedTrailingPe <= 0 || providerTrailingPe <= 0) return false;
+  const relativeDiff = Math.abs(computedTrailingPe - providerTrailingPe) / providerTrailingPe;
+  return relativeDiff > 0.05;
+}

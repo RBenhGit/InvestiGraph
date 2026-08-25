@@ -4,14 +4,10 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { fetchStockData } from '../data/twelvedata';
 import { fetchAnalystConsensus } from '../data/yahoo';
+import { safeTickerSegment } from '../data/cache';
 import { calculateLynchValue } from '../valuation/lynch';
 import { calculateRuleOneValue } from '../valuation/ruleOne';
-import {
-  saveValuation,
-  getHistory,
-  deleteValuation,
-  type SaveValuationInput,
-} from '../history';
+import { saveValuation, getHistory, deleteValuation, type SaveValuationInput } from '../history';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 3000/3001/3100 are already claimed by other projects on this machine (stock_vision, etc.) —
@@ -49,6 +45,22 @@ export function buildServer() {
   });
 
   fastify.post<{ Body: ValuateRequestBody }>('/api/valuate', async (request, reply) => {
+    // ValuateRequestBody is a TypeScript interface — compile-time only — so nothing stops a
+    // caller from POSTing no body at all, or a literal JSON `null`. Destructuring straight off
+    // request.body in that case threw ("Cannot destructure property 'ticker' of ... as it is
+    // undefined/null") before any of the guards below ever ran, surfacing as an unhandled 500.
+    const rawBody: unknown = request.body;
+    if (typeof rawBody !== 'object' || rawBody === null) {
+      return reply.status(400).send({
+        ok: false,
+        error: {
+          type: 'INSUFFICIENT_DATA',
+          ticker: '',
+          reason: 'request body is required and must be a JSON object',
+        },
+      });
+    }
+
     const {
       ticker,
       epsOverride,
@@ -64,13 +76,13 @@ export function buildServer() {
       bullExitPeMultiple,
       bullRequiredReturnPercent,
       forceRefresh,
-    } = request.body;
+    } = rawBody as ValuateRequestBody;
 
-    // ValuateRequestBody is a TypeScript interface — compile-time only — so nothing stops a
-    // caller from POSTing a missing/null/non-string ticker. Without this guard it reached
-    // fetchStockData and threw inside the data layer, surfacing as an unhandled 500 with raw
-    // internal text ("ticker.toUpperCase is not a function") instead of the typed
-    // { ok: false, error } shape every other failure path in this codebase returns.
+    // Same interface-is-compile-time-only gap: nothing stops a caller from POSTing a missing/
+    // null/non-string ticker. Without this guard it reached fetchStockData and threw inside the
+    // data layer, surfacing as an unhandled 500 with raw internal text ("ticker.toUpperCase is
+    // not a function") instead of the typed { ok: false, error } shape every other failure path
+    // in this codebase returns.
     if (typeof ticker !== 'string' || ticker.trim() === '') {
       return reply.status(400).send({
         ok: false,
@@ -82,13 +94,32 @@ export function buildServer() {
       });
     }
 
+    // safeTickerSegment is the exact same rule src/data/cache.ts uses to build cache filenames.
+    // Validating with it here — rather than just checking non-blank — guarantees any ticker that
+    // clears this boundary can also be cached; previously a ticker accepted here but rejected by
+    // the cache's stricter charset (e.g. containing a space) triggered a real live API call on
+    // every single request, with caching silently never engaging and nothing surfacing why. This
+    // also gives us the normalized (trimmed, upper-cased) form to use everywhere below instead
+    // of forwarding whatever whitespace/casing the caller happened to send.
+    const normalizedTicker = safeTickerSegment(ticker.trim());
+    if (normalizedTicker === null) {
+      return reply.status(400).send({
+        ok: false,
+        error: {
+          type: 'INSUFFICIENT_DATA',
+          ticker: ticker.trim(),
+          reason: 'ticker must contain only letters, digits, and . : - characters (1-20 chars)',
+        },
+      });
+    }
+
     // twelvedata is the required source — a failure there fails the whole request (see below).
     // yahoo (analyst consensus/price targets) is supplementary and independently fetched in
     // parallel: its failure must never take down a valuation that only needed twelvedata's
     // data, so it degrades to `null` rather than being awaited into the failure path.
     const [result, analystConsensusResult] = await Promise.all([
-      fetchStockData(ticker, { forceRefresh }),
-      fetchAnalystConsensus(ticker, { forceRefresh }).catch(() => null),
+      fetchStockData(normalizedTicker, { forceRefresh }),
+      fetchAnalystConsensus(normalizedTicker, { forceRefresh }).catch(() => null),
     ]);
 
     if (!result.ok) {
@@ -97,8 +128,9 @@ export function buildServer() {
     }
 
     const { data } = result;
-    const effectiveEps = (typeof epsOverride === 'number' && epsOverride > 0) ? epsOverride : data.epsTtm;
-    
+    const effectiveEps =
+      typeof epsOverride === 'number' && epsOverride > 0 ? epsOverride : data.epsTtm;
+
     let effectiveGrowth = typeof growthRatePercent === 'number' ? growthRatePercent : null;
 
     // Seed the growth rate automatically if not provided by the frontend. Must match the CLI's
@@ -131,11 +163,12 @@ export function buildServer() {
     // (e.g. an older client). Exit P/E and required return likewise come from the user's own
     // bear-row inputs — never hardcoded. MoS is shared across all three scenarios (a single
     // top-level value, no per-scenario override).
-    const bearGrowth = typeof bearGrowthRatePercent === 'number'
-      ? bearGrowthRatePercent
-      : (effectiveGrowth !== null
+    const bearGrowth =
+      typeof bearGrowthRatePercent === 'number'
+        ? bearGrowthRatePercent
+        : effectiveGrowth !== null
           ? Number((effectiveGrowth > 0 ? effectiveGrowth * 0.75 : effectiveGrowth - 3).toFixed(2))
-          : null);
+          : null;
     const lynchBear = calculateLynchValue(effectiveEps, bearGrowth);
     const ruleOneBear = calculateRuleOneValue(
       effectiveEps,
@@ -149,11 +182,12 @@ export function buildServer() {
     // Calculate bull scenario — same principle: growth defaults to deriving from the base
     // scenario (effectiveGrowth * 1.25) only when the frontend omits the field; exit P/E and
     // required return come from the user's bull-row inputs; MoS is the shared top-level value.
-    const bullGrowth = typeof bullGrowthRatePercent === 'number'
-      ? bullGrowthRatePercent
-      : (effectiveGrowth !== null
+    const bullGrowth =
+      typeof bullGrowthRatePercent === 'number'
+        ? bullGrowthRatePercent
+        : effectiveGrowth !== null
           ? Number((effectiveGrowth > 0 ? effectiveGrowth * 1.25 : effectiveGrowth + 3).toFixed(2))
-          : null);
+          : null;
     const lynchBull = calculateLynchValue(effectiveEps, bullGrowth);
     const ruleOneBull = calculateRuleOneValue(
       effectiveEps,
@@ -167,22 +201,32 @@ export function buildServer() {
     const analystConsensus =
       analystConsensusResult && analystConsensusResult.ok ? analystConsensusResult.data : null;
 
-    return reply.status(200).send({ 
-      ok: true, 
-      data, 
-      effectiveEps, 
+    return reply.status(200).send({
+      ok: true,
+      data,
+      effectiveEps,
       effectiveGrowth,
+      // The growth rate actually used for bear/bull, echoed back regardless of whether lynch/
+      // ruleOne succeeded for that scenario — same reasoning as effectiveGrowth above. Without
+      // this, the frontend had to reverse-engineer the value from lynch.bear.inputs/
+      // ruleOne.bear.inputs, which don't exist on a failed ValuationResult at all: if ruleOne
+      // fails for an unrelated reason (e.g. an emptied exit-P/E) while lynch simultaneously
+      // fails for a different unrelated reason (e.g. this same negative growth rate), neither
+      // result carries the number that was actually computed and used server-side, even though
+      // one really was.
+      bearGrowth,
+      bullGrowth,
       lynch: {
         base: lynchBase,
         bear: lynchBear,
         bull: lynchBull,
-      }, 
+      },
       ruleOne: {
         base: ruleOneBase,
         bear: ruleOneBear,
         bull: ruleOneBull,
-      }, 
-      analystConsensus 
+      },
+      analystConsensus,
     });
   });
 

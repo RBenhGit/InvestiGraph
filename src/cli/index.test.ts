@@ -3,13 +3,25 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('commander', () => {
   return {
     Command: class {
-      name() { return this; }
-      description() { return this; }
-      argument() { return this; }
-      option() { return this; }
-      action() { return this; }
-      parseAsync() { return Promise.resolve(); }
-    }
+      name() {
+        return this;
+      }
+      description() {
+        return this;
+      }
+      argument() {
+        return this;
+      }
+      option() {
+        return this;
+      }
+      action() {
+        return this;
+      }
+      parseAsync() {
+        return Promise.resolve();
+      }
+    },
   };
 });
 
@@ -24,40 +36,42 @@ describe('formatStockDataError', () => {
   });
 
   it('formats INSUFFICIENT_DATA error', () => {
-    const error: StockDataError = { 
-      type: 'INSUFFICIENT_DATA', 
-      ticker: 'XYZ', 
-      reason: 'Missing EPS' 
+    const error: StockDataError = {
+      type: 'INSUFFICIENT_DATA',
+      ticker: 'XYZ',
+      reason: 'Missing EPS',
     };
     expect(formatStockDataError(error)).toBe('Insufficient data for "XYZ": Missing EPS');
   });
 
   it('formats EMPTY_RESPONSE error', () => {
-    const error: StockDataError = { 
-      type: 'EMPTY_RESPONSE', 
-      ticker: 'XYZ', 
-      endpoint: 'quote' 
+    const error: StockDataError = {
+      type: 'EMPTY_RESPONSE',
+      ticker: 'XYZ',
+      endpoint: 'quote',
     };
     expect(formatStockDataError(error)).toBe('Empty response from "quote" for "XYZ".');
   });
 
   it('formats API_ERROR error', () => {
-    const error: StockDataError = { 
-      type: 'API_ERROR', 
-      ticker: 'XYZ', 
-      endpoint: 'statistics', 
-      message: 'Server down' 
+    const error: StockDataError = {
+      type: 'API_ERROR',
+      ticker: 'XYZ',
+      endpoint: 'statistics',
+      message: 'Server down',
     };
     expect(formatStockDataError(error)).toBe('API error from "statistics" for "XYZ": Server down');
   });
 
   it('formats INVALID_CURRENCY_UNIT error', () => {
-    const error: StockDataError = { 
-      type: 'INVALID_CURRENCY_UNIT', 
-      ticker: 'XYZ', 
-      detail: 'Mismatched currencies' 
+    const error: StockDataError = {
+      type: 'INVALID_CURRENCY_UNIT',
+      ticker: 'XYZ',
+      detail: 'Mismatched currencies',
     };
-    expect(formatStockDataError(error)).toBe('Invalid currency unit for "XYZ": Mismatched currencies');
+    expect(formatStockDataError(error)).toBe(
+      'Invalid currency unit for "XYZ": Mismatched currencies',
+    );
   });
 });
 
@@ -89,6 +103,21 @@ describe('formatHistoryOutput', () => {
     expect(output).toContain('156.00');
     expect(output).toContain('180.20');
     expect(output).toContain('12.00%');
+  });
+
+  it('renders a record missing currentPrice as n/a instead of throwing', () => {
+    // Regression: readHistoryFile's corruption filter only guarantees `ticker` is a string --
+    // a hand-edited history.json entry missing currentPrice (or any other field) still passes
+    // it. formatHistoryOutput previously called r.currentPrice.toFixed(2) unguarded, crashing
+    // the entire `-H` listing on this one incomplete record.
+    const records = [
+      { id: 'good-1', ticker: 'AAPL', evaluatedAt: '2026-08-01T00:00:00.000Z', years: 10 },
+    ] as unknown as SavedValuation[];
+
+    expect(() => formatHistoryOutput(records)).not.toThrow();
+    const output = formatHistoryOutput(records);
+    expect(output).toContain('AAPL');
+    expect(output).toContain('n/a');
   });
 
   it('formats history records with MoS and Notes included', () => {

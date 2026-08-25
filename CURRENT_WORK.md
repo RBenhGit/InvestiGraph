@@ -1,6 +1,6 @@
 # Current Work — Eps_Evaluation
 
-**Updated:** 2026-08-23
+**Updated:** 2026-08-25
 
 ## Where things stand
 
@@ -111,17 +111,17 @@ zero-price divisions. Line-by-line pass added three more:
    `null` (plus a `years > 0` guard against an `Infinity` exponent). This one was invisible over
    HTTP because `JSON.stringify` turns `NaN` into `null` — it only bit the selection logic.
 2. **Path traversal in the cache layer** (`cache.ts`). `ticker` was interpolated straight into
-   `path.join`, so `X/../../PWNED` resolved *above* the cache directory. `getCachedStockData`
-   runs *before* any network call in `fetchStockData`, so a caller-supplied ticker reached that
+   `path.join`, so `X/../../PWNED` resolved _above_ the cache directory. `getCachedStockData`
+   runs _before_ any network call in `fetchStockData`, so a caller-supplied ticker reached that
    read path on every lookup. Added `safeTickerSegment` (`^[A-Z0-9.:-]{1,20}$`, no `..`) at all
    four call sites; real punctuated tickers like `BRK.B` still work.
-3. **`priceToSales !== undefined`** (`app.js`) — the *exact* trap CLAUDE.md documents for the
+3. **`priceToSales !== undefined`** (`app.js`) — the _exact_ trap CLAUDE.md documents for the
    Financial Health header, surviving in a second spot. The field is `number | null` and never
    `undefined`, so the check was always true and rendered a permanent "P/S ratio (TTM): n/a"
    row for every ticker Yahoo has no P/S coverage for.
 
 4. **HTML injection via `recommendationKey`** (`app.js`) — the most serious bug found all day,
-   and found only on a *third* pass over a file already audited twice. `tableRow` assigned its
+   and found only on a _third_ pass over a file already audited twice. `tableRow` assigned its
    `value` straight to `innerHTML`, and one caller passes `recommendationKey`, a string that
    arrives verbatim from the Yahoo API. Verified in jsdom, not theorised: a payload of
    `<img src=x onerror=BOOM>` produced a real `<img>` element carrying a live `onerror`
@@ -168,7 +168,42 @@ null and the auto-seed runs correctly), and the CSS class inventory — every cl
 markup or JS has a rule except `panel-neutral` (`index.html:121`), which is cosmetic dead code,
 recorded not fixed.
 
+**Twelve Data's `income_statement` (quarterly) lags a real earnings release by at least ~10
+days — FIXED with a cross-check warning, not a root-cause fix (root cause is upstream, outside
+this app's control).** Found while independently verifying a user-reported CSCO EPS discrepancy
+(app showed 3.08, five other sources — Gemini, Qualtrim, Investing.com, Finviz, Seeking Alpha —
+all showed 3.33). Traced end-to-end against CSCO's own SEC filings: Cisco reported Q4 FY2026
+(GAAP EPS $0.97) via 8-K on 2026-08-12; 13 days later `income_statement` still returned the stale
+Q4 FY2025 quarter ($0.71) instead. Confirmed this is a genuine Twelve Data data-freshness gap, not
+a bug in `resolveTtmEps`'s arithmetic (re-verified by hand against SEC XBRL) and not fixable by a
+longer cache TTL (the *upstream* API itself was stale, not just this app's local cache) — live-
+checked two days later (2026-08-25) and `income_statement` was *still* returning the same stale
+quarter, while Twelve Data's own separate `statistics` endpoint (`trailing_pe`) and an independent
+`yahoo-finance2` query had both already rolled forward. Since the root cause is outside this
+codebase, fixed by adding a same-provider cross-check instead: `detectStaleTtmEps` (new,
+`normalize.ts`) compares the `epsTtm`-implied trailing P/E against `statistics.trailing_pe` (a
+faster-updating Twelve Data pipeline the app already fetched but only used as an inert reference
+figure) and flags `StockData.staleTtmWarning` when they diverge >5%. Threshold was live-calibrated,
+not guessed: two healthy cached tickers showed 1.5% (AAPL) and 0.04% (MSFT) divergence, while the
+real stale CSCO case showed 7.3% — an initial 15% guess was checked against the live CSCO case
+first and silently failed to fire, which is why it was recalibrated down to 5% rather than shipped
+unverified. Surfaced in both the CLI (`formatOutput.ts`, a `⚠ WARNING` line under `EPS (TTM)`) and
+the web UI (`app.js`, appended to the price-banner meta line with a `.stale-warning` CSS class).
+3 new tests in `twelvedata/index.test.ts` (fires >5%, silent ≤5%, silent when provider figure is
+missing) plus required-field fixes in 4 other test files that construct `StockData` mocks. 203/203
+tests (was 200, +3 new), lint clean, build clean. Live-verified three ways: CLI against real CSCO
+(warning appears) and real AAPL (no false positive); direct `POST /api/valuate` call
+(`"staleTtmWarning":true` in the raw JSON); and the actual browser UI, where the price-banner meta
+line read "CSCO · EPS (TTM) 3.08 · ... · ⚠ EPS (TTM) may be stale (diverges from provider trailing
+P/E — check for a recent earnings release)". Note: this only catches the case where Twelve Data's
+own `statistics` pipeline is ahead of its `income_statement` pipeline (true for CSCO, not
+guaranteed for every stale-data cause) — a future session could still pursue a second, independent
+source (`yahoo-finance2`'s `trailingEps`, confirmed live to have the fresh CSCO quarter via its
+`mostRecentQuarter` field) as a stronger cross-check or an actual replacement `epsTtm` source when
+Twelve Data is flagged stale, rather than only a warning.
+
 **Known, accepted, not fixed** (low severity, documented rather than changed):
+
 - `saveValuation`'s id is `Date.now()-TICKER`; two saves of the same ticker inside one
   millisecond collide, and the existing record is silently replaced.
 - `getHistory` sorts by `new Date(evaluatedAt)`; a hand-edited record with a missing/garbage
@@ -182,15 +217,15 @@ recorded not fixed.
 `handleSaveValuation`, and the `fmt`/`fmtPercent`/`formatDate` helpers all now have direct
 tests. 184 tests total (was 138 at the start of the day).
 
-
 **This machine's `Z:` drive (Windows) is an SSHFS mount of the same filesystem this project
 lives on, and its Windows driver returns `EPERM` instead of the POSIX-standard `EEXIST` when
 something calls `mkdir` on a directory that already exists** — breaks `npm install`/`test`/
 `lint`/`run web` and Claude Code's own file-write tooling (the `Edit` tool specifically; `Write`
-+ plain shell `cp`/`sed` work fine) from that path. On top of that underlying bug, the `Z:`
-mount can also drop out entirely under load (observed across multiple sessions, likely a side
-effect of opening/closing several SSH tunnels back-to-back) — when that happens even `cd` into
-the project fails until the mount reconnects on its own or is remounted.
+
+- plain shell `cp`/`sed` work fine) from that path. On top of that underlying bug, the `Z:`
+  mount can also drop out entirely under load (observed across multiple sessions, likely a side
+  effect of opening/closing several SSH tunnels back-to-back) — when that happens even `cd` into
+  the project fails until the mount reconnects on its own or is remounted.
 
 **Workaround that resolved it this session:** SSH directly into the host instead of going
 through the Windows SSHFS mount (`ssh aviv@100.76.172.46`, key-based, then
@@ -209,11 +244,11 @@ changes and is faster when applicable.
 1. The implementation is otherwise complete: the app covers the EPS×multiple valuation flow with
    two independent data sources (Twelve Data fundamentals + Yahoo analyst consensus) and a
    hierarchy-aware web UI.
-3. ~~`npm audit` reports 8 known vulnerabilities~~ — **resolved.** Re-checked 2026-08-23:
+2. ~~`npm audit` reports 8 known vulnerabilities~~ — **resolved.** Re-checked 2026-08-23:
    `npm audit` now reports 0 vulnerabilities (fixed by the 2026-08-16 `npm audit fix --force`
    upgrade of fastify/@fastify/static/vitest). Kept here only so the stale claim isn't
    re-flagged by a future session.
-4. ~~Open bugs from the 2026-08-23 audit~~ — both fixed, see "Known problems" above. What
+3. ~~Open bugs from the 2026-08-23 audit~~ — both fixed, see "Known problems" above. What
    remains is the `app.js` coverage gap listed there, not a known defect.
 
 ## Log
@@ -332,14 +367,14 @@ changes and is faster when applicable.
   `ruleOf40` in `src/data/yahoo/`) at user request. `beta`/`priceToSales` are direct pass-
   through from Yahoo's `summaryDetail` module, no local math, correct field mapping (live-
   verified: AAPL beta 1.09/P-S 9.65, NVDA beta 2.22/P-S 20.57 — both sane). `ruleOf40 =
-  (revenueGrowth + ebitdaMargins) * 100`: initially looked suspicious (NVDA showed 150.5%) but
+(revenueGrowth + ebitdaMargins) * 100`: initially looked suspicious (NVDA showed 150.5%) but
   hand-verified against Yahoo's raw fields (revenueGrowth 0.852, ebitdaMargins 0.65294 — both
   already fractions) confirms the arithmetic and the result is a real, correct Rule of 40 score
   for a company with NVDA's actual growth/margin profile; AAPL's 52.4% is likewise sane. The
   null-guard correctly treats a genuine `0` in either field as real (not the falsy-zero bug
   this codebase specifically guards against elsewhere). Found and fixed one real bug:
   `app.js`'s "Financial Health" section-header check used `beta !== undefined || ruleOf40 !==
-  undefined`, but both fields are typed `number | null` and never actually `undefined` — so the
+undefined`, but both fields are typed `number | null` and never actually `undefined` — so the
   header rendered even when both were genuinely `null`, producing an empty section for any
   ticker Yahoo has no financial-health coverage for. Fixed to check `!== null` (matching the
   row-level guards on the same lines already). Added 10 new tests (0 existed before for any of
@@ -493,3 +528,85 @@ changes and is faster when applicable.
   NEGATIVE_OR_ZERO_EPS, and that no cached record carries a non-finite number. Per user
   decision, chose the error over clamping to 0 (a $0 fair value still reads as a real
   valuation). 192/192 tests, lint clean, build clean.
+- 2026-08-23 — Ran `/code-review max` (deep, line-by-line, fork-run) on the uncommitted
+  `fix/locked-eps-raw-growth` diff (the branch's own 7 commits vs. `main`; the other ~38 files
+  git showed as "modified" were pure CRLF/file-mode noise with zero real content diff, excluded
+  from scope). Found 14 issues; the two most severe were live-verified crashes, both ironic in
+  the same way: the diff's own stated purpose was to close exactly these failure classes, and
+  both survived because the diff's own new tests couldn't reach the real failure path. (1)
+  `POST /api/valuate` destructured `request.body` _before_ the new ticker-validity guard ran, so
+  a bodyless POST or a literal JSON `null` body still threw an unhandled 500 -- none of the new
+  tests sent a body-less/null request, only well-formed objects with a bad `ticker` field. (2)
+  `readHistoryFile`'s new corruption filter only checks that `ticker` is a string; a record
+  missing `currentPrice` passed it but crashed the CLI's `formatHistoryOutput` at an unguarded
+  `r.currentPrice.toFixed(2)` -- the exact "one corrupt entry loses the whole listing" bug this
+  diff claimed to fix, via a narrower malformed shape than the tests covered (the web UI was
+  unaffected, since `renderHistoryTable` already routes through the null-safe `fmt()`).
+  User asked to fix all 14. Fixed in this pass (test-first per policy, all verified live in
+  addition to the new/updated unit tests):
+  - `server.ts`: guards `request.body` before destructuring (typed 400, not a raw 500, for a
+    missing/null body); the ticker guard now normalizes (trim + uppercase) and validates format
+    via `cache.ts`'s newly-exported `safeTickerSegment` -- the exact same rule the cache uses to
+    build filenames, so a ticker that clears this boundary can never silently skip caching the
+    way a space-containing ticker previously could; `fetchStockData`/`fetchAnalystConsensus` now
+    receive the normalized ticker, not whatever whitespace/casing the caller sent.
+  - `server.ts` + `app.js`: the server now echoes `bearGrowth`/`bullGrowth` (the value actually
+    used for those scenarios) in the response, unconditionally -- same pattern as the existing
+    `effectiveGrowth`. This fixes a real bug the frontend had no way to fix on its own: when
+    ruleOne fails for an unrelated reason (e.g. an emptied exit-P/E) _and_ lynch simultaneously
+    fails for a different unrelated reason (that same growth being negative), neither
+    `ValuationResult` carries an `inputs` field to recover the number from, even though a real
+    value was computed and used server-side. Collapsed 4 near-identical duplicated fallback
+    expressions in `app.js` down to reading `body.bearGrowth`/`body.bullGrowth` directly.
+  - `cli/index.ts`: `formatHistoryOutput` no longer assumes `currentPrice` is a number, matching
+    how every other optional field in that function is already treated.
+  - `cache.ts`: exported `safeTickerSegment` (see above) and removed a redundant `!upper.includes('..')`
+    check the charset regex already made impossible (no `/` is ever accepted, so a literal `..`
+    can only ever become the harmless filename `twelvedata_..json`).
+  - `history/store.ts`: a dropped malformed entry now logs a `console.warn` -- it was silently
+    and permanently erased from history.json on the next unrelated save/delete's read-modify-
+    write, with nothing surfacing that a row had been lost.
+  - `app.js`: extracted a shared `isValidPrice()` predicate (`renderPriceDelta` and
+    `priceTargetValue` had duplicated, inverted copies of the same zero-price guard); `setLoading`
+    now reuses the existing module-level `refreshBtn` binding instead of a second
+    `getElementById('refresh-btn')` call; added the missing `fetchHistory` response-sequencing
+    guard (`latestHistoryRequestId`), the same race class `latestValuateRequestId` already guards
+    against for `/api/valuate`, previously left open in the history ticker filter.
+  - Test fixture gap closed: `app.test.js`'s DOM fixture never defined `#refresh-btn`, so the
+    "disable Refresh Live while loading" mechanism above had zero coverage -- deleting it would
+    not have failed any test, including the concurrent-requests race test. Added the element and
+    a regression test.
+  - Left unchanged, by design: the `NEGATIVE_GROWTH_RATE` guard stays inline in
+    `calculateLynchValue` rather than moving to a shared validator -- only one caller needs it
+    today, and CLAUDE.md's own simplicity principle ("no abstraction until variation is real")
+    argues against extracting a home for it before a second EPS×growth method exists.
+    Verified: 200/200 tests (was 192, +8 new), lint clean, build clean, all via the SSH host. Two
+    headline fixes additionally confirmed live (not just via the mocked test suite): a real running
+    server now returns typed 400s for a bodyless/null-body POST and for a `/../`-containing ticker
+    instead of a raw 500; a hand-written `history.json` entry missing `currentPrice` now renders as
+    `n/a` in `npx tsx src/cli/index.ts -H` instead of crashing the entire listing.
+- 2026-08-25 — User reported CSCO's EPS TTM didn't match a site they trust (3.33 vs. the app's
+  3.08, a ~10% gap) and asked for it to be verified by calculation, not assumption. Extensive
+  live investigation (SEC EDGAR XBRL + 8-K/10-Q/press-release cross-checks, not guesswork) across
+  five independent third-party sources (Gemini, Qualtrim, Investing.com, Finviz, Seeking Alpha —
+  all converging on 3.33) traced the root cause to real data staleness, not a methodology
+  difference (GAAP vs. non-GAAP was the initial hypothesis and was ruled out): Cisco filed Q4
+  FY2026 results (GAAP EPS $0.97) on 2026-08-12, but the app's Twelve Data-sourced cache, refreshed
+  2026-08-23, still rolled in the now-superseded Q4 FY2025 quarter ($0.71) instead. Recorded as a
+  new "Known problems" entry above (Twelve Data quarterly-earnings staleness, no detection in
+  `resolveTtmEps`). No code changed this session — investigation and documentation only.
+- 2026-08-25 (later same day) — User asked to verify the Twelve Data staleness claim more
+  rigorously before trusting it, and to check whether yfinance/Alpha Vantage could serve as a
+  cross-check. Re-confirmed live (not just the earlier snapshot): `income_statement` was *still*
+  stale two days on; found a same-provider proof the earlier investigation missed — Twelve Data's
+  own `statistics.trailing_pe` had already updated while `income_statement` had not, meaning the
+  two pipelines inside Twelve Data itself disagree. Also queried `yahoo-finance2` live: its
+  `trailingEps` (3.31) and `mostRecentQuarter` (2026-07-25, the exact stale quarter) confirmed Yahoo
+  was current. Alpha Vantage's `demo` key doesn't support CSCO (confirmed live, would need the
+  user's own registered key). Implemented the cross-check-warning fix described in "Known
+  problems" above: `detectStaleTtmEps` in `normalize.ts`, `staleTtmWarning` on `StockData`, CLI
+  and web UI surfacing. First attempt used a guessed 15% threshold; live-testing it against the
+  real CSCO case immediately showed it doesn't fire (actual divergence was 7.3%), so recalibrated
+  to 5% using two known-healthy tickers (AAPL 1.5%, MSFT 0.04%) as the noise floor before
+  re-verifying live. 203/203 tests (was 200, +3), lint clean, build clean, verified live via CLI
+  (both a firing and a non-firing real ticker), a direct API call, and the browser UI.

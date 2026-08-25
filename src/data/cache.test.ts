@@ -47,14 +47,25 @@ describe('cache layer', () => {
   it('refuses to write a cache file outside the cache directory', async () => {
     const outsideDir = path.dirname(tempDir);
     const escapeName = path.basename(tempDir) + '/../ESCAPED';
+    const escapedPath = path.join(outsideDir, 'twelvedata_ESCAPED.json');
 
-    await saveCachedStockData(escapeName, { ticker: 'X', epsTtm: 1 } as unknown as StockData, tempDir);
+    try {
+      await saveCachedStockData(
+        escapeName,
+        { ticker: 'X', epsTtm: 1 } as unknown as StockData,
+        tempDir,
+      );
 
-    const escaped = await fs
-      .readFile(path.join(outsideDir, 'twelvedata_ESCAPED.json'), 'utf8')
-      .then(() => true)
-      .catch(() => false);
-    expect(escaped).toBe(false);
+      const escaped = await fs
+        .readFile(escapedPath, 'utf8')
+        .then(() => true)
+        .catch(() => false);
+      expect(escaped).toBe(false);
+    } finally {
+      // If safeTickerSegment ever regresses, this test must still fail without leaking a stray
+      // file into the OS temp directory (outside the tempDir this suite's own afterEach cleans).
+      await fs.rm(escapedPath, { force: true }).catch(() => {});
+    }
   });
 
   it('still accepts the punctuation real tickers contain', async () => {
@@ -80,6 +91,7 @@ describe('cache layer', () => {
       historicalPe: { avg1y: 25, avg3y: 26, avg5y: 27 },
       trailingPe: 27.7,
       providerReference: { trailingPe: 27.7, pegRatio: 2.1 },
+      staleTtmWarning: false,
       asOf: '2026-08-19T00:00:00.000Z',
     };
 

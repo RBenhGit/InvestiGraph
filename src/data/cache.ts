@@ -16,12 +16,19 @@ const DEFAULT_CACHE_DIR = path.resolve(PROJECT_ROOT, 'cache');
  *
  * Without this, `path.join(dir, 'twelvedata_' + 'X/../../PWNED' + '.json')` resolves ABOVE the
  * cache directory, and `getCachedStockData` runs before any network call in `fetchStockData`,
- * so a caller-supplied ticker reaches this read path on every single lookup.
+ * so a caller-supplied ticker reaches this read path on every single lookup. (The regex alone
+ * already rules out `/`, so no string it accepts can form a traversal segment — a literal `..`
+ * just becomes the harmless filename `twelvedata_..json`, no separate check needed.)
+ *
+ * Exported so `src/web/server.ts` can validate a ticker at the API boundary using the exact same
+ * rule this module uses for filenames — otherwise a ticker that passes a looser boundary check
+ * (e.g. any non-blank string) but fails this one silently disables caching for it, with nothing
+ * surfacing the mismatch.
  */
-function safeTickerSegment(ticker: string): string | null {
+export function safeTickerSegment(ticker: string): string | null {
   if (typeof ticker !== 'string') return null;
   const upper = ticker.toUpperCase();
-  return /^[A-Z0-9.:-]{1,20}$/.test(upper) && !upper.includes('..') ? upper : null;
+  return /^[A-Z0-9.:-]{1,20}$/.test(upper) ? upper : null;
 }
 
 export function resolveCacheDir(customDir?: string): string {

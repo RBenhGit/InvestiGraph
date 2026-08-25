@@ -4,6 +4,7 @@
 const tickerInput = document.getElementById('ticker-input');
 const epsInput = document.getElementById('eps-input');
 const goBtn = document.getElementById('go-btn');
+const refreshBtn = document.getElementById('refresh-btn');
 const growthInput = document.getElementById('growth-input');
 const exitPeInput = document.getElementById('exit-pe-input');
 const requiredReturnInput = document.getElementById('required-return-input');
@@ -45,7 +46,11 @@ let currentValuation = null;
 // the newest before touching anything.
 let latestValuateRequestId = 0;
 
-
+// Same race, different endpoint: fetchHistory is called on every keystroke in the history
+// ticker filter (plus on save/delete/refresh), and nothing sequenced those responses either --
+// an earlier filter request resolving after a later one repaints the table with stale, wrong-
+// filter rows.
+let latestHistoryRequestId = 0;
 
 /** Mirrors cli/index.ts's formatStockDataError, for display purposes only. */
 function formatStockDataError(error) {
@@ -75,6 +80,14 @@ function fmtPercent(value) {
   return value === null || value === undefined ? 'n/a' : `${Number(value).toFixed(2)}%`;
 }
 
+/** A usable divisor for a percentage delta: not null/undefined/NaN, and strictly positive.
+ * parseNumber treats a real 0 as a value (not missing) and fetchStockData only rejects null, so
+ * a "0.00" close price can reach here and would render Infinity as "+Infinity%" if divided into.
+ * Shared by renderPriceDelta and priceTargetValue -- both hit the exact same zero-price bug. */
+function isValidPrice(price) {
+  return price !== null && price !== undefined && !Number.isNaN(price) && price > 0;
+}
+
 function formatDate(isoString) {
   if (!isoString) return 'n/a';
   try {
@@ -90,8 +103,7 @@ function setLoading(isLoading) {
   // Refresh Live triggers the same request as Go, so it has to be disabled alongside it --
   // leaving it live is what let two lookups overlap in the first place. The requestId guard in
   // handleSubmit still backstops any race this doesn't prevent (e.g. Enter in the ticker field).
-  const refreshBtnEl = document.getElementById('refresh-btn');
-  if (refreshBtnEl) refreshBtnEl.disabled = isLoading;
+  if (refreshBtn) refreshBtn.disabled = isLoading;
   if (result) result.style.opacity = isLoading ? '0.5' : '1';
 }
 
@@ -119,13 +131,12 @@ function renderPriceDelta(label, fairValue, currentPrice, dotColorVar) {
   const valueDiv = document.createElement('div');
   valueDiv.className = 'price-delta-value';
 
-  // currentPrice must be a usable divisor: parseNumber treats a real 0 as a value (not
-  // missing) and fetchStockData only rejects null, so a "0.00" close price can reach here and
-  // would render Infinity as a "+Infinity%" upside. Guard the denominator, not just fairValue.
-  const priceUsable =
-    currentPrice !== null && currentPrice !== undefined && !Number.isNaN(currentPrice) && currentPrice > 0;
-
-  if (fairValue === null || fairValue === undefined || Number.isNaN(fairValue) || !priceUsable) {
+  if (
+    fairValue === null ||
+    fairValue === undefined ||
+    Number.isNaN(fairValue) ||
+    !isValidPrice(currentPrice)
+  ) {
     valueDiv.textContent = 'n/a';
   } else {
     const diffPercent = (fairValue / currentPrice - 1) * 100;
@@ -140,12 +151,26 @@ function renderPriceDelta(label, fairValue, currentPrice, dotColorVar) {
 function renderPriceBanner(data, lynch, ruleOne) {
   if (!priceValueEl || !priceMetaEl || !priceDeltasEl) return;
   priceValueEl.textContent = `${fmt(data.currentPrice)} ${data.currency}`;
-  priceMetaEl.textContent = `${data.ticker} · EPS (TTM) ${fmt(data.epsTtm)} · as of ${data.asOf}`;
+  const staleNote = data.staleTtmWarning
+    ? ' · ⚠ EPS (TTM) may be stale (diverges from provider trailing P/E — check for a recent earnings release)'
+    : '';
+  priceMetaEl.textContent = `${data.ticker} · EPS (TTM) ${fmt(data.epsTtm)} · as of ${data.asOf}${staleNote}`;
+  if (priceMetaEl) priceMetaEl.classList.toggle('stale-warning', Boolean(data.staleTtmWarning));
 
   priceDeltasEl.innerHTML = '';
   priceDeltasEl.append(
-    renderPriceDelta('Peter Lynch fair value', lynch.ok ? lynch.fairValue : null, data.currentPrice, '--accent-a'),
-    renderPriceDelta('Rule #1 fair value', ruleOne.ok ? ruleOne.fairValue : null, data.currentPrice, '--accent-b'),
+    renderPriceDelta(
+      'Peter Lynch fair value',
+      lynch.ok ? lynch.fairValue : null,
+      data.currentPrice,
+      '--accent-a',
+    ),
+    renderPriceDelta(
+      'Rule #1 fair value',
+      ruleOne.ok ? ruleOne.fairValue : null,
+      data.currentPrice,
+      '--accent-b',
+    ),
   );
 }
 
@@ -214,12 +239,12 @@ function renderGrowthTable(growth, growthUsed) {
 function renderMultiplesTable(data, effectiveGrowth, effectiveEps, analystConsensus) {
   if (!multiplesTableEl) return;
   multiplesTableEl.innerHTML = '';
-  
+
   // Calculate trailing P/E dynamically based on the effective EPS
   const currentPrice = data.currentPrice;
-  const epsToUse = (effectiveEps && effectiveEps > 0) ? effectiveEps : data.epsTtm;
-  const trailingPe = (epsToUse && epsToUse > 0) ? (currentPrice / epsToUse) : null;
-  
+  const epsToUse = effectiveEps && effectiveEps > 0 ? effectiveEps : data.epsTtm;
+  const trailingPe = epsToUse && epsToUse > 0 ? currentPrice / epsToUse : null;
+
   // Calculate local PEG instead of relying on provider's unreliable metric
   let pegRatio = null;
   if (trailingPe !== null && effectiveGrowth !== null && effectiveGrowth > 0) {
@@ -228,7 +253,7 @@ function renderMultiplesTable(data, effectiveGrowth, effectiveEps, analystConsen
 
   let pegFormatted = fmt(pegRatio);
   if (pegRatio !== null) {
-    const pegClass = pegRatio <= 1.0 ? 'good' : (pegRatio <= 1.5 ? 'warning' : 'bad');
+    const pegClass = pegRatio <= 1.0 ? 'good' : pegRatio <= 1.5 ? 'warning' : 'bad';
     pegFormatted = `<span class="health-badge ${pegClass}">${fmt(pegRatio)}</span>`;
   }
 
@@ -244,10 +269,12 @@ function renderMultiplesTable(data, effectiveGrowth, effectiveEps, analystConsen
   // priceToSales is typed `number | null` and is never `undefined`, so a `!== undefined`
   // check is always true and rendered a permanent "P/S ratio (TTM): n/a" row for every
   // ticker Yahoo has no P/S coverage for. Same trap as the Financial Health header below.
-  if (analystConsensus && analystConsensus.priceToSales !== null && analystConsensus.priceToSales !== undefined) {
-    multiplesTableEl.append(
-      tableRow('P/S ratio (TTM)', fmt(analystConsensus.priceToSales))
-    );
+  if (
+    analystConsensus &&
+    analystConsensus.priceToSales !== null &&
+    analystConsensus.priceToSales !== undefined
+  ) {
+    multiplesTableEl.append(tableRow('P/S ratio (TTM)', fmt(analystConsensus.priceToSales)));
   }
 }
 
@@ -261,7 +288,8 @@ function renderAnalystTable(analystConsensus, currentPrice) {
     return;
   }
 
-  const { nextYearEpsGrowthPercent, priceTarget, recommendationKey, beta, ruleOf40 } = analystConsensus;
+  const { nextYearEpsGrowthPercent, priceTarget, recommendationKey, beta, ruleOf40 } =
+    analystConsensus;
 
   const recommendationLabel = recommendationKey
     ? recommendationKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
@@ -282,16 +310,29 @@ function renderAnalystTable(analystConsensus, currentPrice) {
   // coverage for).
   if (beta !== null || ruleOf40 !== null) {
     const divider = document.createElement('tr');
-    divider.innerHTML = '<td colspan="2" style="padding-top: 1rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Financial Health</td>';
+    divider.innerHTML =
+      '<td colspan="2" style="padding-top: 1rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Financial Health</td>';
     analystTableEl.append(divider);
 
     if (ruleOf40 !== undefined && ruleOf40 !== null) {
-      const healthClass = ruleOf40 >= 40 ? 'good' : (ruleOf40 >= 20 ? 'warning' : 'bad');
-      analystTableEl.append(tableRow('Rule of 40', `<span class="health-badge ${healthClass}">${fmt(ruleOf40)}%</span>`, { html: true }));
+      const healthClass = ruleOf40 >= 40 ? 'good' : ruleOf40 >= 20 ? 'warning' : 'bad';
+      analystTableEl.append(
+        tableRow(
+          'Rule of 40',
+          `<span class="health-badge ${healthClass}">${fmt(ruleOf40)}%</span>`,
+          { html: true },
+        ),
+      );
     }
     if (beta !== undefined && beta !== null) {
-      const betaClass = beta < 1.0 ? 'good' : (beta < 1.5 ? 'warning' : 'bad');
-      analystTableEl.append(tableRow('Beta (Volatility)', `<span class="health-badge ${betaClass}">${fmt(beta)}</span>`, { html: true }));
+      const betaClass = beta < 1.0 ? 'good' : beta < 1.5 ? 'warning' : 'bad';
+      analystTableEl.append(
+        tableRow(
+          'Beta (Volatility)',
+          `<span class="health-badge ${betaClass}">${fmt(beta)}</span>`,
+          { html: true },
+        ),
+      );
     }
   }
 }
@@ -300,7 +341,7 @@ function priceTargetValue(target, currentPrice) {
   if (target === null || target === undefined) return 'n/a';
   // Same zero-denominator guard as renderPriceDelta above -- a 0 currentPrice would render the
   // analyst price target's delta as "+Infinity%". Show the target without a delta instead.
-  if (currentPrice === null || currentPrice === undefined || Number.isNaN(currentPrice) || currentPrice <= 0) {
+  if (!isValidPrice(currentPrice)) {
     return fmt(target);
   }
   const diffPercent = (target / currentPrice - 1) * 100;
@@ -374,26 +415,51 @@ function renderScenarioColumn(prefix, scenario, result, currentPrice, extraField
 }
 
 function renderMethodCard(prefix, results, currentPrice, getExtrasFn) {
-  renderScenarioColumn(prefix, 'bear', results.bear, currentPrice, getExtrasFn ? getExtrasFn('bear', results.bear) : undefined);
-  renderScenarioColumn(prefix, 'base', results.base, currentPrice, getExtrasFn ? getExtrasFn('base', results.base) : undefined);
-  renderScenarioColumn(prefix, 'bull', results.bull, currentPrice, getExtrasFn ? getExtrasFn('bull', results.bull) : undefined);
+  renderScenarioColumn(
+    prefix,
+    'bear',
+    results.bear,
+    currentPrice,
+    getExtrasFn ? getExtrasFn('bear', results.bear) : undefined,
+  );
+  renderScenarioColumn(
+    prefix,
+    'base',
+    results.base,
+    currentPrice,
+    getExtrasFn ? getExtrasFn('base', results.base) : undefined,
+  );
+  renderScenarioColumn(
+    prefix,
+    'bull',
+    results.bull,
+    currentPrice,
+    getExtrasFn ? getExtrasFn('bull', results.bull) : undefined,
+  );
 }
 
 // ---------------- History Functions ----------------
 
 async function fetchHistory(filterTicker) {
   if (!historyTbody) return;
+  const requestId = ++latestHistoryRequestId;
   try {
-    const url = filterTicker && filterTicker.trim()
-      ? `/api/history?ticker=${encodeURIComponent(filterTicker.trim())}`
-      : '/api/history';
+    const url =
+      filterTicker && filterTicker.trim()
+        ? `/api/history?ticker=${encodeURIComponent(filterTicker.trim())}`
+        : '/api/history';
     const response = await fetch(url);
     const body = await response.json();
+
+    // A newer history fetch started while this one was in flight -- its result already owns
+    // the table, so this stale response must not repaint it.
+    if (requestId !== latestHistoryRequestId) return;
 
     if (!body || !body.ok) return;
 
     renderHistoryTable(body.data);
   } catch (err) {
+    if (requestId !== latestHistoryRequestId) return;
     console.error('Failed to fetch history:', err);
   }
 }
@@ -414,33 +480,37 @@ function renderHistoryTable(records) {
 
   for (const item of records) {
     // If it's a legacy record without 'base', wrap it to look like one.
-    const scenarios = item.base ? [
-      { name: 'Bear', data: item.bear || item.base },
-      { name: 'Base', data: item.base },
-      { name: 'Bull', data: item.bull || item.base }
-    ] : [
-      { name: 'Base', data: {
-          growthRatePercent: item.growthRatePercent,
-          exitPeMultiple: item.exitPeMultiple,
-          requiredReturnPercent: item.requiredReturnPercent,
-          mosPercent: item.mosPercent,
-          lynchFairValue: item.lynchFairValue,
-          ruleOneFairValue: item.ruleOneFairValue
-        }
-      }
-    ];
+    const scenarios = item.base
+      ? [
+          { name: 'Bear', data: item.bear || item.base },
+          { name: 'Base', data: item.base },
+          { name: 'Bull', data: item.bull || item.base },
+        ]
+      : [
+          {
+            name: 'Base',
+            data: {
+              growthRatePercent: item.growthRatePercent,
+              exitPeMultiple: item.exitPeMultiple,
+              requiredReturnPercent: item.requiredReturnPercent,
+              mosPercent: item.mosPercent,
+              lynchFairValue: item.lynchFairValue,
+              ruleOneFairValue: item.ruleOneFairValue,
+            },
+          },
+        ];
 
     for (let i = 0; i < scenarios.length; i++) {
       const scenario = scenarios[i];
       const isFirstRow = i === 0;
       const isBaseRow = scenario.name === 'Base';
       const rowSpan = scenarios.length;
-      
+
       const tr = document.createElement('tr');
       if (scenarios.length > 1) {
         tr.classList.add(`history-row-${scenario.name.toLowerCase()}`);
       }
-      
+
       // Date (only on first row)
       if (isFirstRow) {
         const tdDate = document.createElement('td');
@@ -508,7 +578,11 @@ function renderHistoryTable(records) {
       const tdAssump = document.createElement('td');
       tdAssump.className = 'table-assumptions';
       const mosText = scenario.data.mosPercent ? ` | MoS: ${scenario.data.mosPercent}%` : '';
-      const epsText = item.epsOverride ? ` | Adj.EPS: ${fmt(item.epsOverride)}` : (item.epsTtm ? ` | EPS: ${fmt(item.epsTtm)}` : '');
+      const epsText = item.epsOverride
+        ? ` | Adj.EPS: ${fmt(item.epsOverride)}`
+        : item.epsTtm
+          ? ` | EPS: ${fmt(item.epsTtm)}`
+          : '';
       tdAssump.textContent = `PE: ${fmt(scenario.data.exitPeMultiple)} | Req: ${fmt(scenario.data.requiredReturnPercent)}% | ${item.years}y${mosText}${epsText}`;
       tr.append(tdAssump);
 
@@ -541,30 +615,44 @@ function renderHistoryTable(records) {
           // overwrites the field with the live data.epsTtm anyway.
           const loadData = item.base || item; // Use base for loading inputs if new, otherwise legacy
           if (growthInput) {
-            growthInput.value = loadData.growthRatePercent !== null && loadData.growthRatePercent !== undefined 
-              ? Number(Number(loadData.growthRatePercent).toFixed(2)) 
-              : '';
+            growthInput.value =
+              loadData.growthRatePercent !== null && loadData.growthRatePercent !== undefined
+                ? Number(Number(loadData.growthRatePercent).toFixed(2))
+                : '';
           }
           if (exitPeInput) exitPeInput.value = loadData.exitPeMultiple;
           if (requiredReturnInput) requiredReturnInput.value = loadData.requiredReturnPercent;
           if (yearsInput) yearsInput.value = item.years;
-          if (mosSelect && loadData.mosPercent !== undefined) mosSelect.value = String(loadData.mosPercent);
+          if (mosSelect && loadData.mosPercent !== undefined)
+            mosSelect.value = String(loadData.mosPercent);
           // Bear/bull rows: restore the saved values (growth, exit P/E, req. return) on a
           // new-shaped record, otherwise leave the current defaults in place (a legacy record
           // has no bear/bull data to load). MoS is shared -- already restored above via mosSelect.
           if (item.bear) {
-            if (bearGrowthInput && item.bear.growthRatePercent !== null && item.bear.growthRatePercent !== undefined) {
+            if (
+              bearGrowthInput &&
+              item.bear.growthRatePercent !== null &&
+              item.bear.growthRatePercent !== undefined
+            ) {
               bearGrowthInput.value = Number(Number(item.bear.growthRatePercent).toFixed(2));
             }
-            if (bearExitPeInput && item.bear.exitPeMultiple !== undefined) bearExitPeInput.value = item.bear.exitPeMultiple;
-            if (bearRequiredReturnInput && item.bear.requiredReturnPercent !== undefined) bearRequiredReturnInput.value = item.bear.requiredReturnPercent;
+            if (bearExitPeInput && item.bear.exitPeMultiple !== undefined)
+              bearExitPeInput.value = item.bear.exitPeMultiple;
+            if (bearRequiredReturnInput && item.bear.requiredReturnPercent !== undefined)
+              bearRequiredReturnInput.value = item.bear.requiredReturnPercent;
           }
           if (item.bull) {
-            if (bullGrowthInput && item.bull.growthRatePercent !== null && item.bull.growthRatePercent !== undefined) {
+            if (
+              bullGrowthInput &&
+              item.bull.growthRatePercent !== null &&
+              item.bull.growthRatePercent !== undefined
+            ) {
               bullGrowthInput.value = Number(Number(item.bull.growthRatePercent).toFixed(2));
             }
-            if (bullExitPeInput && item.bull.exitPeMultiple !== undefined) bullExitPeInput.value = item.bull.exitPeMultiple;
-            if (bullRequiredReturnInput && item.bull.requiredReturnPercent !== undefined) bullRequiredReturnInput.value = item.bull.requiredReturnPercent;
+            if (bullExitPeInput && item.bull.exitPeMultiple !== undefined)
+              bullExitPeInput.value = item.bull.exitPeMultiple;
+            if (bullRequiredReturnInput && item.bull.requiredReturnPercent !== undefined)
+              bullRequiredReturnInput.value = item.bull.requiredReturnPercent;
           }
           if (notesInput) notesInput.value = item.notes || '';
           window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -661,17 +749,24 @@ async function handleSubmit(event, forceRefresh = false) {
   // JS-assigned value, so reading it back would silently resend a stale EPS from a previous
   // ticker lookup once the field had been populated below. The server treats an absent
   // epsOverride as "use data.epsTtm", which is exactly what the locked field shows.
-  const growthRatePercent = growthInput && growthInput.value !== '' ? Number(growthInput.value) : null;
+  const growthRatePercent =
+    growthInput && growthInput.value !== '' ? Number(growthInput.value) : null;
   const exitPeMultiple = exitPeInput ? Number(exitPeInput.value) : 15;
   const requiredReturnPercent = requiredReturnInput ? Number(requiredReturnInput.value) : 15;
   const years = yearsInput ? Number(yearsInput.value) : 10;
   const mosPercent = mosSelect ? Number(mosSelect.value) : 0;
-  const bearGrowthRatePercent = bearGrowthInput && bearGrowthInput.value !== '' ? Number(bearGrowthInput.value) : null;
+  const bearGrowthRatePercent =
+    bearGrowthInput && bearGrowthInput.value !== '' ? Number(bearGrowthInput.value) : null;
   const bearExitPeMultiple = bearExitPeInput ? Number(bearExitPeInput.value) : 10;
-  const bearRequiredReturnPercent = bearRequiredReturnInput ? Number(bearRequiredReturnInput.value) : 15;
-  const bullGrowthRatePercent = bullGrowthInput && bullGrowthInput.value !== '' ? Number(bullGrowthInput.value) : null;
+  const bearRequiredReturnPercent = bearRequiredReturnInput
+    ? Number(bearRequiredReturnInput.value)
+    : 15;
+  const bullGrowthRatePercent =
+    bullGrowthInput && bullGrowthInput.value !== '' ? Number(bullGrowthInput.value) : null;
   const bullExitPeMultiple = bullExitPeInput ? Number(bullExitPeInput.value) : 20;
-  const bullRequiredReturnPercent = bullRequiredReturnInput ? Number(bullRequiredReturnInput.value) : 12;
+  const bullRequiredReturnPercent = bullRequiredReturnInput
+    ? Number(bullRequiredReturnInput.value)
+    : 12;
 
   try {
     const response = await fetch('/api/valuate', {
@@ -705,7 +800,7 @@ async function handleSubmit(event, forceRefresh = false) {
     }
 
     const { data, effectiveEps, lynch, ruleOne } = body;
-    
+
     // Server seeds growth from the same fallback chain as the CLI when the field was left
     // blank (analystEstimate5y ?? historical3y ?? historical1y, no extra cap); it returns
     // effectiveGrowth so the UI can show the exact value used, including null when no source
@@ -718,9 +813,10 @@ async function handleSubmit(event, forceRefresh = false) {
     // eps-input is locked/display-only -- always show the live TTM EPS the server just used
     // (there is no "user left it on Auto" case anymore now that the field can't be edited).
     if (epsInput) {
-      epsInput.value = data.epsTtm !== null && data.epsTtm !== undefined
-        ? Number(Number(data.epsTtm).toFixed(2))
-        : '';
+      epsInput.value =
+        data.epsTtm !== null && data.epsTtm !== undefined
+          ? Number(Number(data.epsTtm).toFixed(2))
+          : '';
     }
 
     // Populate the growth input if the user left it empty, so they see the exact seed used.
@@ -731,29 +827,19 @@ async function handleSubmit(event, forceRefresh = false) {
     // Bear/bull growth are independently editable, but when a row is left blank the server
     // still derives it from the base scenario (0.75x/1.25x) -- populate the field with that
     // derived value afterwards, same pattern as the base growth input above, so the user sees
-    // exactly what was used rather than an empty box next to a real fair value. Use the RAW
-    // (unclamped) growth, same as the base growth input's own backfill (body.effectiveGrowth) --
-    // using growthRatePercentClamped here would silently rewrite the field to the clamp
-    // boundary (-5/25) and pin the scenario there on the next submit instead of re-deriving.
-    // Prefer ruleOne's inputs, falling back to lynch's when only ruleOne failed. ruleOne is now
-    // the MORE permissive of the two: they share the MISSING_EPS/NEGATIVE_OR_ZERO_EPS/
-    // MISSING_GROWTH_RATE guards, but lynch additionally rejects NEGATIVE_GROWTH_RATE (its
-    // `EPS x growth%` is undefined for a shrinking company) while ruleOne handles negative
-    // growth fine. So the lynch fallback only ever rescues ruleOne's own
-    // INVALID_EXIT_PE/INVALID_REQUIRED_RETURN/INVALID_YEARS/INVALID_MOS -- e.g. clearing the
-    // bear row's exit-P/E gives Number('') === 0 and trips INVALID_EXIT_PE. When EPS or growth
-    // is the problem both fail together and the field correctly stays blank; when growth is
-    // merely negative, ruleOne succeeds and supplies the value, so lynch is never consulted.
-    const bearGrowthUsed = ruleOne.bear.ok
-      ? ruleOne.bear.inputs.growthRatePercentRaw
-      : (lynch.bear.ok ? lynch.bear.inputs.growthRatePercentRaw : null);
-    if (bearGrowthInput && bearGrowthInput.value === '' && bearGrowthUsed !== null && bearGrowthUsed !== undefined) {
+    // exactly what was used rather than an empty box next to a real fair value. body.bearGrowth/
+    // body.bullGrowth are the RAW (unclamped) values the server actually used, echoed back
+    // regardless of whether lynch/ruleOne succeeded for that scenario -- deriving this from
+    // ruleOne.bear.inputs/lynch.bear.inputs instead used to lose the value entirely when BOTH
+    // failed for unrelated reasons (e.g. ruleOne rejecting an emptied exit-P/E while lynch
+    // simultaneously rejected this same negative growth rate), since neither carries `inputs`
+    // on a failed ValuationResult.
+    const bearGrowthUsed = body.bearGrowth ?? null;
+    if (bearGrowthInput && bearGrowthInput.value === '' && bearGrowthUsed !== null) {
       bearGrowthInput.value = Number(Number(bearGrowthUsed).toFixed(2));
     }
-    const bullGrowthUsed = ruleOne.bull.ok
-      ? ruleOne.bull.inputs.growthRatePercentRaw
-      : (lynch.bull.ok ? lynch.bull.inputs.growthRatePercentRaw : null);
-    if (bullGrowthInput && bullGrowthInput.value === '' && bullGrowthUsed !== null && bullGrowthUsed !== undefined) {
+    const bullGrowthUsed = body.bullGrowth ?? null;
+    if (bullGrowthInput && bullGrowthInput.value === '' && bullGrowthUsed !== null) {
       bullGrowthInput.value = Number(Number(bullGrowthUsed).toFixed(2));
     }
 
@@ -781,12 +867,11 @@ async function handleSubmit(event, forceRefresh = false) {
       // back, which reflect exactly what was sent in the request. mosPercent is the single
       // shared value from the top row -- there is no separate bear/bull MoS.
       bear: {
-        // Raw (unclamped), matching base's own save above (effectiveGrowth) -- saving the
-        // clamped value here would mean reloading this record later re-populates the input
-        // with the clamp boundary instead of the growth that actually produced this result.
-        growthRatePercent: ruleOne.bear.ok
-          ? (ruleOne.bear.inputs.growthRatePercentRaw ?? null)
-          : (lynch.bear.ok ? (lynch.bear.inputs.growthRatePercentRaw ?? null) : null),
+        // Raw (unclamped), matching base's own save above (effectiveGrowth), and matching the
+        // exact value the input backfill above just used -- saving the clamped value here would
+        // mean reloading this record later re-populates the input with the clamp boundary
+        // instead of the growth that actually produced this result.
+        growthRatePercent: bearGrowthUsed,
         exitPeMultiple: bearExitPeMultiple,
         requiredReturnPercent: bearRequiredReturnPercent,
         mosPercent: mosPercent,
@@ -794,9 +879,7 @@ async function handleSubmit(event, forceRefresh = false) {
         ruleOneFairValue: ruleOne.bear.ok ? ruleOne.bear.fairValue : null,
       },
       bull: {
-        growthRatePercent: ruleOne.bull.ok
-          ? (ruleOne.bull.inputs.growthRatePercentRaw ?? null)
-          : (lynch.bull.ok ? (lynch.bull.inputs.growthRatePercentRaw ?? null) : null),
+        growthRatePercent: bullGrowthUsed,
         exitPeMultiple: bullExitPeMultiple,
         requiredReturnPercent: bullRequiredReturnPercent,
         mosPercent: mosPercent,
@@ -813,7 +896,7 @@ async function handleSubmit(event, forceRefresh = false) {
     renderAnalystTable(body.analystConsensus, data.currentPrice);
 
     renderMethodCard('lynch', lynch, data.currentPrice);
-    
+
     // exit P/E / req. return shown per scenario come from what the server actually used
     // (scenarioResult.inputs, which echoes the exact bear/bull row values sent in the request)
     // -- never hardcoded here, so they can never drift from the real inputs behind the number.
@@ -868,7 +951,6 @@ if (tickerInput) {
   });
 }
 
-const refreshBtn = document.getElementById('refresh-btn');
 if (refreshBtn) {
   refreshBtn.addEventListener('click', (e) => {
     handleSubmit(e, true);
@@ -885,7 +967,6 @@ if (historyFilter) {
     fetchHistory(historyFilter.value);
   });
 }
-
 
 // Initial history load
 fetchHistory();

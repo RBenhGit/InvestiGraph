@@ -34,6 +34,7 @@ describe('app.js frontend', () => {
       <form id="valuate-form"></form>
       <input id="ticker-input" />
       <button id="go-btn"></button>
+      <button id="refresh-btn"></button>
       <input id="eps-input" readonly disabled />
       <input id="growth-input" />
       <input id="exit-pe-input" />
@@ -87,18 +88,20 @@ describe('app.js frontend', () => {
     `;
 
     // Mock fetch for initial fetchHistory
-    global.fetch = () => Promise.resolve({
-      json: () => Promise.resolve({ ok: true, data: [] }),
-    });
+    global.fetch = () =>
+      Promise.resolve({
+        json: () => Promise.resolve({ ok: true, data: [] }),
+      });
 
     // Load and execute app.js using new Function to capture the formatStockDataError function
     const appJsPath = path.resolve(__dirname, 'app.js');
     const appJsCode = fs.readFileSync(appJsPath, 'utf8');
-    
+
     // Create a function that executes the script and returns the local function
     const scriptExecutor = new Function(
-      'window', 'document',
-      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, renderPriceBanner, renderGrowthTable, renderMultiplesTable, renderGrowthChips, renderScenarioColumn, renderMethodCard, handleSaveValuation, fetchHistory, fmt, fmtPercent, formatDate, getCurrentValuation: () => currentValuation, setCurrentValuation: (v) => { currentValuation = v; } };`
+      'window',
+      'document',
+      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, renderPriceBanner, renderGrowthTable, renderMultiplesTable, renderGrowthChips, renderScenarioColumn, renderMethodCard, handleSaveValuation, fetchHistory, fmt, fmtPercent, formatDate, getCurrentValuation: () => currentValuation, setCurrentValuation: (v) => { currentValuation = v; } };`,
     );
     const exports = scriptExecutor(window, document);
     formatStockDataError = exports.formatStockDataError;
@@ -128,7 +131,7 @@ describe('app.js frontend', () => {
     const error = { type: 'NOT_FOUND', ticker: 'XYZ' };
     expect(formatStockDataError(error)).toBe('Ticker "XYZ" not found.');
   });
-  
+
   it('formatStockDataError handles INSUFFICIENT_DATA', () => {
     const error = { type: 'INSUFFICIENT_DATA', ticker: 'XYZ', reason: 'Missing EPS' };
     expect(formatStockDataError(error)).toBe('Insufficient data for "XYZ": Missing EPS');
@@ -201,19 +204,74 @@ describe('app.js frontend', () => {
       return {
         ok: true,
         ticker: 'AAPL',
-        data: { ticker: 'AAPL', currentPrice: 200, currency: 'USD', epsTtm: 6.5, asOf: '2026-08-22', growth: {}, historicalPe: {} },
+        data: {
+          ticker: 'AAPL',
+          currentPrice: 200,
+          currency: 'USD',
+          epsTtm: 6.5,
+          asOf: '2026-08-22',
+          growth: {},
+          historicalPe: {},
+        },
         effectiveEps: 6.5,
         effectiveGrowth: 40,
+        bearGrowth: 30,
+        bullGrowth: 50,
         analystConsensus: null,
         lynch: {
-          bear: { ok: true, fairValue: 10, inputs: { epsTtm: 6.5, growthRatePercentRaw: 30, growthRatePercentClamped: 25 } },
-          base: { ok: true, fairValue: 20, inputs: { epsTtm: 6.5, growthRatePercentRaw: 40, growthRatePercentClamped: 25 } },
-          bull: { ok: true, fairValue: 30, inputs: { epsTtm: 6.5, growthRatePercentRaw: 50, growthRatePercentClamped: 25 } },
+          bear: {
+            ok: true,
+            fairValue: 10,
+            inputs: { epsTtm: 6.5, growthRatePercentRaw: 30, growthRatePercentClamped: 25 },
+          },
+          base: {
+            ok: true,
+            fairValue: 20,
+            inputs: { epsTtm: 6.5, growthRatePercentRaw: 40, growthRatePercentClamped: 25 },
+          },
+          bull: {
+            ok: true,
+            fairValue: 30,
+            inputs: { epsTtm: 6.5, growthRatePercentRaw: 50, growthRatePercentClamped: 25 },
+          },
         },
         ruleOne: {
-          bear: { ok: true, fairValue: 10, inputs: { epsTtm: 6.5, growthRatePercentRaw: 30, growthRatePercentClamped: 25, exitPeMultiple: 10, requiredReturnPercent: 15, mosPercent: 0 } },
-          base: { ok: true, fairValue: 20, inputs: { epsTtm: 6.5, growthRatePercentRaw: 40, growthRatePercentClamped: 25, exitPeMultiple: 15, requiredReturnPercent: 15, mosPercent: 0 } },
-          bull: { ok: true, fairValue: 30, inputs: { epsTtm: 6.5, growthRatePercentRaw: 50, growthRatePercentClamped: 25, exitPeMultiple: 20, requiredReturnPercent: 12, mosPercent: 0 } },
+          bear: {
+            ok: true,
+            fairValue: 10,
+            inputs: {
+              epsTtm: 6.5,
+              growthRatePercentRaw: 30,
+              growthRatePercentClamped: 25,
+              exitPeMultiple: 10,
+              requiredReturnPercent: 15,
+              mosPercent: 0,
+            },
+          },
+          base: {
+            ok: true,
+            fairValue: 20,
+            inputs: {
+              epsTtm: 6.5,
+              growthRatePercentRaw: 40,
+              growthRatePercentClamped: 25,
+              exitPeMultiple: 15,
+              requiredReturnPercent: 15,
+              mosPercent: 0,
+            },
+          },
+          bull: {
+            ok: true,
+            fairValue: 30,
+            inputs: {
+              epsTtm: 6.5,
+              growthRatePercentRaw: 50,
+              growthRatePercentClamped: 25,
+              exitPeMultiple: 20,
+              requiredReturnPercent: 12,
+              mosPercent: 0,
+            },
+          },
         },
         ...overrides,
       };
@@ -255,12 +313,21 @@ describe('app.js frontend', () => {
 
       // A legacy/CLI-saved record carrying an epsOverride. Loading it must not write that
       // value into the locked display-only field -- the live TTM EPS wins.
-      renderHistoryTable([{
-        id: 'legacy-1', ticker: 'AAPL', savedAt: '2026-08-01T00:00:00.000Z',
-        epsTtm: 6.5, epsOverride: 42.42, years: 10,
-        growthRatePercent: 12, exitPeMultiple: 15, requiredReturnPercent: 15,
-        lynchFairValue: 78, ruleOneFairValue: 60,
-      }]);
+      renderHistoryTable([
+        {
+          id: 'legacy-1',
+          ticker: 'AAPL',
+          savedAt: '2026-08-01T00:00:00.000Z',
+          epsTtm: 6.5,
+          epsOverride: 42.42,
+          years: 10,
+          growthRatePercent: 12,
+          exitPeMultiple: 15,
+          requiredReturnPercent: 15,
+          lynchFairValue: 78,
+          ruleOneFairValue: 60,
+        },
+      ]);
 
       const loadBtn = document.querySelector('#history-tbody .btn-action-load');
       expect(loadBtn).not.toBeNull();
@@ -309,7 +376,7 @@ describe('app.js frontend', () => {
       expect(saved.bull.growthRatePercent).toBe(50);
     });
 
-    it('falls back to the lynch scenario\'s raw growth when ruleOne failed for that scenario', async () => {
+    it('backfills bear growth from body.bearGrowth even when ruleOne failed for that scenario', async () => {
       resetForm();
       const response = mockValuateResponse();
       response.ruleOne.bear = { ok: false, error: 'INVALID_EXIT_PE' };
@@ -317,9 +384,29 @@ describe('app.js frontend', () => {
 
       await handleSubmit({ preventDefault() {} });
 
-      // lynch.bear.inputs.growthRatePercentRaw is 30 in the mock.
+      // response.bearGrowth is 30 in the mock -- the server always echoes the value it actually
+      // used, independent of whether ruleOne (or lynch) succeeded for that scenario.
       expect(document.getElementById('bear-growth-input').value).toBe('30');
       expect(getCurrentValuation().bear.growthRatePercent).toBe(30);
+    });
+
+    it('backfills bear growth from body.bearGrowth even when BOTH lynch and ruleOne fail for unrelated reasons', async () => {
+      // Regression: the old logic derived bear/bull growth from ruleOne.bear.inputs, falling
+      // back to lynch.bear.inputs -- but neither exists on a failed ValuationResult. If ruleOne
+      // fails on an unrelated INVALID_EXIT_PE while lynch simultaneously fails on
+      // NEGATIVE_GROWTH_RATE (a real, known, just-negative growth value), the old code silently
+      // produced null even though a specific bearGrowth number was actually used server-side.
+      resetForm();
+      const response = mockValuateResponse();
+      response.bearGrowth = -5;
+      response.ruleOne.bear = { ok: false, error: 'INVALID_EXIT_PE' };
+      response.lynch.bear = { ok: false, error: 'NEGATIVE_GROWTH_RATE' };
+      global.fetch = () => Promise.resolve({ json: () => Promise.resolve(response) });
+
+      await handleSubmit({ preventDefault() {} });
+
+      expect(document.getElementById('bear-growth-input').value).toBe('-5');
+      expect(getCurrentValuation().bear.growthRatePercent).toBe(-5);
     });
   });
 
@@ -333,19 +420,72 @@ describe('app.js frontend', () => {
       return {
         ok: true,
         ticker,
-        data: { ticker, currentPrice: 100, currency: 'USD', epsTtm, asOf: '2026-08-22', growth: {}, historicalPe: {} },
+        data: {
+          ticker,
+          currentPrice: 100,
+          currency: 'USD',
+          epsTtm,
+          asOf: '2026-08-22',
+          growth: {},
+          historicalPe: {},
+        },
         effectiveEps: epsTtm,
         effectiveGrowth: 10,
         analystConsensus: null,
         lynch: {
-          bear: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 } },
-          base: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 } },
-          bull: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 } },
+          bear: {
+            ok: true,
+            fairValue,
+            inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 },
+          },
+          base: {
+            ok: true,
+            fairValue,
+            inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 },
+          },
+          bull: {
+            ok: true,
+            fairValue,
+            inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 },
+          },
         },
         ruleOne: {
-          bear: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10, exitPeMultiple: 10, requiredReturnPercent: 15, mosPercent: 0 } },
-          base: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10, exitPeMultiple: 15, requiredReturnPercent: 15, mosPercent: 0 } },
-          bull: { ok: true, fairValue, inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10, exitPeMultiple: 20, requiredReturnPercent: 12, mosPercent: 0 } },
+          bear: {
+            ok: true,
+            fairValue,
+            inputs: {
+              epsTtm,
+              growthRatePercentRaw: 10,
+              growthRatePercentClamped: 10,
+              exitPeMultiple: 10,
+              requiredReturnPercent: 15,
+              mosPercent: 0,
+            },
+          },
+          base: {
+            ok: true,
+            fairValue,
+            inputs: {
+              epsTtm,
+              growthRatePercentRaw: 10,
+              growthRatePercentClamped: 10,
+              exitPeMultiple: 15,
+              requiredReturnPercent: 15,
+              mosPercent: 0,
+            },
+          },
+          bull: {
+            ok: true,
+            fairValue,
+            inputs: {
+              epsTtm,
+              growthRatePercentRaw: 10,
+              growthRatePercentClamped: 10,
+              exitPeMultiple: 20,
+              requiredReturnPercent: 12,
+              mosPercent: 0,
+            },
+          },
         },
       };
     }
@@ -357,7 +497,9 @@ describe('app.js frontend', () => {
       document.getElementById('bull-growth-input').value = '';
 
       let resolveFirst;
-      const firstBody = new Promise((resolve) => { resolveFirst = resolve; });
+      const firstBody = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
       let call = 0;
       global.fetch = () => {
         call += 1;
@@ -386,6 +528,32 @@ describe('app.js frontend', () => {
     });
   });
 
+  describe('setLoading — Refresh Live button', () => {
+    // Regression: setLoading disables "Refresh Live" alongside "Go" while a request is in
+    // flight (leaving it enabled is what let two overlapping lookups race in the first place),
+    // but no test ever exercised this because the DOM fixture had no #refresh-btn element --
+    // document.getElementById('refresh-btn') was always null, so this whole mechanism could be
+    // deleted without failing anything.
+    it('disables the Refresh Live button while a request is in flight, and re-enables it after', async () => {
+      document.getElementById('ticker-input').value = 'AAPL';
+      let resolveFetch;
+      global.fetch = () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        });
+
+      const pending = handleSubmit({ preventDefault() {} });
+      expect(document.getElementById('refresh-btn').disabled).toBe(true);
+
+      resolveFetch({
+        json: () => Promise.resolve({ ok: false, error: { type: 'NOT_FOUND', ticker: 'AAPL' } }),
+      });
+      await pending;
+
+      expect(document.getElementById('refresh-btn').disabled).toBe(false);
+    });
+  });
+
   describe('renderAnalystTable — untrusted strings from the Yahoo API', () => {
     // Regression: recommendationKey is a string that arrives from a third-party API, and it
     // flowed through tableRow()'s `valueDiv.innerHTML = value` with no escaping, so markup in
@@ -396,7 +564,9 @@ describe('app.js frontend', () => {
         nextYearEpsGrowthPercent: null,
         recommendationKey: 'buy',
         priceTarget: { mean: null, high: null, low: null, numberOfAnalysts: null },
-        beta: null, priceToSales: null, ruleOf40: null,
+        beta: null,
+        priceToSales: null,
+        ruleOf40: null,
         ...overrides,
       };
     }
@@ -444,9 +614,14 @@ describe('app.js frontend', () => {
     it('renders analyst price targets without a delta when the price is zero', () => {
       // Same guard, second site: priceTargetValue() feeds the analyst table's target rows.
       renderAnalystTable(
-        { nextYearEpsGrowthPercent: null, recommendationKey: 'buy',
+        {
+          nextYearEpsGrowthPercent: null,
+          recommendationKey: 'buy',
           priceTarget: { mean: 250, high: 300, low: 200, numberOfAnalysts: 40 },
-          beta: null, priceToSales: null, ruleOf40: null },
+          beta: null,
+          priceToSales: null,
+          ruleOf40: null,
+        },
         0,
       );
 
@@ -520,25 +695,38 @@ describe('app.js frontend', () => {
 
     it('does not divide by zero when every source is null', () => {
       renderGrowthTable(
-        { historical1yPercent: null, historical3yPercent: null, historical5yPercent: null, analystEstimate5yPercent: null },
+        {
+          historical1yPercent: null,
+          historical3yPercent: null,
+          historical5yPercent: null,
+          analystEstimate5yPercent: null,
+        },
         null,
       );
       const text = document.getElementById('growth-table').textContent;
       expect(text).not.toMatch(/NaN|Infinity/);
       expect(document.getElementById('growth-table').querySelectorAll('.mini-row')).toHaveLength(4);
-      expect(document.getElementById('growth-table').querySelectorAll('.mini-row-active')).toHaveLength(0);
+      expect(
+        document.getElementById('growth-table').querySelectorAll('.mini-row-active'),
+      ).toHaveLength(0);
     });
 
     it('highlights nothing when growthUsed matches no source', () => {
       renderGrowthTable(growth, 99);
-      expect(document.getElementById('growth-table').querySelectorAll('.mini-row-active')).toHaveLength(0);
+      expect(
+        document.getElementById('growth-table').querySelectorAll('.mini-row-active'),
+      ).toHaveLength(0);
     });
   });
 
   describe('renderMultiplesTable', () => {
     function multiplesData(overrides = {}) {
       return {
-        ticker: 'AAPL', currentPrice: 100, currency: 'USD', epsTtm: 5, asOf: '2026-08-22',
+        ticker: 'AAPL',
+        currentPrice: 100,
+        currency: 'USD',
+        epsTtm: 5,
+        asOf: '2026-08-22',
         historicalPe: { avg1y: 20, avg3y: 22, avg5y: 25 },
         ...overrides,
       };
@@ -587,8 +775,10 @@ describe('app.js frontend', () => {
   describe('renderGrowthChips', () => {
     it('renders a chip per available source and skips null ones', () => {
       renderGrowthChips({
-        historical1yPercent: 10, historical3yPercent: null,
-        historical5yPercent: 8, analystEstimate5yPercent: null,
+        historical1yPercent: 10,
+        historical3yPercent: null,
+        historical5yPercent: 8,
+        analystEstimate5yPercent: null,
       });
       const chips = document.getElementById('growth-chips').querySelectorAll('.chip');
       expect(chips).toHaveLength(2);
@@ -599,8 +789,10 @@ describe('app.js frontend', () => {
     it('writes the chip value into the growth input when clicked', () => {
       document.getElementById('growth-input').value = '';
       renderGrowthChips({
-        historical1yPercent: 12.345, historical3yPercent: null,
-        historical5yPercent: null, analystEstimate5yPercent: null,
+        historical1yPercent: 12.345,
+        historical3yPercent: null,
+        historical5yPercent: null,
+        analystEstimate5yPercent: null,
       });
       document.getElementById('growth-chips').querySelector('.chip').click();
       expect(document.getElementById('growth-input').value).toBe('12.35');
@@ -608,8 +800,10 @@ describe('app.js frontend', () => {
 
     it('renders a chip for a real 0 rather than skipping it', () => {
       renderGrowthChips({
-        historical1yPercent: 0, historical3yPercent: null,
-        historical5yPercent: null, analystEstimate5yPercent: null,
+        historical1yPercent: 0,
+        historical3yPercent: null,
+        historical5yPercent: null,
+        analystEstimate5yPercent: null,
       });
       const chips = document.getElementById('growth-chips').querySelectorAll('.chip');
       expect(chips).toHaveLength(1);
@@ -619,7 +813,8 @@ describe('app.js frontend', () => {
 
   describe('renderScenarioColumn / renderMethodCard', () => {
     const okResult = {
-      ok: true, fairValue: 150,
+      ok: true,
+      fairValue: 150,
       inputs: { epsTtm: 6, growthRatePercentRaw: 40, growthRatePercentClamped: 25 },
     };
 
@@ -639,7 +834,9 @@ describe('app.js frontend', () => {
     it('surfaces the error code and clears inputs on a failed scenario', () => {
       renderScenarioColumn('lynch', 'bear', { ok: false, error: 'MISSING_GROWTH_RATE' }, 100);
       expect(document.getElementById('lynch-bear-fv').textContent).toBe('n/a');
-      expect(document.getElementById('lynch-bear-verdict').textContent).toBe('FAILED (MISSING_GROWTH_RATE)');
+      expect(document.getElementById('lynch-bear-verdict').textContent).toBe(
+        'FAILED (MISSING_GROWTH_RATE)',
+      );
       expect(document.getElementById('lynch-bear-inputs').innerHTML).toBe('');
     });
 
@@ -651,10 +848,16 @@ describe('app.js frontend', () => {
     });
 
     it('shows a single growth figure when no clamping occurred', () => {
-      renderScenarioColumn('lynch', 'base', {
-        ok: true, fairValue: 120,
-        inputs: { epsTtm: 6, growthRatePercentRaw: 20, growthRatePercentClamped: 20 },
-      }, 100);
+      renderScenarioColumn(
+        'lynch',
+        'base',
+        {
+          ok: true,
+          fairValue: 120,
+          inputs: { epsTtm: 6, growthRatePercentRaw: 20, growthRatePercentClamped: 20 },
+        },
+        100,
+      );
       const html = document.getElementById('lynch-base-inputs').innerHTML;
       expect(html).toContain('growth:');
       expect(html).toContain('20.00%');
@@ -668,8 +871,12 @@ describe('app.js frontend', () => {
     });
 
     it('renderMethodCard passes per-scenario extras through to each column', () => {
-      renderMethodCard('rule-one', { bear: okResult, base: okResult, bull: okResult }, 100,
-        (name) => [['exit P/E', name === 'bear' ? '10' : '20']]);
+      renderMethodCard(
+        'rule-one',
+        { bear: okResult, base: okResult, bull: okResult },
+        100,
+        (name) => [['exit P/E', name === 'bear' ? '10' : '20']],
+      );
       expect(document.getElementById('rule-one-bear-inputs').innerHTML).toContain('10');
       expect(document.getElementById('rule-one-bull-inputs').innerHTML).toContain('20');
     });
@@ -701,6 +908,46 @@ describe('app.js frontend', () => {
       await expect(fetchHistory('')).resolves.toBeUndefined();
     });
 
+    it('ignores a stale response when a newer history fetch has since started', async () => {
+      // Same race class as handleSubmit's concurrent-requests test above, but for the history
+      // ticker filter: nothing sequenced fetchHistory's responses, so an earlier (slow) filter
+      // request landing after a later (fast) one used to repaint the table with stale rows.
+      let resolveFirst;
+      const firstBody = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+      let call = 0;
+      global.fetch = () => {
+        call += 1;
+        return call === 1
+          ? Promise.resolve({ json: () => firstBody })
+          : Promise.resolve({
+              json: () =>
+                Promise.resolve({
+                  ok: true,
+                  data: [
+                    { id: 'new', ticker: 'MSFT', currentPrice: 400, currency: 'USD', years: 10 },
+                  ],
+                }),
+            });
+      };
+
+      const slow = fetchHistory('G');
+      await fetchHistory('MSFT');
+
+      expect(document.getElementById('history-tbody').textContent).toContain('MSFT');
+
+      resolveFirst({
+        ok: true,
+        data: [{ id: 'old', ticker: 'GOOGL', currentPrice: 170, currency: 'USD', years: 10 }],
+      });
+      await slow;
+
+      // The stale GOOGL response must not have overwritten MSFT's row.
+      expect(document.getElementById('history-tbody').textContent).not.toContain('GOOGL');
+      expect(document.getElementById('history-tbody').textContent).toContain('MSFT');
+    });
+
     it('does not render when the response is not ok', async () => {
       global.fetch = () => Promise.resolve({ json: () => Promise.resolve({ ok: false }) });
       document.getElementById('history-tbody').innerHTML = '<tr id="sentinel"></tr>';
@@ -713,7 +960,10 @@ describe('app.js frontend', () => {
     it('does nothing when there is no current valuation', async () => {
       setCurrentValuation(null);
       let called = false;
-      global.fetch = () => { called = true; return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); };
+      global.fetch = () => {
+        called = true;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+      };
       await handleSaveValuation();
       expect(called).toBe(false);
     });
@@ -741,7 +991,11 @@ describe('app.js frontend', () => {
 
     it('surfaces a server-side failure message and re-enables the button', async () => {
       setCurrentValuation({ ticker: 'AAPL', years: 10 });
-      global.fetch = () => Promise.resolve({ ok: false, json: () => Promise.resolve({ ok: false, error: { message: 'disk full' } }) });
+      global.fetch = () =>
+        Promise.resolve({
+          ok: false,
+          json: () => Promise.resolve({ ok: false, error: { message: 'disk full' } }),
+        });
 
       await handleSaveValuation();
 
@@ -820,7 +1074,9 @@ describe('app.js frontend', () => {
       renderHistoryTable([record]);
       const rows = historyTbodyEl.querySelectorAll('tr');
       expect(rows.length).toBe(3);
-      const labels = Array.from(historyTbodyEl.querySelectorAll('.badge-scenario')).map((el) => el.textContent);
+      const labels = Array.from(historyTbodyEl.querySelectorAll('.badge-scenario')).map(
+        (el) => el.textContent,
+      );
       expect(labels).toEqual(['Bear', 'Base', 'Bull']);
       // Date/Price/Notes/Actions only render on the first row, with rowSpan covering the rest.
       expect(rows[0].querySelector('.table-date').rowSpan).toBe(3);
@@ -843,7 +1099,9 @@ describe('app.js frontend', () => {
       const rows = historyTbodyEl.querySelectorAll('tr');
       expect(rows.length).toBe(3);
       // Bear and Bull rows both fall back to base's fair value (420) since neither was provided.
-      const ruleOneCells = Array.from(rows).map((r) => r.querySelectorAll('.table-val')[0].textContent);
+      const ruleOneCells = Array.from(rows).map(
+        (r) => r.querySelectorAll('.table-val')[0].textContent,
+      );
       expect(ruleOneCells[0]).toContain('420');
       expect(ruleOneCells[1]).toContain('420');
       expect(ruleOneCells[2]).toContain('420');

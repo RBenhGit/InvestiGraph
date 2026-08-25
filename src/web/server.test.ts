@@ -39,6 +39,7 @@ function stockData(overrides: Partial<StockData> = {}): StockData {
     historicalPe: { avg1y: 20, avg3y: 22, avg5y: 25 },
     trailingPe: 20,
     providerReference: { trailingPe: 21, pegRatio: 1.5 },
+    staleTtmWarning: false,
     asOf: '2026-08-14T00:00:00.000Z',
     ...overrides,
   };
@@ -434,7 +435,116 @@ describe('POST /api/valuate', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().ok).toBe(true);
-    expect(fetchStockData).toHaveBeenCalled();
+    // Regression: the ticker used to be forwarded to the data layer/cache verbatim (padding and
+    // all). Both calls must receive the normalized ("AAPL") form, not "  aapl  ".
+    expect(fetchStockData).toHaveBeenCalledWith('AAPL', { forceRefresh: undefined });
+    expect(fetchAnalystConsensus).toHaveBeenCalledWith('AAPL', { forceRefresh: undefined });
+  });
+
+  // Regression: request.body is typed ValuateRequestBody at compile time only. A bodyless POST
+  // or a literal JSON `null` body reached the destructuring assignment before any guard ran and
+  // threw ("Cannot destructure property 'ticker' of ... as it is undefined/null"), surfacing as
+  // an unhandled 500 -- the exact failure class this file's other malformed-ticker tests above
+  // were written to close, just one step earlier in the request.
+  it('returns a typed 400 (not an unhandled 500) for a missing request body', async () => {
+    const fastify = buildServer();
+
+    const response = await fastify.inject({ method: 'POST', url: '/api/valuate' });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.type).toBe('INSUFFICIENT_DATA');
+    expect(JSON.stringify(body)).not.toMatch(/Cannot destructure|is not a function/);
+    expect(fetchStockData).not.toHaveBeenCalled();
+  });
+
+  it('returns a typed 400 (not an unhandled 500) for a literal null request body', async () => {
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: 'null',
+      headers: { 'content-type': 'application/json' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.type).toBe('INSUFFICIENT_DATA');
+    expect(JSON.stringify(body)).not.toMatch(/Cannot destructure|is not a function/);
+    expect(fetchStockData).not.toHaveBeenCalled();
+  });
+
+  // Regression: server.ts's ticker guard used to accept any non-blank string, but
+  // src/data/cache.ts's safeTickerSegment (which builds cache filenames from the same ticker)
+  // is stricter -- a ticker with a space or an out-of-charset character passed this guard but
+  // was silently never cached, triggering a live API call on every request with nothing
+  // surfacing why.
+  it('rejects a ticker containing characters the cache layer cannot safely use in a filename', async () => {
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: { ticker: 'AAPL/../ETC', exitPeMultiple: 15, requiredReturnPercent: 15, years: 10 },
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.type).toBe('INSUFFICIENT_DATA');
+    expect(body.error.reason).toMatch(/ticker/i);
+    expect(fetchStockData).not.toHaveBeenCalled();
+  });
+
+  // Regression: the frontend derived the bear/bull growth actually used from
+  // lynch.bear.inputs/ruleOne.bear.inputs, which don't exist on a failed ValuationResult. When
+  // ruleOne fails for a reason unrelated to growth (e.g. an emptied exit-P/E) while lynch
+  // simultaneously fails for a *different* unrelated reason (this same growth being negative),
+  // the real, known growth value was silently unrecoverable. The server must always echo back
+  // the growth it actually used, independent of whether either method succeeded.
+  it('echoes the actual bear/bull growth used even when both methods fail for that scenario', async () => {
+    vi.mocked(fetchStockData).mockResolvedValue({
+      ok: true,
+      data: stockData({
+        growth: {
+          historical1yPercent: null,
+          historical3yPercent: null,
+          historical5yPercent: null,
+          analystEstimate5yPercent: null,
+        },
+      }),
+    });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({ ok: true, data: analystConsensus() });
+    const fastify = buildServer();
+
+    // bearGrowthRatePercent is an explicit -5 (negative -> trips lynch's NEGATIVE_GROWTH_RATE),
+    // and bearExitPeMultiple is 0 (invalid -> trips ruleOne's INVALID_EXIT_PE) -- two unrelated
+    // failures, neither of which carries the -5 growth in its (nonexistent, on failure) inputs.
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        bearExitPeMultiple: 0,
+        bearGrowthRatePercent: -5,
+        requiredReturnPercent: 15,
+        years: 10,
+      },
+    });
+
+    const body = response.json();
+    expect(body.ok).toBe(true);
+    expect(body.ruleOne.bear.ok).toBe(false);
+    expect(body.ruleOne.bear.error).toBe('INVALID_EXIT_PE');
+    expect(body.lynch.bear.ok).toBe(false);
+    expect(body.lynch.bear.error).toBe('NEGATIVE_GROWTH_RATE');
+    // Both methods failed for unrelated reasons, but the server still reports the real growth.
+    expect(body.bearGrowth).toBe(-5);
   });
 });
 

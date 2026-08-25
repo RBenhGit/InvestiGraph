@@ -15,6 +15,7 @@ import {
 import {
   calculateCagrPercent,
   CurrencyMismatchError,
+  detectStaleTtmEps,
   parseNumber,
   resolveTtmEps,
   TwelveDataResponseError,
@@ -178,6 +179,7 @@ export async function fetchStockData(
     const historicalPe = computeHistoricalPeAverages(annualEpsPoints, monthlyClosePoints);
 
     const trailingPe = epsTtm > 0 ? currentPrice / epsTtm : null;
+    const providerTrailingPe = parseNumber(statistics.statistics.valuations_metrics.trailing_pe);
 
     const data: StockData = {
       ticker,
@@ -193,9 +195,10 @@ export async function fetchStockData(
       historicalPe,
       trailingPe,
       providerReference: {
-        trailingPe: parseNumber(statistics.statistics.valuations_metrics.trailing_pe),
+        trailingPe: providerTrailingPe,
         pegRatio: parseNumber(statistics.statistics.valuations_metrics.peg_ratio),
       },
+      staleTtmWarning: detectStaleTtmEps(trailingPe, providerTrailingPe),
       asOf: new Date().toISOString(),
     };
 

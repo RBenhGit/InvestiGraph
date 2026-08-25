@@ -136,6 +136,45 @@ describe('fetchStockData', () => {
     expect(result.data.historicalPe.avg1y).toBeCloseTo(250 / 1.331, 10);
     expect(result.data.historicalPe.avg3y).not.toBeNull();
     expect(result.data.historicalPe.avg5y).not.toBeNull();
+    // statistics() fixture has no trailing_pe, so there's nothing to compare epsTtm's
+    // implied P/E against — detectStaleTtmEps must not fire on a missing provider figure.
+    expect(result.data.staleTtmWarning).toBe(false);
+  });
+
+  it('flags staleTtmWarning when computed trailingPe diverges >5% from the provider trailing P/E', async () => {
+    // epsTtm=10, price=100 => trailingPe=10 (from mockAllSuccess's quarterlyIncome()/quote()
+    // fixtures). A provider trailing_pe of 20 implies epsTtm should be ~5 — a >5% divergence
+    // from the app's computed epsTtm=10, mirroring the real CSCO case this guard was built for
+    // (Twelve Data's income_statement lagging behind its own statistics endpoint).
+    vi.mocked(fetchQuote).mockResolvedValue(quote());
+    vi.mocked(fetchStatistics).mockResolvedValue({
+      statistics: { valuations_metrics: { trailing_pe: 20 } },
+    });
+    vi.mocked(fetchGrowthEstimates).mockResolvedValue(growthEstimates());
+    vi.mocked(fetchQuarterlyIncomeStatement).mockResolvedValue(quarterlyIncome());
+    vi.mocked(fetchAnnualIncomeStatement).mockResolvedValue(annualIncome());
+    vi.mocked(fetchMonthlyTimeSeries).mockResolvedValue(monthlyTimeSeries());
+
+    const result = await fetchStockData(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.trailingPe).toBe(10);
+    expect(result.data.providerReference.trailingPe).toBe(20);
+    expect(result.data.staleTtmWarning).toBe(true);
+  });
+
+  it('does not flag staleTtmWarning when computed and provider trailing P/E roughly agree', async () => {
+    mockAllSuccess();
+    vi.mocked(fetchStatistics).mockResolvedValue({
+      statistics: { valuations_metrics: { trailing_pe: 10.4 } }, // within 5% of computed 10
+    });
+
+    const result = await fetchStockData(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.staleTtmWarning).toBe(false);
   });
 
   it('maps a thrown client error to API_ERROR by default', async () => {
@@ -232,6 +271,7 @@ describe('fetchStockData', () => {
       historicalPe: { avg1y: 20, avg3y: 22, avg5y: 24 },
       trailingPe: 30,
       providerReference: { trailingPe: 30, pegRatio: 2.5 },
+      staleTtmWarning: false,
       asOf: '2026-08-19T12:00:00.000Z',
     };
     vi.mocked(getCachedStockData).mockResolvedValue(mockCached);
@@ -256,6 +296,7 @@ describe('fetchStockData', () => {
       historicalPe: { avg1y: 20, avg3y: 22, avg5y: 24 },
       trailingPe: 30,
       providerReference: { trailingPe: 30, pegRatio: 2.5 },
+      staleTtmWarning: false,
       asOf: new Date().toISOString(),
     };
     vi.mocked(getCachedStockData).mockResolvedValue(mockCached);
@@ -283,6 +324,7 @@ describe('fetchStockData', () => {
       historicalPe: { avg1y: 20, avg3y: 22, avg5y: 24 },
       trailingPe: 30,
       providerReference: { trailingPe: 30, pegRatio: 2.5 },
+      staleTtmWarning: false,
       asOf: new Date().toISOString(),
     };
     vi.mocked(getCachedStockData).mockResolvedValue(mockCached);

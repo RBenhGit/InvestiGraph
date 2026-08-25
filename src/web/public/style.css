@@ -274,6 +274,7 @@ a:hover { color: var(--ink); }
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   font-size: 0.7rem; color: rgba(247, 246, 243, 0.6); margin-top: 0.5rem;
 }
+.price-meta.stale-warning { color: var(--warning); font-weight: 600; }
 .price-banner-deltas { display: flex; flex: 1; flex-wrap: wrap; }
 .price-delta { flex: 1 1 8rem; padding: 1.35rem 1.5rem; border-left: 1px solid var(--line); }
 .price-delta:nth-of-type(1) { background: var(--accent-b-soft); }
