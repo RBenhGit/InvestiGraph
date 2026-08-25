@@ -148,14 +148,32 @@ function renderPriceDelta(label, fairValue, currentPrice, dotColorVar) {
   return div;
 }
 
-function renderPriceBanner(data, lynch, ruleOne) {
+/**
+ * `effectiveEps`/`epsSource`/`epsSourceDetail` come from the server's resolveEpsWithFallback
+ * (see src/data/resolveEps.ts) -- when Twelve Data's epsTtm looked stale (data.staleTtmWarning)
+ * and Yahoo's independent trailingEps was available, effectiveEps reflects Yahoo's figure
+ * instead, and epsSource says which one actually won so the banner never silently shows a
+ * Yahoo-sourced number as if it were Twelve Data's.
+ */
+function renderPriceBanner(data, lynch, ruleOne, effectiveEps, epsSource, epsSourceDetail) {
   if (!priceValueEl || !priceMetaEl || !priceDeltasEl) return;
   priceValueEl.textContent = `${fmt(data.currentPrice)} ${data.currency}`;
-  const staleNote = data.staleTtmWarning
-    ? ' · ⚠ EPS (TTM) may be stale (diverges from provider trailing P/E — check for a recent earnings release)'
-    : '';
-  priceMetaEl.textContent = `${data.ticker} · EPS (TTM) ${fmt(data.epsTtm)} · as of ${data.asOf}${staleNote}`;
-  if (priceMetaEl) priceMetaEl.classList.toggle('stale-warning', Boolean(data.staleTtmWarning));
+  const epsToShow = typeof effectiveEps === 'number' ? effectiveEps : data.epsTtm;
+
+  let note = '';
+  if (epsSource === 'yahoo-fallback') {
+    note = ` · ⓘ EPS from Yahoo Finance (Twelve Data's figure looked stale — see tooltip)`;
+  } else if (epsSource === 'twelvedata-stale-no-fallback') {
+    note =
+      ' · ⚠ EPS (TTM) may be stale (diverges from provider trailing P/E) — Yahoo Finance fallback was unavailable';
+  } else if (data.staleTtmWarning) {
+    note = ' · ⚠ EPS (TTM) may be stale (diverges from provider trailing P/E — check for a recent earnings release)';
+  }
+  priceMetaEl.textContent = `${data.ticker} · EPS (TTM) ${fmt(epsToShow)} · as of ${data.asOf}${note}`;
+  priceMetaEl.title = epsSourceDetail || '';
+  const isWarning = epsSource === 'twelvedata-stale-no-fallback' || (!epsSource && data.staleTtmWarning);
+  priceMetaEl.classList.toggle('stale-warning', isWarning);
+  priceMetaEl.classList.toggle('eps-fallback-note', epsSource === 'yahoo-fallback');
 
   priceDeltasEl.innerHTML = '';
   priceDeltasEl.append(
@@ -258,7 +276,11 @@ function renderMultiplesTable(data, effectiveGrowth, effectiveEps, analystConsen
   }
 
   multiplesTableEl.append(
-    tableRow('EPS (TTM)', fmt(data.epsTtm)),
+    // epsToUse (not data.epsTtm) so this matches the price banner and Trailing P/E right below
+    // it -- previously showed Twelve Data's raw (possibly Yahoo-superseded) figure here while
+    // Trailing P/E, computed two lines above from the same epsToUse, already reflected the
+    // resolved value, producing an internally-inconsistent panel.
+    tableRow('EPS (TTM)', fmt(epsToUse)),
     tableRow('Median P/E, 1Y', fmt(data.historicalPe.avg1y)),
     tableRow('Median P/E, 3Y', fmt(data.historicalPe.avg3y)),
     tableRow('Median P/E, 5Y', fmt(data.historicalPe.avg5y)),
@@ -810,12 +832,14 @@ async function handleSubmit(event, forceRefresh = false) {
       effectiveGrowth = Number(Number(effectiveGrowth).toFixed(2));
     }
 
-    // eps-input is locked/display-only -- always show the live TTM EPS the server just used
-    // (there is no "user left it on Auto" case anymore now that the field can't be edited).
+    // eps-input is locked/display-only -- always show the live TTM EPS the server just used.
+    // effectiveEps (not data.epsTtm) reflects resolveEpsWithFallback's result -- when Twelve
+    // Data's own figure looked stale and Yahoo's was available, this is Yahoo's, not Twelve
+    // Data's raw figure. See renderPriceBanner above for the source label shown alongside it.
     if (epsInput) {
       epsInput.value =
-        data.epsTtm !== null && data.epsTtm !== undefined
-          ? Number(Number(data.epsTtm).toFixed(2))
+        effectiveEps !== null && effectiveEps !== undefined
+          ? Number(Number(effectiveEps).toFixed(2))
           : '';
     }
 
@@ -848,7 +872,10 @@ async function handleSubmit(event, forceRefresh = false) {
       ticker: data.ticker,
       currentPrice: data.currentPrice,
       currency: data.currency,
-      epsTtm: data.epsTtm,
+      // effectiveEps, not data.epsTtm -- reflects resolveEpsWithFallback's result, so a saved
+      // record matches the number actually shown/used, not a stale Twelve Data figure the UI
+      // itself already replaced.
+      epsTtm: effectiveEps,
       // No epsOverride key: the field is locked and handleSubmit never sends one, so a
       // web-saved record always reflects the live TTM EPS. Legacy/CLI records may still carry
       // epsOverride, which renderHistoryTable continues to honour when displaying them.
@@ -890,7 +917,7 @@ async function handleSubmit(event, forceRefresh = false) {
     };
 
     renderGrowthChips(data.growth);
-    renderPriceBanner(data, lynch.base, ruleOne.base);
+    renderPriceBanner(data, lynch.base, ruleOne.base, effectiveEps, body.epsSource, body.epsSourceDetail);
     renderGrowthTable(data.growth, effectiveGrowth);
     renderMultiplesTable(data, effectiveGrowth, effectiveEps, body.analystConsensus);
     renderAnalystTable(body.analystConsensus, data.currentPrice);

@@ -640,6 +640,77 @@ describe('app.js frontend', () => {
     });
   });
 
+  describe('renderPriceBanner — epsSource labeling', () => {
+    // effectiveEps/epsSource/epsSourceDetail come from the server's resolveEpsWithFallback
+    // (src/data/resolveEps.ts) -- these tests pin the label text so a Yahoo-sourced EPS is never
+    // silently shown as if it were Twelve Data's raw figure.
+    function bannerData(overrides = {}) {
+      return {
+        ticker: 'CSCO',
+        currentPrice: 110.23,
+        currency: 'USD',
+        epsTtm: 3.08,
+        asOf: '2026-08-25T08:48:18.421Z',
+        staleTtmWarning: false,
+        ...overrides,
+      };
+    }
+
+    it('shows no source note and no warning class for a healthy (non-stale) figure', () => {
+      renderPriceBanner(
+        bannerData({ staleTtmWarning: false }),
+        { ok: true, fairValue: 50 },
+        { ok: true, fairValue: 40 },
+        3.08,
+        'twelvedata',
+        'Twelve Data, as of 2026-08-25T08:48:18.421Z',
+      );
+
+      const meta = document.getElementById('price-meta');
+      expect(meta.textContent).toContain('EPS (TTM) 3.08');
+      expect(meta.textContent).not.toMatch(/Yahoo|stale/i);
+      expect(meta.classList.contains('stale-warning')).toBe(false);
+      expect(meta.classList.contains('eps-fallback-note')).toBe(false);
+    });
+
+    it('shows the Yahoo-fallback EPS value and note, not the stale Twelve Data figure', () => {
+      renderPriceBanner(
+        bannerData({ epsTtm: 3.08, staleTtmWarning: true }),
+        { ok: false, error: 'NEGATIVE_GROWTH_RATE' },
+        { ok: true, fairValue: 9.48 },
+        3.31,
+        'yahoo-fallback',
+        "Yahoo Finance, as of 2026-08-25T08:48:20.617Z — used because Twelve Data's figure ($3.08) looked stale",
+      );
+
+      const meta = document.getElementById('price-meta');
+      expect(meta.textContent).toContain('EPS (TTM) 3.31');
+      expect(meta.textContent).not.toContain('3.08');
+      expect(meta.textContent).toMatch(/Yahoo Finance/);
+      expect(meta.classList.contains('eps-fallback-note')).toBe(true);
+      expect(meta.classList.contains('stale-warning')).toBe(false);
+      expect(meta.title).toContain('Yahoo Finance');
+    });
+
+    it('shows a warning (not the fallback note) when stale and the Yahoo fallback was unavailable', () => {
+      renderPriceBanner(
+        bannerData({ epsTtm: 3.08, staleTtmWarning: true }),
+        { ok: false, error: 'NEGATIVE_GROWTH_RATE' },
+        { ok: true, fairValue: 8.82 },
+        3.08,
+        'twelvedata-stale-no-fallback',
+        undefined,
+      );
+
+      const meta = document.getElementById('price-meta');
+      expect(meta.textContent).toContain('EPS (TTM) 3.08');
+      expect(meta.textContent).toMatch(/stale/i);
+      expect(meta.textContent).toMatch(/unavailable/i);
+      expect(meta.classList.contains('stale-warning')).toBe(true);
+      expect(meta.classList.contains('eps-fallback-note')).toBe(false);
+    });
+  });
+
   describe('fmt / fmtPercent / formatDate', () => {
     it('renders n/a for null and undefined, but a real 0 as a value', () => {
       expect(fmt(null)).toBe('n/a');
@@ -742,6 +813,17 @@ describe('app.js frontend', () => {
       renderMultiplesTable(multiplesData(), 10, null, null);
       // price 100 / epsTtm 5 = 20.00
       expect(document.getElementById('multiples-table').textContent).toContain('20.00');
+    });
+
+    it('shows the EPS (TTM) row itself as effectiveEps, not the raw epsTtm, when they differ', () => {
+      // Regression: this row previously always read data.epsTtm directly, even though Trailing
+      // P/E two rows below it already used effectiveEps -- when a Yahoo-fallback effectiveEps
+      // (e.g. resolveEpsWithFallback superseding a stale Twelve Data epsTtm) differed from
+      // data.epsTtm, the panel showed two different EPS figures side by side.
+      renderMultiplesTable(multiplesData({ epsTtm: 3.08 }), 10, 3.31, null);
+      const text = document.getElementById('multiples-table').textContent;
+      expect(text).toContain('3.31');
+      expect(text).not.toContain('3.08');
     });
 
     it('renders PEG without Infinity when growth is zero or negative', () => {

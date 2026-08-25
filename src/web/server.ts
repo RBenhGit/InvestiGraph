@@ -5,6 +5,7 @@ import fastifyStatic from '@fastify/static';
 import { fetchStockData } from '../data/twelvedata';
 import { fetchAnalystConsensus } from '../data/yahoo';
 import { safeTickerSegment } from '../data/cache';
+import { resolveEpsWithFallback } from '../data/resolveEps';
 import { calculateLynchValue } from '../valuation/lynch';
 import { calculateRuleOneValue } from '../valuation/ruleOne';
 import { saveValuation, getHistory, deleteValuation, type SaveValuationInput } from '../history';
@@ -128,8 +129,15 @@ export function buildServer() {
     }
 
     const { data } = result;
+    const analystConsensus =
+      analystConsensusResult && analystConsensusResult.ok ? analystConsensusResult.data : null;
+    // Only second-guesses epsTtm when Twelve Data's own figure looked stale (staleTtmWarning);
+    // a healthy figure is never overridden. Yahoo's trailingEps is a whole-TTM figure (not
+    // decomposable into quarters), so this is a full replacement, not a per-quarter splice —
+    // see resolveEps.ts. An explicit epsOverride from the frontend still wins over both.
+    const resolvedEps = resolveEpsWithFallback(data, analystConsensus);
     const effectiveEps =
-      typeof epsOverride === 'number' && epsOverride > 0 ? epsOverride : data.epsTtm;
+      typeof epsOverride === 'number' && epsOverride > 0 ? epsOverride : resolvedEps.epsTtm;
 
     let effectiveGrowth = typeof growthRatePercent === 'number' ? growthRatePercent : null;
 
@@ -198,13 +206,14 @@ export function buildServer() {
       mosPercent ?? 0,
     );
 
-    const analystConsensus =
-      analystConsensusResult && analystConsensusResult.ok ? analystConsensusResult.data : null;
-
     return reply.status(200).send({
       ok: true,
       data,
       effectiveEps,
+      // Provenance of effectiveEps, for the UI to label the number honestly instead of silently
+      // showing a Yahoo-sourced figure as if it were Twelve Data's. `null` when epsOverride won
+      // (a user-typed value has no "source" to report). See resolveEps.ts.
+      epsSource: typeof epsOverride === 'number' && epsOverride > 0 ? null : resolvedEps.source,
       effectiveGrowth,
       // The growth rate actually used for bear/bull, echoed back regardless of whether lynch/
       // ruleOne succeeded for that scenario — same reasoning as effectiveGrowth above. Without
@@ -227,6 +236,10 @@ export function buildServer() {
         bull: ruleOneBull,
       },
       analystConsensus,
+      // Human-readable note on which source effectiveEps actually reflects, and any relevant
+      // asOf/quarter dates — see resolveEps.ts. Redundant with epsSource for a machine, but
+      // saves the frontend from re-deriving the same message from raw fields.
+      epsSourceDetail: resolvedEps.detail,
     });
   });
 

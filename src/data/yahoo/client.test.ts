@@ -28,7 +28,7 @@ describe('yahoo client', () => {
     const result = await fetchQuoteSummary('AAPL');
 
     expect(quoteSummaryMock).toHaveBeenCalledWith('AAPL', {
-      modules: ['earningsTrend', 'financialData', 'summaryDetail'],
+      modules: ['earningsTrend', 'financialData', 'summaryDetail', 'defaultKeyStatistics'],
     });
     expect(result).toEqual(mockResult);
   });

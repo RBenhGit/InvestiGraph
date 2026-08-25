@@ -1,6 +1,8 @@
 import { Command } from 'commander';
 import { fetchStockData } from '../data/twelvedata';
 import type { StockDataError } from '../data/twelvedata/types';
+import { fetchAnalystConsensus } from '../data/yahoo';
+import { resolveEpsWithFallback } from '../data/resolveEps';
 import { calculateLynchValue } from '../valuation/lynch';
 import { calculateRuleOneValue } from '../valuation/ruleOne';
 import { formatOutput } from './formatOutput';
@@ -112,6 +114,16 @@ async function run(
   }
 
   const { data } = result;
+  // Only calls Yahoo when Twelve Data's own figure looks stale (staleTtmWarning) — no extra
+  // network call in the common case. Yahoo's own failure must never fail this valuation; it
+  // just means resolveEpsWithFallback falls back to the (flagged-stale) Twelve Data figure.
+  const analystConsensusResult = data.staleTtmWarning
+    ? await fetchAnalystConsensus(data.ticker).catch(() => null)
+    : null;
+  const analystConsensus =
+    analystConsensusResult && analystConsensusResult.ok ? analystConsensusResult.data : null;
+  const resolvedEps = resolveEpsWithFallback(data, analystConsensus);
+
   // Note: This growth fallback chain is duplicated in web/public/app.js.
   // If you change the fallback logic here, make sure to update the web UI as well.
   const growthSeed =
@@ -120,9 +132,9 @@ async function run(
     data.growth.historical1yPercent ??
     null;
 
-  const lynchResult = calculateLynchValue(data.epsTtm, growthSeed);
+  const lynchResult = calculateLynchValue(resolvedEps.epsTtm, growthSeed);
   const ruleOneResult = calculateRuleOneValue(
-    data.epsTtm,
+    resolvedEps.epsTtm,
     growthSeed,
     EXIT_PE_MULTIPLE,
     REQUIRED_RETURN_PERCENT,
@@ -130,14 +142,14 @@ async function run(
     mosPercent,
   );
 
-  console.log(formatOutput(data, lynchResult, ruleOneResult));
+  console.log(formatOutput(data, lynchResult, ruleOneResult, resolvedEps));
 
   if (shouldSave && growthSeed !== null) {
     const saveResult = await saveValuation({
       ticker: data.ticker,
       currentPrice: data.currentPrice,
       currency: data.currency,
-      epsTtm: data.epsTtm,
+      epsTtm: resolvedEps.epsTtm,
       growthRatePercent: growthSeed,
       exitPeMultiple: EXIT_PE_MULTIPLE,
       requiredReturnPercent: REQUIRED_RETURN_PERCENT,

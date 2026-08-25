@@ -1,4 +1,5 @@
 import type { StockData } from '../data/twelvedata/types';
+import type { ResolvedEps } from '../data/resolveEps';
 import type { RuleOneInputsUsed } from '../valuation/ruleOne';
 import type { ValuationInputsUsed, ValuationResult } from '../valuation/shared/types';
 
@@ -55,6 +56,7 @@ export function formatOutput(
   data: StockData,
   lynchResult: ValuationResult<ValuationInputsUsed>,
   ruleOneResult: ValuationResult<RuleOneInputsUsed>,
+  resolvedEps?: ResolvedEps,
 ): string {
   const growthSource = selectGrowthSource(data);
   const inputsUsed = pickInputsUsed(lynchResult, ruleOneResult);
@@ -62,10 +64,25 @@ export function formatOutput(
   const lines: string[] = [];
   lines.push(`Ticker: ${data.ticker}`);
   lines.push(`Current price: ${fmt(data.currentPrice)} ${data.currency}`);
-  lines.push(`EPS (TTM): ${fmt(data.epsTtm)}`);
-  if (data.staleTtmWarning) {
+
+  if (!resolvedEps || resolvedEps.source === 'twelvedata') {
+    lines.push(`EPS (TTM): ${fmt(data.epsTtm)}`);
+    if (data.staleTtmWarning) {
+      lines.push(
+        '  ⚠ WARNING: EPS (TTM) may be stale — it diverges >5% from the provider\'s own trailing P/E-implied EPS. This can happen when a ticker\'s income-statement data has not yet rolled in a recent earnings release.',
+      );
+    }
+  } else if (resolvedEps.source === 'yahoo-fallback') {
+    lines.push(`EPS (TTM): ${fmt(resolvedEps.epsTtm)} [source: Yahoo Finance, not Twelve Data]`);
     lines.push(
-      '  ⚠ WARNING: EPS (TTM) may be stale — it diverges >5% from the provider\'s own trailing P/E-implied EPS. This can happen when a ticker\'s income-statement data has not yet rolled in a recent earnings release.',
+      `  ⓘ Twelve Data's EPS ($${fmt(data.epsTtm)}) looked stale (>5% off its own trailing P/E) — used Yahoo Finance instead.`,
+    );
+    lines.push(`  ${resolvedEps.detail}`);
+  } else {
+    // twelvedata-stale-no-fallback: flagged as possibly stale AND Yahoo was unavailable.
+    lines.push(`EPS (TTM): ${fmt(data.epsTtm)} [source: Twelve Data — Yahoo fallback unavailable]`);
+    lines.push(
+      '  ⚠ WARNING: EPS (TTM) may be stale — it diverges >5% from the provider\'s own trailing P/E-implied EPS, and Yahoo Finance (the fallback source) could not be reached to cross-check.',
     );
   }
   lines.push('');

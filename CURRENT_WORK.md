@@ -169,38 +169,67 @@ markup or JS has a rule except `panel-neutral` (`index.html:121`), which is cosm
 recorded not fixed.
 
 **Twelve Data's `income_statement` (quarterly) lags a real earnings release by at least ~10
-days — FIXED with a cross-check warning, not a root-cause fix (root cause is upstream, outside
-this app's control).** Found while independently verifying a user-reported CSCO EPS discrepancy
-(app showed 3.08, five other sources — Gemini, Qualtrim, Investing.com, Finviz, Seeking Alpha —
-all showed 3.33). Traced end-to-end against CSCO's own SEC filings: Cisco reported Q4 FY2026
-(GAAP EPS $0.97) via 8-K on 2026-08-12; 13 days later `income_statement` still returned the stale
-Q4 FY2025 quarter ($0.71) instead. Confirmed this is a genuine Twelve Data data-freshness gap, not
-a bug in `resolveTtmEps`'s arithmetic (re-verified by hand against SEC XBRL) and not fixable by a
-longer cache TTL (the *upstream* API itself was stale, not just this app's local cache) — live-
-checked two days later (2026-08-25) and `income_statement` was *still* returning the same stale
-quarter, while Twelve Data's own separate `statistics` endpoint (`trailing_pe`) and an independent
-`yahoo-finance2` query had both already rolled forward. Since the root cause is outside this
-codebase, fixed by adding a same-provider cross-check instead: `detectStaleTtmEps` (new,
-`normalize.ts`) compares the `epsTtm`-implied trailing P/E against `statistics.trailing_pe` (a
-faster-updating Twelve Data pipeline the app already fetched but only used as an inert reference
-figure) and flags `StockData.staleTtmWarning` when they diverge >5%. Threshold was live-calibrated,
-not guessed: two healthy cached tickers showed 1.5% (AAPL) and 0.04% (MSFT) divergence, while the
-real stale CSCO case showed 7.3% — an initial 15% guess was checked against the live CSCO case
-first and silently failed to fire, which is why it was recalibrated down to 5% rather than shipped
-unverified. Surfaced in both the CLI (`formatOutput.ts`, a `⚠ WARNING` line under `EPS (TTM)`) and
-the web UI (`app.js`, appended to the price-banner meta line with a `.stale-warning` CSS class).
-3 new tests in `twelvedata/index.test.ts` (fires >5%, silent ≤5%, silent when provider figure is
-missing) plus required-field fixes in 4 other test files that construct `StockData` mocks. 203/203
-tests (was 200, +3 new), lint clean, build clean. Live-verified three ways: CLI against real CSCO
-(warning appears) and real AAPL (no false positive); direct `POST /api/valuate` call
-(`"staleTtmWarning":true` in the raw JSON); and the actual browser UI, where the price-banner meta
-line read "CSCO · EPS (TTM) 3.08 · ... · ⚠ EPS (TTM) may be stale (diverges from provider trailing
-P/E — check for a recent earnings release)". Note: this only catches the case where Twelve Data's
-own `statistics` pipeline is ahead of its `income_statement` pipeline (true for CSCO, not
-guaranteed for every stale-data cause) — a future session could still pursue a second, independent
-source (`yahoo-finance2`'s `trailingEps`, confirmed live to have the fresh CSCO quarter via its
-`mostRecentQuarter` field) as a stronger cross-check or an actual replacement `epsTtm` source when
-Twelve Data is flagged stale, rather than only a warning.
+days — FIXED with an actual Yahoo-sourced replacement value, upgraded from an earlier
+warning-only fix the same day.** Found while independently verifying a user-reported CSCO EPS
+discrepancy (app showed 3.08, five other sources — Gemini, Qualtrim, Investing.com, Finviz,
+Seeking Alpha — all showed 3.33). Traced end-to-end against CSCO's own SEC filings: Cisco reported
+Q4 FY2026 (GAAP EPS $0.97) via 8-K on 2026-08-12; 13 days later `income_statement` still returned
+the stale Q4 FY2025 quarter ($0.71) instead, and this is a genuine Twelve Data data-freshness gap,
+not a bug in `resolveTtmEps`'s arithmetic (re-verified by hand against SEC XBRL) and not fixable
+by a longer cache TTL (the *upstream* API itself was stale). First fix (same day, earlier): added
+`detectStaleTtmEps` (`normalize.ts`) comparing `epsTtm`-implied trailing P/E against
+`statistics.trailing_pe` (a faster Twelve Data pipeline already fetched but unused) and flagged
+`StockData.staleTtmWarning` at a live-calibrated >5% divergence (two healthy tickers showed
+1.5%/0.04%, the real CSCO case showed 7.3%; an initial 15% guess was checked live and silently
+failed to fire, hence the recalibration) — but this only warned, still showing the wrong $3.08.
+User asked why not just use Yahoo's already-fresher figure instead of only warning. Investigated
+what Yahoo actually exposes before wiring anything: `defaultKeyStatistics.trailingEps` is a
+ready-made TTM figure (not decomposable into quarters — confirmed live: CSCO's value 3.31,
+`mostRecentQuarter` 2026-07-25, matching the exact missing quarter), while Yahoo's per-quarter
+module (`incomeStatementHistoryQuarterly`) is itself deprecated/stale and doesn't reach the needed
+quarter, and Yahoo's `earningsChart.quarterly` turned out to be Non-GAAP (confirmed against SEC:
+its Q3/Q4 FY2026 rows exactly matched Cisco's own reported Non-GAAP EPS, not GAAP) — ruling out
+"splice one Yahoo quarter into three Twelve Data quarters" as infeasible, leaving whole-figure
+replacement as the only real option once `staleTtmWarning` fires. New shared module
+`src/data/resolveEps.ts` (`resolveEpsWithFallback`, sibling of `twelvedata/`/`yahoo/` like
+`cache.ts`, not owned by either) only calls into Yahoo's `trailingEps` when `staleTtmWarning` is
+true (no extra network call otherwise); returns one of three `EpsSource` values (`'twelvedata'`,
+`'yahoo-fallback'`, `'twelvedata-stale-no-fallback'` if Yahoo also fails/is null/non-positive) plus
+a human-readable `detail` naming the superseded figure and Yahoo's `asOf`/quarter date — per user's
+explicit requirement that a fallback must always say where the number came from, never silently
+substitute. Wired into **both** adapters identically (this codebase has been bitten before by
+CLI/web fallback-chain drift, see CLAUDE.md's warning) — the CLI didn't call Yahoo at all before
+this; now conditionally does, only on a stale flag. `yahoo/client.ts`/`index.ts`/`types.ts` extended
+with `trailingEps`/`mostRecentQuarterEndDate` (added the `defaultKeyStatistics` module to the
+existing `quoteSummary` call). `server.ts`'s response gained `epsSource`/`epsSourceDetail`
+(`epsSource: null` when an explicit `epsOverride` wins over the resolution, since a user-typed
+value has no "source" to report). Web UI: `renderPriceBanner` now takes `effectiveEps`/`epsSource`/
+`epsSourceDetail` and labels the banner honestly (a distinct `.eps-fallback-note` style, separate
+from `.stale-warning`, for the "resolved, here's why" case vs. the "still stale, no fallback"
+case) — found and fixed a real bug surfaced by this cross-check while live-verifying in the actual
+browser: `renderMultiplesTable`'s own "EPS (TTM)" row still read `data.epsTtm` directly (the raw,
+possibly-superseded figure) even though the Trailing P/E row two lines below it already computed
+from the resolved `effectiveEps`, so the reference panel showed two different EPS numbers
+side-by-side (3.08 and a P/E implying 3.31) until fixed to use the same `epsToUse` the P/E already
+used. 14 new tests: `resolveEps.test.ts` (5, covering all three `EpsSource` outcomes including
+zero/negative Yahoo figures), `server.test.ts` (4, end-to-end through `/api/valuate` including the
+epsOverride-wins case), `app.test.js` (4, the three banner-labeling states plus the
+renderMultiplesTable consistency regression), `yahoo/index.test.ts` (2, Date-vs-string
+`mostRecentQuarter` handling and the absent-module null case), `yahoo/client.test.ts` (1, updated
+module-list assertion). 218/218 tests total (was 203, +15 net — one prior assertion updated, 15
+genuinely new minus 1 that was a fixture correction), lint clean, build clean. Live-verified deeply,
+not just re-run: force-refreshed CSCO's cache and confirmed the CLI now prints
+`EPS (TTM): 3.31 [source: Yahoo Finance, not Twelve Data]` with the full detail line naming both
+figures and both timestamps; confirmed AAPL (healthy, no `staleTtmWarning`) makes no Yahoo call and
+shows no source label; hit `/api/valuate` directly and confirmed `"effectiveEps":3.31,
+"epsSource":"yahoo-fallback"` in the raw JSON; and drove the actual browser UI end-to-end (price
+banner *and* the reference panel, after finding and fixing the panel-inconsistency bug above),
+confirming both panels agree on 3.31 post-fix. Known remaining gap, documented not fixed: this
+still only fires when `staleTtmWarning`'s >5% divergence check trips — a staleness this cross-check
+can't detect (e.g. if Twelve Data's own `statistics` endpoint is *also* stale, not just
+`income_statement`) would still silently return the wrong Twelve Data figure with no warning and no
+fallback attempt, since nothing here re-derives freshness from a source other than that same
+statistics endpoint.
 
 **Known, accepted, not fixed** (low severity, documented rather than changed):
 
@@ -610,3 +639,26 @@ undefined`, but both fields are typed `number | null` and never actually `undefi
   to 5% using two known-healthy tickers (AAPL 1.5%, MSFT 0.04%) as the noise floor before
   re-verifying live. 203/203 tests (was 200, +3), lint clean, build clean, verified live via CLI
   (both a firing and a non-firing real ticker), a direct API call, and the browser UI.
+- 2026-08-25 (still later same day) — User pushed back that a warning-only fix "doesn't help" —
+  if Yahoo already has a fresher number, why not use it? Investigated what Yahoo actually exposes
+  before wiring anything (per user's own follow-up questions about reliability/what happens on
+  Yahoo failure): confirmed `defaultKeyStatistics.trailingEps` is a ready-made TTM figure with no
+  per-quarter breakdown available, ruling out the user's first proposed design ("splice one fresh
+  Yahoo quarter into Twelve Data's other three") as technically infeasible — Yahoo's only
+  per-quarter data is either deprecated/stale (`incomeStatementHistoryQuarterly`, missing the
+  needed quarter entirely) or Non-GAAP (`earningsChart.quarterly`, confirmed against SEC to match
+  Cisco's own reported Non-GAAP figures, not GAAP). Settled on whole-figure replacement instead,
+  confirmed acceptable with the user, with explicit source-labeling and a documented decision for
+  the double-failure case (network/version failure of the Yahoo call → keep stale Twelve Data
+  value + label; user separately clarified "not available" and "not up to date" are different
+  cases but converge on the same answer here: show what's available with clear provenance, never
+  fabricate). Implemented `src/data/resolveEps.ts` (`resolveEpsWithFallback`) and wired it into
+  both the CLI (which didn't call Yahoo before this at all) and `server.ts` identically. Found and
+  fixed a real UI bug while live-verifying in the browser: `renderMultiplesTable`'s own "EPS (TTM)"
+  row still showed the raw Twelve Data figure even after the price banner above it had already
+  switched to Yahoo's — the two reference panels disagreed with each other until fixed. 218/218
+  tests (was 203, +15), lint clean, build clean. Live-verified end-to-end post-fix: CLI shows
+  "EPS (TTM): 3.31 [source: Yahoo Finance, not Twelve Data]" for CSCO with full provenance detail,
+  AAPL makes no extra Yahoo call and shows no label, the raw `/api/valuate` JSON carries
+  `epsSource:"yahoo-fallback"`, and the actual browser UI shows 3.31 consistently in both the price
+  banner and the reference panel post-fix. Full details in "Known problems" above.

@@ -68,6 +68,15 @@ export async function fetchAnalystConsensus(
       }
     }
 
+    const defaultKeyStatistics = result.defaultKeyStatistics;
+    const rawMostRecentQuarter = defaultKeyStatistics?.mostRecentQuarter;
+    const mostRecentQuarterEndDate =
+      rawMostRecentQuarter instanceof Date
+        ? rawMostRecentQuarter.toISOString()
+        : typeof rawMostRecentQuarter === 'string'
+          ? rawMostRecentQuarter
+          : null;
+
     const data: AnalystConsensus = {
       ticker,
       nextYearEpsGrowthPercent,
@@ -81,6 +90,8 @@ export async function fetchAnalystConsensus(
       beta: summaryDetail?.beta ?? null,
       priceToSales: summaryDetail?.priceToSalesTrailing12Months ?? null,
       ruleOf40,
+      trailingEps: defaultKeyStatistics?.trailingEps ?? null,
+      mostRecentQuarterEndDate,
       asOf: new Date().toISOString(),
     };
 

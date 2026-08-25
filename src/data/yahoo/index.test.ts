@@ -31,6 +31,10 @@ function quoteSummary(overrides: Record<string, unknown> = {}) {
       numberOfAnalystOpinions: 53,
       recommendationKey: 'strong_buy',
     },
+    defaultKeyStatistics: {
+      trailingEps: 11.03,
+      mostRecentQuarter: '2026-06-30T00:00:00.000Z',
+    },
     ...overrides,
   };
 }
@@ -56,6 +60,37 @@ describe('fetchAnalystConsensus', () => {
       numberOfAnalysts: 53,
     });
     expect(result.data.recommendationKey).toBe('strong_buy');
+    expect(result.data.trailingEps).toBe(11.03);
+    expect(result.data.mostRecentQuarterEndDate).toBe('2026-06-30T00:00:00.000Z');
+  });
+
+  it('converts a Date-typed mostRecentQuarter to an ISO string', async () => {
+    vi.mocked(fetchQuoteSummary).mockResolvedValue(
+      quoteSummary({
+        defaultKeyStatistics: {
+          trailingEps: 8.72,
+          mostRecentQuarter: new Date('2026-06-27T00:00:00.000Z'),
+        },
+      }),
+    );
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.trailingEps).toBe(8.72);
+    expect(result.data.mostRecentQuarterEndDate).toBe('2026-06-27T00:00:00.000Z');
+  });
+
+  it('nulls trailingEps/mostRecentQuarterEndDate when defaultKeyStatistics is absent', async () => {
+    vi.mocked(fetchQuoteSummary).mockResolvedValue(quoteSummary({ defaultKeyStatistics: undefined }));
+
+    const result = await fetchAnalystConsensus(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.trailingEps).toBeNull();
+    expect(result.data.mostRecentQuarterEndDate).toBeNull();
   });
 
   it('returns null growth when the +1y trend entry is absent (e.g. thin coverage)', async () => {
@@ -125,6 +160,8 @@ describe('fetchAnalystConsensus', () => {
       beta: null,
       priceToSales: null,
       ruleOf40: null,
+      trailingEps: 11.03,
+      mostRecentQuarterEndDate: '2026-06-30T00:00:00.000Z',
       asOf: '2026-08-19T00:00:00.000Z',
     };
     vi.mocked(getCachedYahooData).mockResolvedValue(mockCached);

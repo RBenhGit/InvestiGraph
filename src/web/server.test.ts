@@ -54,6 +54,8 @@ function analystConsensus(overrides: Partial<AnalystConsensus> = {}): AnalystCon
     beta: null,
     priceToSales: null,
     ruleOf40: null,
+    trailingEps: null,
+    mostRecentQuarterEndDate: null,
     asOf: '2026-08-14T00:00:00.000Z',
     ...overrides,
   };
@@ -307,6 +309,120 @@ describe('POST /api/valuate', () => {
     const body = response.json();
     expect(body.ok).toBe(true);
     expect(body.analystConsensus).toBeNull();
+  });
+
+  it('uses epsTtm as-is (source twelvedata) when staleTtmWarning is false, even if Yahoo has a different trailingEps', async () => {
+    vi.mocked(fetchStockData).mockResolvedValue({
+      ok: true,
+      data: stockData({ epsTtm: 10, staleTtmWarning: false }),
+    });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({
+      ok: true,
+      data: analystConsensus({ trailingEps: 12 }),
+    });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+      },
+    });
+
+    const body = response.json();
+    expect(body.effectiveEps).toBe(10);
+    expect(body.epsSource).toBe('twelvedata');
+  });
+
+  it('falls back to Yahoo trailingEps (source yahoo-fallback) when staleTtmWarning is true and Yahoo succeeds', async () => {
+    vi.mocked(fetchStockData).mockResolvedValue({
+      ok: true,
+      data: stockData({ epsTtm: 3.08, staleTtmWarning: true }),
+    });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({
+      ok: true,
+      data: analystConsensus({ trailingEps: 3.31, mostRecentQuarterEndDate: '2026-07-25T00:00:00.000Z' }),
+    });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+      },
+    });
+
+    const body = response.json();
+    expect(body.effectiveEps).toBe(3.31);
+    expect(body.epsSource).toBe('yahoo-fallback');
+    expect(body.epsSourceDetail).toContain('Yahoo Finance');
+  });
+
+  it('keeps the stale Twelve Data epsTtm (source twelvedata-stale-no-fallback) when staleTtmWarning is true and Yahoo fails', async () => {
+    vi.mocked(fetchStockData).mockResolvedValue({
+      ok: true,
+      data: stockData({ epsTtm: 3.08, staleTtmWarning: true }),
+    });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({
+      ok: false,
+      error: { type: 'API_ERROR', ticker: TICKER, message: 'network timeout' },
+    });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+      },
+    });
+
+    const body = response.json();
+    expect(body.effectiveEps).toBe(3.08);
+    expect(body.epsSource).toBe('twelvedata-stale-no-fallback');
+  });
+
+  it('an explicit epsOverride still wins over the resolved (possibly Yahoo-fallback) eps, with epsSource null', async () => {
+    vi.mocked(fetchStockData).mockResolvedValue({
+      ok: true,
+      data: stockData({ epsTtm: 3.08, staleTtmWarning: true }),
+    });
+    vi.mocked(fetchAnalystConsensus).mockResolvedValue({
+      ok: true,
+      data: analystConsensus({ trailingEps: 3.31 }),
+    });
+    const fastify = buildServer();
+
+    const response = await fastify.inject({
+      method: 'POST',
+      url: '/api/valuate',
+      payload: {
+        ticker: TICKER,
+        epsOverride: 5,
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        years: 10,
+      },
+    });
+
+    const body = response.json();
+    expect(body.effectiveEps).toBe(5);
+    expect(body.epsSource).toBeNull();
   });
 
   it('seeds growth from historical3yPercent uncapped when analyst estimate is missing, matching the CLI fallback chain exactly', async () => {

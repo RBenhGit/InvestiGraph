@@ -28,11 +28,15 @@ before still requires a live key.
 ## Architecture
 
 Two shared core layers (`src/data/`, `src/valuation/`) sit behind thin adapters (`src/cli/`,
-`src/web/`). While both adapters call the `twelvedata` entry point to collect fundamentals, the
-web adapter additionally calls `yahoo` for analyst data. The CLI does not use the `yahoo` module.
+`src/web/`). Both adapters call the `twelvedata` entry point to collect fundamentals. The web
+adapter always additionally calls `yahoo` for analyst data. The CLI only calls `yahoo`
+conditionally — when `StockData.staleTtmWarning` is true (see `src/data/resolveEps.ts`) — to try
+to replace a stale Twelve Data `epsTtm` with Yahoo's `trailingEps`; a healthy ticker never
+triggers the extra network call.
 
 ```
 src/data/cache.ts       saveCached*/getCached* — disk-backed cache, shared by twelvedata/ and yahoo/
+src/data/resolveEps.ts  resolveEpsWithFallback(data, analystConsensus) -> ResolvedEps — Yahoo fallback for stale Twelve Data epsTtm
 src/data/twelvedata/   fetchStockData(ticker, opts?) -> StockDataResult   (external API -> StockData)
 src/data/yahoo/        fetchAnalystConsensus(ticker, opts?) -> AnalystConsensusResult
 src/history/            saveValuation/getHistory/deleteValuation -> HistoryResult   (disk-backed persistence)
@@ -97,6 +101,19 @@ argument: on a normal call they read-through the cache (24h TTL, no network call
 fresh); on a live-fetch failure they fall back to serving stale cached data instead of failing,
 which is the behavior described in the Commands section above. The web UI's "🔄 Refresh Live"
 button and the `forceRefresh` field on `POST /api/valuate` bypass the cache to force a live call.
+
+**`src/data/resolveEps.ts`** — a pure function (`resolveEpsWithFallback`), sibling of
+`twelvedata/`/`yahoo/` like `cache.ts` above, imported by both `cli/index.ts` and `server.ts` so
+their behavior can't drift (see the growth-fallback-chain incident this file already warns about
+elsewhere). Only relevant when `StockData.staleTtmWarning` is true — Twelve Data's
+quarterly `income_statement` has been observed lagging a real earnings release by 10+ days with no
+error, no warning (see the CSCO incident in `CURRENT_WORK.md`'s "Known problems"). When triggered,
+tries Yahoo's `AnalystConsensus.trailingEps` (a ready-made TTM figure — Yahoo's own per-quarter
+data is either deprecated/incomplete or Non-GAAP, so no per-quarter splice is possible) as a
+whole-figure replacement. Returns one of three `EpsSource` values
+(`'twelvedata'`/`'yahoo-fallback'`/`'twelvedata-stale-no-fallback'`) plus a human-readable
+`detail` string — never silently substitutes a number without saying where it came from. A
+healthy (non-stale) ticker never triggers the extra Yahoo call.
 
 **`src/history/`** — `index.ts` is the published entry point (`saveValuation`, `getHistory`,
 `deleteValuation`, plus the shared types); `store.ts` is internal-only (raw JSON-array file I/O

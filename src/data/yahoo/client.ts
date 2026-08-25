@@ -26,10 +26,19 @@ export interface QuoteSummaryResult {
     beta?: number | null;
     priceToSalesTrailing12Months?: number | null;
   };
+  // GAAP trailing-twelve-month diluted EPS, confirmed live against CSCO to match Yahoo's own
+  // `mostRecentQuarter` timestamp (i.e. this field itself rolls forward promptly after a real
+  // earnings release, unlike Twelve Data's quarterly income_statement — see
+  // detectStaleTtmEps/resolveEpsWithFallback). No per-quarter breakdown is available on this
+  // module — trailingEps is already a summed TTM figure, not decomposable back into quarters.
+  defaultKeyStatistics?: {
+    trailingEps?: number | null;
+    mostRecentQuarter?: string | Date | null;
+  };
 }
 
 export async function fetchQuoteSummary(ticker: string): Promise<QuoteSummaryResult> {
   return yahooFinance.quoteSummary(ticker, {
-    modules: ['earningsTrend', 'financialData', 'summaryDetail'],
+    modules: ['earningsTrend', 'financialData', 'summaryDetail', 'defaultKeyStatistics'],
   }) as Promise<QuoteSummaryResult>;
 }

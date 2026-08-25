@@ -117,6 +117,8 @@ describe('cache layer', () => {
       beta: null,
       priceToSales: null,
       ruleOf40: null,
+      trailingEps: 11.03,
+      mostRecentQuarterEndDate: '2026-06-30T00:00:00.000Z',
       asOf: '2026-08-19T00:00:00.000Z',
     };
 

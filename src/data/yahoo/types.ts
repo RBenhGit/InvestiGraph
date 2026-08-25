@@ -13,6 +13,12 @@ export interface AnalystConsensus {
   beta: number | null;
   priceToSales: number | null;
   ruleOf40: number | null;
+  // GAAP trailing EPS from Yahoo's defaultKeyStatistics — an independent cross-check/fallback
+  // source for StockData.epsTtm, used by resolveEpsWithFallback when Twelve Data's epsTtm looks
+  // stale (see StockData.staleTtmWarning). mostRecentQuarterEndDate is Yahoo's own freshness
+  // signal for trailingEps, surfaced so a fallback can be labeled with which quarter it reflects.
+  trailingEps: number | null;
+  mostRecentQuarterEndDate: string | null;
   asOf: string;
 }
 
