@@ -1,6 +1,6 @@
 # Current Work — Eps_Evaluation
 
-**Updated:** 2026-08-25
+**Updated:** 2026-08-26
 
 ## Where things stand
 
@@ -90,11 +90,8 @@ computed-style inspection).
 
 ## In flight
 
-Nothing in flight. Web UI got a full editorial redesign (`feature/mature-editorial-redesign`
-branch) plus a 3-scenario (Bear/Base/Bull) side-by-side feature; the 3-scenario feature had a
-real correctness bug (bear/bull's exit-P/E, required-return, and MoS were hardcoded and ignored
-user input) and a broken build/4 failing tests, both fixed and verified live — see Log below.
-Suite is 127/127 green, lint clean, build clean.
+Nothing in flight. Suite is 226/226 green, lint clean, build clean (verified via SSH host
+2026-08-26).
 
 ## Known problems
 
@@ -719,3 +716,17 @@ undefined`, but both fields are typed `number | null` and never actually `undefi
   list. Live-verified in the browser: page renders, the About link navigates correctly, content
   matches the actual implementation (cross-checked against the code while writing it, not written
   from memory of what the app "should" do).
+- 2026-08-26 — User asked for an app walkthrough/analysis (what it is, pros/cons, senior-analyst
+  read, bugs). While reviewing found an uncommitted, undocumented change already sitting in the
+  working tree: `server.ts`'s listen bind had been switched from `0.0.0.0` to `127.0.0.1` with a
+  comment claiming "Tailscale Serve provides the authenticated HTTPS entry point" — flagged as
+  needing explicit confirmation before shipping, since an unverified assumption here would make
+  the app silently unreachable from outside this machine. User confirmed access is live via
+  Tailscale right now, which validates the assumption. Verified suite (226/226), build, lint all
+  clean via the SSH host before committing. Committed (`0f1439b`) and pushed to
+  `origin/fix/locked-eps-raw-growth`. Analysis conclusion given to user: no new code bugs found
+  beyond what five prior audit rounds already caught and fixed (see log above); the one
+  methodology-level caveat worth remembering is that the growth-rate fallback chain can't
+  distinguish a durable growth trend from a one-time accounting swing (the ABBV TTM-growth
+  investigation from 2026-08-25 is the concrete example) — not a bug, a heuristic limitation
+  inherent to EPS×growth valuation.
