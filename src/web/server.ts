@@ -276,9 +276,8 @@ export function buildServer() {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const fastify = buildServer();
-  // Bind to all interfaces (not just loopback) so the dev tool is reachable over Tailscale/LAN,
-  // not only from this machine.
-  fastify.listen({ port: PORT, host: '0.0.0.0' }, (err, address) => {
+  // Keep the app private; Tailscale Serve provides the authenticated HTTPS entry point.
+  fastify.listen({ port: PORT, host: '127.0.0.1' }, (err, address) => {
     if (err) {
       fastify.log.error(err);
       process.exit(1);
