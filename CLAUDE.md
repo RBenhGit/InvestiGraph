@@ -287,9 +287,12 @@ span many sessions.
   gets a 403 there while every other endpoint succeeds. `fetchStockData` swallows that failure
   (`.catch(() => null)`); don't let a future change turn it back into a hard failure.
 - The `income_statement` endpoint has a hard ceiling of `outputsize=6` below the Enterprise
-  plan (HTTP 400 above it) — confirmed live. The quarterly call in `client.ts` deliberately
-  requests only `outputsize=4` (that's all `resolveTtmEps`'s net-income fallback needs), well
-  under the ceiling; the annual call requests the full `outputsize=6` the plan allows.
+  plan (HTTP 400 above it) — confirmed live. Both the quarterly and annual calls in `client.ts`
+  request the full `outputsize=6` the plan allows (the quarterly call used to request only 4 —
+  all `resolveTtmEps`'s net-income fallback needs — but was bumped to 6 so
+  `calculateTtmEpsGrowthPercent`, added 2026-08-26, gets as many quarters as this plan tier can
+  supply; it still needs 8 for a true year-over-year TTM comparison and correctly returns `null`
+  rather than approximate from fewer — see `StockData.growth.epsTtmGrowthPercent`).
   `historicalPe` needs 7+ quarters for even a 1y average, so on a lower-tier key
   `historicalPe` will always come back all-null via the quarterly path — that's a plan-tier
   limit, not a bug (which is why `historicalPe.ts` computes its P/E points from the annual

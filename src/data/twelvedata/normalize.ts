@@ -180,3 +180,39 @@ export function detectStaleTtmEps(
   const relativeDiff = Math.abs(computedTrailingPe - providerTrailingPe) / providerTrailingPe;
   return relativeDiff > 0.05;
 }
+
+/**
+ * True TTM-EPS growth: (TTM ending this quarter) vs. (TTM ending exactly 4 quarters earlier —
+ * a full year apart, not the CAGR-over-calendar-years figures in growth.historicalNyPercent
+ * above). Requires 8 consecutive quarters (4 for the current TTM window, 4 more for the
+ * year-ago window) — deliberately returns `null` rather than approximate from fewer, because a
+ * live investigation (2026-08-25, ABBV) found that shifting the comparison window by only 2
+ * quarters (6 months, the most this plan tier's 6-quarter income_statement cap can support)
+ * produces a number that looks like YoY TTM growth but isn't, and can diverge wildly from the
+ * real figure depending on which one-time items land in the overlapping vs. non-overlapping
+ * quarters. Never guess a shorter window silently — `null` (rendered "n/a") is far less
+ * misleading than a mislabeled 6-month comparison.
+ *
+ * `quarterlyDilutedEps`/`quarterlyDilutedShares` are expected most-recent-first, same shape as
+ * `resolveTtmEps`'s inputs — this reuses the exact same TTM math (sum of eps*shares over 4
+ * quarters, divided by mean shares) for both the current and year-ago windows, so the two
+ * figures are computed identically and a growth rate between them is a fair comparison.
+ */
+export function calculateTtmEpsGrowthPercent(
+  quarterlyDilutedEps: number[],
+  quarterlyDilutedShares: number[],
+): number | null {
+  if (quarterlyDilutedEps.length < 8 || quarterlyDilutedShares.length < 8) return null;
+
+  const ttmNow = resolveTtmEps(null, quarterlyDilutedEps.slice(0, 4), quarterlyDilutedShares.slice(0, 4));
+  const ttmYearAgo = resolveTtmEps(
+    null,
+    quarterlyDilutedEps.slice(4, 8),
+    quarterlyDilutedShares.slice(4, 8),
+  );
+
+  if (ttmNow === null || ttmYearAgo === null || ttmYearAgo <= 0) return null;
+
+  const result = (ttmNow / ttmYearAgo - 1) * 100;
+  return Number.isFinite(result) ? result : null;
+}

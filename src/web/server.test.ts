@@ -35,6 +35,7 @@ function stockData(overrides: Partial<StockData> = {}): StockData {
       historical3yPercent: 9,
       historical5yPercent: 7,
       analystEstimate5yPercent: 10,
+      epsTtmGrowthPercent: null,
     },
     historicalPe: { avg1y: 20, avg3y: 22, avg5y: 25 },
     trailingPe: 20,
@@ -437,6 +438,7 @@ describe('POST /api/valuate', () => {
           historical3yPercent: 22,
           historical5yPercent: 7,
           analystEstimate5yPercent: null,
+          epsTtmGrowthPercent: null,
         },
       }),
     });
@@ -479,6 +481,7 @@ describe('POST /api/valuate', () => {
           historical3yPercent: null,
           historical5yPercent: null,
           analystEstimate5yPercent: null,
+          epsTtmGrowthPercent: null,
         },
       }),
     });
@@ -630,6 +633,7 @@ describe('POST /api/valuate', () => {
           historical3yPercent: null,
           historical5yPercent: null,
           analystEstimate5yPercent: null,
+          epsTtmGrowthPercent: null,
         },
       }),
     });

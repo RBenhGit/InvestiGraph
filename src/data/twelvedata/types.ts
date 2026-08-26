@@ -33,6 +33,14 @@ export interface StockData {
     // period CAGR from the same annual EPS series historical1y/historical3y already use.
     historical5yPercent: number | null;
     analystEstimate5yPercent: number | null; // passthrough: growth_estimates.next_5_years_pa × 100 — real consensus, verified live
+    // True year-over-year TTM growth (TTM now vs. TTM exactly 4 quarters earlier) — distinct
+    // from historical1yPercent above, which compares calendar-year annual EPS, not rolling
+    // 12-month windows. Needs 8 consecutive quarters; this plan tier's income_statement caps at
+    // 6, so this is `null` in practice until the API key is upgraded — see
+    // calculateTtmEpsGrowthPercent in normalize.ts for why a shorter-window approximation is
+    // deliberately never substituted (live-investigated 2026-08-25, ABBV: a 6-month-apart
+    // comparison can diverge wildly from a true 12-month one depending on one-time-item timing).
+    epsTtmGrowthPercent: number | null;
   };
   historicalPe: HistoricalPeAverages;
   trailingPe: number | null; // recomputed locally as price/eps, never trusted from the API field

@@ -12,6 +12,7 @@ const baseData: StockData = {
     historical3yPercent: null,
     historical5yPercent: null,
     analystEstimate5yPercent: 40,
+    epsTtmGrowthPercent: null,
   },
   historicalPe: { avg1y: 28.5, avg3y: null, avg5y: null },
   trailingPe: 29.79,
@@ -76,6 +77,7 @@ describe('formatOutput', () => {
         historical3yPercent: null,
         historical5yPercent: null,
         analystEstimate5yPercent: null,
+        epsTtmGrowthPercent: null,
       },
     };
 

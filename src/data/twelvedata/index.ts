@@ -14,6 +14,7 @@ import {
 } from './client';
 import {
   calculateCagrPercent,
+  calculateTtmEpsGrowthPercent,
   CurrencyMismatchError,
   detectStaleTtmEps,
   parseNumber,
@@ -166,6 +167,14 @@ export async function fetchStockData(
       toPercent(growthEstimates?.growth_estimates.past_5_years_pa) ?? historical5yLocalPercent;
     const analystEstimate5yPercent = toPercent(growthEstimates?.growth_estimates.next_5_years_pa);
 
+    // True TTM-vs-TTM-a-year-ago growth — see calculateTtmEpsGrowthPercent's own comment for why
+    // it needs 8 quarters and returns null rather than approximating from fewer (this plan
+    // tier's 6-quarter income_statement cap means this is null in practice today).
+    const epsTtmGrowthPercent = calculateTtmEpsGrowthPercent(
+      quarterlyDilutedEpsAll,
+      quarterlyDilutedSharesAll,
+    );
+
     // historicalPe now derives from annual EPS, not quarterly — see historicalPe.ts's file
     // comment for why the quarterly endpoint's plan-tier cap makes that the only viable input.
     const annualEpsPoints: AnnualEpsPoint[] = annualIncome.income_statement
@@ -191,6 +200,7 @@ export async function fetchStockData(
         historical3yPercent,
         historical5yPercent,
         analystEstimate5yPercent,
+        epsTtmGrowthPercent,
       },
       historicalPe,
       trailingPe,

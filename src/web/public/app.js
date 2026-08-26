@@ -281,6 +281,12 @@ function renderMultiplesTable(data, effectiveGrowth, effectiveEps, analystConsen
     // Trailing P/E, computed two lines above from the same epsToUse, already reflected the
     // resolved value, producing an internally-inconsistent panel.
     tableRow('EPS (TTM)', fmt(epsToUse)),
+    // Rolling 12-month-vs-12-month-ago growth -- distinct from the calendar-year CAGR figures in
+    // the growth-sources panel above (never a candidate in that fallback chain, so it doesn't
+    // belong there) and never fed into either valuation method. Needs 8 consecutive quarters,
+    // which this plan tier's income_statement cap (6) can't supply -- "n/a" here is honest, not
+    // a bug; see calculateTtmEpsGrowthPercent in src/data/twelvedata/normalize.ts.
+    tableRow('EPS TTM growth (YoY)', fmtPercent(data.growth.epsTtmGrowthPercent)),
     tableRow('Median P/E, 1Y', fmt(data.historicalPe.avg1y)),
     tableRow('Median P/E, 3Y', fmt(data.historicalPe.avg3y)),
     tableRow('Median P/E, 5Y', fmt(data.historicalPe.avg5y)),

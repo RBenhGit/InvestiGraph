@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>About — Fair Value Ledger</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      .about-wrap { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+      .about-wrap h1 { font-size: 1.9rem; margin: 0 0 0.5rem; }
+      .about-wrap h2 {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+        font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em;
+        color: var(--ink-soft); margin: 2.75rem 0 0.9rem; padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--line);
+      }
+      .about-wrap h3 { font-size: 1.05rem; margin: 1.6rem 0 0.5rem; }
+      .about-wrap p { line-height: 1.65; margin: 0 0 1rem; color: var(--ink); }
+      .about-wrap p.lede { font-size: 1.05rem; color: var(--ink-soft); }
+      .about-wrap ul, .about-wrap ol { line-height: 1.65; margin: 0 0 1rem; padding-left: 1.4rem; }
+      .about-wrap li { margin-bottom: 0.4rem; }
+      .about-wrap code {
+        font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+        font-size: 0.85em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 0.25em;
+      }
+      .formula-block {
+        font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+        font-size: 0.88rem; background: var(--surface); border: 1px solid var(--line);
+        border-left: 3px solid var(--accent-b); border-radius: 0.35rem; padding: 0.9rem 1.1rem;
+        margin: 0 0 1rem; overflow-x: auto; white-space: pre; line-height: 1.55;
+      }
+      .formula-block.method-a { border-left-color: var(--accent-a); }
+      .note-box {
+        background: var(--surface-2); border-radius: 0.5rem; padding: 0.9rem 1.1rem;
+        margin: 0 0 1rem; font-size: 0.92rem; line-height: 1.55;
+      }
+      .note-box.warn { background: var(--warning-soft); }
+      .note-box strong { color: var(--ink); }
+      table.spec-table { width: 100%; border-collapse: collapse; margin: 0 0 1.2rem; font-size: 0.92rem; }
+      table.spec-table th, table.spec-table td {
+        text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      table.spec-table th {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+        font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft);
+      }
+      .back-link {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+        font-size: 0.85rem; color: var(--accent-b); text-decoration: none;
+      }
+      .back-link:hover { text-decoration: underline; }
+      @media (max-width: 30rem) {
+        table.spec-table { display: block; overflow-x: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="masthead-bar"></div>
+    <div class="masthead">
+      <div class="wrap masthead-inner">
+        <div class="wordmark">
+          Fair Value Ledger <small>EPS × MULTIPLE VALUATION</small>
+        </div>
+        <div class="method-key">
+          <span class="method-key-chip a"><span class="dot"></span>Rule #1</span>
+          <span class="method-key-chip b"><span class="dot"></span>Peter Lynch</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="about-wrap">
+      <a class="back-link" href="/">&larr; Back to the app</a>
+      <h1>About Fair Value Ledger</h1>
+      <p class="lede">
+        A calculator that turns a company's trailing earnings and a growth rate into two
+        independent "fair value" estimates. This page explains exactly what the app fetches,
+        exactly how it calculates, and exactly what it doesn't do — including the caveats and
+        known limitations, not just the marketing version.
+      </p>
+
+      <h2>What this app is — and isn't</h2>
+      <p>
+        Fair Value Ledger computes two classic EPS-growth valuation heuristics side by side:
+        <strong>Peter Lynch's PEG-style rule</strong> and a <strong>Rule&nbsp;#1-style discounted
+        exit-multiple</strong> model. Both start from the same two inputs — a company's trailing
+        twelve-month earnings per share (EPS TTM) and an assumed growth rate — and produce a
+        single "fair value" price to compare against the current market price.
+      </p>
+      <p>
+        It is <strong>not</strong> a discounted cash-flow (DCF) model. Rule&nbsp;#1's method here
+        projects <em>one single future EPS figure</em> and discounts it back once — it does not
+        model a series of annual cash flows the way a real DCF does. It's also not a
+        recommendation engine: no data source here can tell you what a stock is "really" worth,
+        only what these two specific, simple formulas produce for a given set of assumptions.
+      </p>
+
+      <h2>Where the numbers come from</h2>
+      <p>
+        Two independent, live data sources feed the calculation:
+      </p>
+      <table class="spec-table">
+        <tr><th>Source</th><th>What it provides</th><th>Used by</th></tr>
+        <tr>
+          <td><strong>Twelve Data</strong></td>
+          <td>Current price, quarterly &amp; annual income statements (for EPS and growth
+            rates), historical monthly prices (for average P/E)</td>
+          <td>Required — both the site and the CLI</td>
+        </tr>
+        <tr>
+          <td><strong>Yahoo Finance</strong></td>
+          <td>Analyst price targets, consensus recommendation, next-year growth estimate,
+            beta, P/S ratio, and (conditionally) a fallback EPS figure — see below</td>
+          <td>The site always; the CLI only when Twelve Data's EPS looks stale</td>
+        </tr>
+      </table>
+      <p>
+        Every fetched figure is cached on disk for 24 hours to avoid hitting API rate limits on
+        repeat lookups; a "Refresh live data" button bypasses the cache when you want the very
+        latest numbers.
+      </p>
+
+      <h2>EPS (TTM) — how it's actually built</h2>
+      <p>
+        "EPS (TTM)" is <strong>not</strong> read as a single ready-made field from the API. It's
+        built from the four most recent quarterly reports:
+      </p>
+      <ol>
+        <li>Take each of the last 4 quarters' diluted EPS and diluted share count.</li>
+        <li>Multiply each quarter's EPS by its share count to approximate that quarter's net income.</li>
+        <li>Sum the four quarters' net income, then divide by the <em>average</em> diluted share
+          count across those same four quarters.</li>
+      </ol>
+      <p>
+        This is deliberately GAAP diluted EPS — the figure reported in a company's actual
+        financial statements, including one-time charges, stock-based compensation, and other
+        items a company's own "adjusted" or "non-GAAP" EPS figure would exclude. GAAP is the more
+        conservative choice for a valuation formula: it never quietly assumes away a real cost.
+      </p>
+
+      <h3>When the underlying data looks stale</h3>
+      <p>
+        Twelve Data's quarterly data has, in practice, been observed lagging a company's real
+        earnings release by <strong>10 or more days</strong> with no error or warning from the
+        API — the endpoint simply keeps returning last quarter's numbers as if nothing changed.
+        The app cross-checks for this: it compares the EPS-implied trailing P/E it just computed
+        against Twelve Data's own separately-reported trailing P/E figure (a different,
+        faster-updating part of their data). If the two disagree by more than 5%, the EPS is
+        flagged as possibly stale.
+      </p>
+      <p>
+        When that happens, the app automatically tries Yahoo Finance's own trailing-EPS figure as
+        a replacement — not just a warning. If Yahoo's figure is available, it's used instead,
+        and the app labels the switch explicitly (both the ticker line at the top and the
+        reference panel note where the number came from). If Yahoo is also unavailable, the app
+        keeps Twelve Data's figure but marks it with a warning rather than presenting a
+        possibly-wrong number silently.
+      </p>
+      <div class="note-box warn">
+        <strong>Why not just splice in one fresh quarter from Yahoo?</strong> Yahoo's own
+        per-quarter breakdown is either years out of date (a deprecated endpoint) or reports
+        <em>non-GAAP</em> EPS, not GAAP — mixing that into an otherwise-GAAP calculation would be
+        worse than either source alone. The app only ever swaps in Yahoo's <em>whole</em>
+        trailing-twelve-month figure, never a single spliced-in quarter.
+      </div>
+
+      <h2>Growth rate — which one gets used, and why</h2>
+      <p>
+        The app has up to four different "growth rate" figures for a stock, and picks between
+        them automatically in this priority order:
+      </p>
+      <div class="formula-block">analyst 5-year estimate  →  3-year historical CAGR  →  1-year historical growth</div>
+      <p>
+        The first one available wins. An analyst-aggregated 5-year estimate (from Yahoo, when
+        available) is preferred because it's forward-looking; the 3-year CAGR is the usual
+        fallback because it's resilient to a single volatile quarter (a one-time charge or gain
+        in any one quarter gets diluted across a full calendar year on both ends of the
+        comparison); the 1-year figure is the last resort, since it's the most exposed to
+        one-off noise. All three historical figures compare full <em>calendar years</em>, not
+        rolling twelve-month windows.
+      </p>
+      <p>
+        You can always override the growth rate manually in the form — the auto-selected value
+        just seeds the field.
+      </p>
+
+      <h3>A separate, reference-only figure: EPS TTM growth (YoY)</h3>
+      <p>
+        The reference panel also shows "EPS TTM growth (YoY)" — the rolling twelve-month EPS
+        figure compared against the rolling twelve-month figure exactly a year earlier. This is
+        <strong>never</strong> fed into either valuation method; it's shown purely as
+        supplementary color, because it answers a genuinely different question than the CAGR
+        figures above ("how has the trailing year actually moved" vs. "how have full calendar
+        years compared").
+      </p>
+      <p>
+        It requires 8 consecutive quarters of data. Twelve Data's plan tier used by this app caps
+        quarterly history at 6, so this figure shows "n/a" for essentially every ticker today —
+        that's an honest gap, not a bug. A shorter-window substitute was deliberately rejected: a
+        real investigation (comparing this figure for a stock with a volatile one-time expense
+        line) found that a 6-month-apart comparison can produce numbers wildly different from a
+        genuine 12-month-apart one, depending purely on which one-time items happened to land
+        inside vs. outside the shorter window. Showing "n/a" is safer than showing a number that
+        looks like YoY growth but isn't.
+      </p>
+
+      <h2>Method A — Peter Lynch (PEG-style)</h2>
+      <div class="formula-block method-a">Fair Value  =  EPS (TTM)  ×  Growth Rate</div>
+      <p>
+        The simplest of the two methods, and the one Peter Lynch popularized as a quick
+        cheat: multiply trailing earnings per share directly by the growth rate percentage. There
+        is no discounting and no time horizon — it's a single multiplication.
+      </p>
+      <p>
+        This formula is only meaningful for a <em>growing</em> company. A zero or negative growth
+        rate would produce a zero or negative "fair value," which isn't a legitimately low
+        valuation — it's a sign the formula doesn't apply. The app detects this and reports
+        <code>NEGATIVE_GROWTH_RATE</code> instead of a misleading number.
+      </p>
+
+      <h2>Method B — Rule #1 (discounted exit multiple)</h2>
+      <div class="formula-block">EPS(future)    =  EPS (TTM)  ×  (1 + growth)^years
+Future Price   =  EPS(future)  ×  Exit P/E multiple
+Fair Value     =  Future Price  ÷  (1 + required return)^years</div>
+      <p>
+        This projects EPS forward by compounding the growth rate for a chosen number of years,
+        applies an assumed future P/E multiple to estimate a future stock price, then discounts
+        that single future price back to today at a chosen required annual return.
+      </p>
+      <div class="note-box">
+        This is explicitly <strong>not</strong> a full discounted cash-flow (DCF) model — it
+        projects one single future EPS/price point and discounts it once, rather than modeling a
+        series of annual cash flows.
+      </div>
+      <p>Five inputs feed this method, each with its own default and its own validity check:</p>
+      <table class="spec-table">
+        <tr><th>Input</th><th>Default</th><th>Meaning</th></tr>
+        <tr><td>Exit P/E multiple</td><td>15</td><td>Assumed P/E the stock trades at, N years from now</td></tr>
+        <tr><td>Required return</td><td>15%</td><td>Your target annualized return, used as the discount rate</td></tr>
+        <tr><td>Years</td><td>10</td><td>The projection horizon</td></tr>
+        <tr><td>Margin of Safety</td><td>0% (site defaults to 25%)</td><td>Extra discount applied to the computed "sticker price" before calling it your buy target</td></tr>
+      </table>
+      <p>
+        Because Rule&nbsp;#1 compounds a positive EPS at whatever rate it's given, a shrinking
+        company (negative growth) still produces a sane, smaller positive fair value — unlike the
+        Lynch method above, the two methods do <strong>not</strong> share an identical set of
+        failure conditions.
+      </p>
+
+      <h3>Growth rate clamp</h3>
+      <p>
+        Whatever growth rate is used — auto-selected or manually entered — both methods clamp it
+        to a <strong>&minus;5% to +25%</strong> range internally before calculating. The app
+        always shows you both the raw (unclamped) figure and the clamped one it actually used, so
+        an extreme growth number is visible rather than silently capped.
+      </p>
+
+      <h2>Bear / Base / Bull scenarios (web only)</h2>
+      <p>
+        The site computes all three scenarios in parallel, each with its own independent Growth,
+        Exit P/E, and Required Return inputs (Margin of Safety is shared across all three). The
+        default assumptions, used only when a field is left blank:
+      </p>
+      <table class="spec-table">
+        <tr><th>Scenario</th><th>Growth (if blank)</th><th>Exit P/E</th><th>Required return</th></tr>
+        <tr><td>Bear</td><td>base growth × 0.75 (or &minus;3 if base growth is negative)</td><td>10</td><td>15%</td></tr>
+        <tr><td>Base</td><td>the auto-selected or manually entered value</td><td>15</td><td>15%</td></tr>
+        <tr><td>Bull</td><td>base growth × 1.25 (or +3 if base growth is negative)</td><td>20</td><td>12%</td></tr>
+      </table>
+      <p>The command-line tool only ever computes the Base scenario.</p>
+
+      <h2>What's shown but never used in either calculation</h2>
+      <p>
+        Several figures appear on the page purely for context and play no role in either
+        formula above:
+      </p>
+      <ul>
+        <li><strong>Historical median P/E (1Y/3Y/5Y)</strong> — despite the label, these are
+          medians (not averages) of one P/E point per fiscal year, chosen because a median is
+          far less skewed by a single unusual year than a mean would be.</li>
+        <li><strong>Trailing P/E &amp; local PEG ratio</strong> — recomputed locally from price
+          and the EPS actually used, never trusted from a data provider's own field.</li>
+        <li><strong>Analyst price targets, recommendation, next-year growth estimate</strong> —
+          from Yahoo, shown as market context.</li>
+        <li><strong>Beta, P/S ratio, Rule of 40</strong> — general financial-health reference
+          figures, also from Yahoo.</li>
+      </ul>
+
+      <h2>Known limitations, stated plainly</h2>
+      <ul>
+        <li>Not a DCF — see "Method B" above.</li>
+        <li>GAAP-only EPS — no non-GAAP/adjusted figure is computed or offered as an
+          alternative anywhere in the app.</li>
+        <li>"EPS TTM growth (YoY)" is <code>n/a</code> for essentially every ticker on this
+          plan tier, since 8 quarters of history aren't available.</li>
+        <li>Stale-EPS detection only catches the specific pattern it was built to catch —
+          Twelve Data's own trailing-P/E figure staying fresher than its income-statement data.
+          A different kind of staleness (e.g. if that reference figure is stale too) would not
+          be flagged.</li>
+        <li>Two independent live data providers means two independent points of failure and two
+          different data-freshness cycles — the app degrades gracefully (cached data, or a
+          labeled fallback) rather than failing outright, but it cannot guarantee both sources
+          agree or are equally current at every moment.</li>
+      </ul>
+
+      <p style="margin-top: 3rem;"><a class="back-link" href="/">&larr; Back to the app</a></p>
+    </div>
+  </body>
+</html>

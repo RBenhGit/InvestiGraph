@@ -16,6 +16,7 @@ function stockData(overrides: Partial<StockData> = {}): StockData {
       historical3yPercent: null,
       historical5yPercent: null,
       analystEstimate5yPercent: null,
+      epsTtmGrowthPercent: null,
     },
     historicalPe: { avg1y: null, avg3y: null, avg5y: null },
     trailingPe: 35.79,

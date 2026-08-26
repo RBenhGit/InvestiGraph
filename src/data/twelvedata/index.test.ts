@@ -31,11 +31,23 @@ vi.mock('./client', () => ({
 
 const TICKER = 'AAPL';
 
-/** 4 quarters of round-number diluted EPS/shares: eps=2.5, shares=1,000,000,000 each quarter
- * => TTM net income 1e10, mean shares 1e9 => epsTtm = 10. Paired with price=100 this gives an
- * easy-to-hand-verify trailingPe of 10. */
+/** Up to 8 quarters of round-number diluted EPS/shares: eps=2.5, shares=1,000,000,000 every
+ * quarter => TTM net income 1e10, mean shares 1e9 => epsTtm = 10 for any 4-quarter window,
+ * including the year-ago one calculateTtmEpsGrowthPercent needs. Paired with price=100 this
+ * gives an easy-to-hand-verify trailingPe of 10. Callers wanting a non-zero epsTtmGrowthPercent
+ * should build their own income_statement object directly rather than extend this shared fixture
+ * (see 'computes epsTtmGrowthPercent...' below). */
 function quarterlyIncome(count = 4) {
-  const dates = ['2025-12-31', '2025-09-30', '2025-06-30', '2025-03-31'].slice(0, count);
+  const dates = [
+    '2025-12-31',
+    '2025-09-30',
+    '2025-06-30',
+    '2025-03-31',
+    '2024-12-31',
+    '2024-09-30',
+    '2024-06-30',
+    '2024-03-31',
+  ].slice(0, count);
   return {
     income_statement: dates.map((fiscal_date) => ({
       fiscal_date,
@@ -139,6 +151,48 @@ describe('fetchStockData', () => {
     // statistics() fixture has no trailing_pe, so there's nothing to compare epsTtm's
     // implied P/E against — detectStaleTtmEps must not fire on a missing provider figure.
     expect(result.data.staleTtmWarning).toBe(false);
+    // mockAllSuccess()'s default quarterlyIncome() count (4) is one full TTM window, not the 8
+    // quarters calculateTtmEpsGrowthPercent needs for a true year-over-year comparison — null is
+    // the correct, honest result here (matches this plan tier's real-world behavior today).
+    expect(result.data.growth.epsTtmGrowthPercent).toBeNull();
+  });
+
+  it('leaves epsTtmGrowthPercent null with fewer than 8 quarters (this plan tier caps at 6)', async () => {
+    mockAllSuccess({ quarterlyIncome: quarterlyIncome(6) });
+
+    const result = await fetchStockData(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // epsTtm/trailingPe are unaffected -- resolveTtmEps only ever needs the first 4 quarters.
+    expect(result.data.epsTtm).toBe(10);
+    expect(result.data.growth.epsTtmGrowthPercent).toBeNull();
+  });
+
+  it('computes epsTtmGrowthPercent when a full 8 quarters are available', async () => {
+    // Hand-built rather than quarterlyIncome() (which returns a flat epsTtm=10 in every window,
+    // making a growth-rate assertion trivially 0% and not a real regression check): current TTM
+    // (Q1-Q4 at 3.0 each = 12.0) vs. year-ago TTM (Q5-Q8 at 2.0 each = 8.0) => growth = 50%.
+    const eightQuarters = {
+      income_statement: [
+        { fiscal_date: '2025-12-31', eps_diluted: 3.0, diluted_shares_outstanding: 1_000_000_000 },
+        { fiscal_date: '2025-09-30', eps_diluted: 3.0, diluted_shares_outstanding: 1_000_000_000 },
+        { fiscal_date: '2025-06-30', eps_diluted: 3.0, diluted_shares_outstanding: 1_000_000_000 },
+        { fiscal_date: '2025-03-31', eps_diluted: 3.0, diluted_shares_outstanding: 1_000_000_000 },
+        { fiscal_date: '2024-12-31', eps_diluted: 2.0, diluted_shares_outstanding: 1_000_000_000 },
+        { fiscal_date: '2024-09-30', eps_diluted: 2.0, diluted_shares_outstanding: 1_000_000_000 },
+        { fiscal_date: '2024-06-30', eps_diluted: 2.0, diluted_shares_outstanding: 1_000_000_000 },
+        { fiscal_date: '2024-03-31', eps_diluted: 2.0, diluted_shares_outstanding: 1_000_000_000 },
+      ],
+    };
+    mockAllSuccess({ quarterlyIncome: eightQuarters });
+
+    const result = await fetchStockData(TICKER);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.epsTtm).toBe(12);
+    expect(result.data.growth.epsTtmGrowthPercent).toBeCloseTo(50, 10);
   });
 
   it('flags staleTtmWarning when computed trailingPe diverges >5% from the provider trailing P/E', async () => {
@@ -267,6 +321,7 @@ describe('fetchStockData', () => {
         historical3yPercent: 9,
         historical5yPercent: 10,
         analystEstimate5yPercent: 12,
+        epsTtmGrowthPercent: null,
       },
       historicalPe: { avg1y: 20, avg3y: 22, avg5y: 24 },
       trailingPe: 30,
@@ -292,6 +347,7 @@ describe('fetchStockData', () => {
         historical3yPercent: 9,
         historical5yPercent: 10,
         analystEstimate5yPercent: 12,
+        epsTtmGrowthPercent: null,
       },
       historicalPe: { avg1y: 20, avg3y: 22, avg5y: 24 },
       trailingPe: 30,
@@ -320,6 +376,7 @@ describe('fetchStockData', () => {
         historical3yPercent: 9,
         historical5yPercent: 10,
         analystEstimate5yPercent: 12,
+        epsTtmGrowthPercent: null,
       },
       historicalPe: { avg1y: 20, avg3y: 22, avg5y: 24 },
       trailingPe: 30,

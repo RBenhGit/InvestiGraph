@@ -86,6 +86,11 @@ a:hover { color: var(--ink); }
 .method-key-chip.a .dot { background: var(--accent-a); }
 .method-key-chip.b { color: var(--accent-b); background: var(--accent-b-soft); }
 .method-key-chip.b .dot { background: var(--accent-b); }
+.about-link {
+  display: inline-flex; align-items: center; font-size: 0.72rem; font-weight: 700;
+  padding: 0.3rem 0.75rem; color: var(--ink-soft); text-decoration: none;
+}
+.about-link:hover { color: var(--ink); text-decoration: underline; }
 
 /* ---------------- Hero / query bar ---------------- */
 .hero { padding: 1.9rem 0 1.75rem; }

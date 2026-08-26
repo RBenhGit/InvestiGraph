@@ -799,6 +799,7 @@ describe('app.js frontend', () => {
         epsTtm: 5,
         asOf: '2026-08-22',
         historicalPe: { avg1y: 20, avg3y: 22, avg5y: 25 },
+        growth: { epsTtmGrowthPercent: null },
         ...overrides,
       };
     }
@@ -824,6 +825,21 @@ describe('app.js frontend', () => {
       const text = document.getElementById('multiples-table').textContent;
       expect(text).toContain('3.31');
       expect(text).not.toContain('3.08');
+    });
+
+    it('shows EPS TTM growth (YoY) as n/a when epsTtmGrowthPercent is null', () => {
+      // The realistic case today: this plan tier's income_statement caps at 6 quarters, one
+      // short of the 8 calculateTtmEpsGrowthPercent needs, so it's null in practice.
+      renderMultiplesTable(multiplesData({ growth: { epsTtmGrowthPercent: null } }), 10, 5, null);
+      const text = document.getElementById('multiples-table').textContent;
+      expect(text).toContain('EPS TTM growth');
+      expect(text).toMatch(/n\/a/);
+    });
+
+    it('shows a real EPS TTM growth (YoY) percentage when available', () => {
+      renderMultiplesTable(multiplesData({ growth: { epsTtmGrowthPercent: 68.57 } }), 10, 5, null);
+      const text = document.getElementById('multiples-table').textContent;
+      expect(text).toContain('68.57%');
     });
 
     it('renders PEG without Infinity when growth is zero or negative', () => {

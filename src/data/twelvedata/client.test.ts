@@ -109,7 +109,7 @@ describe('fetchGrowthEstimates', () => {
 });
 
 describe('fetchQuarterlyIncomeStatement', () => {
-  it('parses a successful response and requests outputsize=4, period=quarterly', async () => {
+  it('parses a successful response and requests outputsize=6, period=quarterly', async () => {
     const body = {
       meta: {},
       income_statement: [
@@ -123,8 +123,11 @@ describe('fetchQuarterlyIncomeStatement', () => {
 
     expect(result).toEqual(body);
     const url = fetchMock.mock.calls[0][0] as string;
+    // 6 (not 4) is this plan tier's real ceiling -- requested in full so
+    // calculateTtmEpsGrowthPercent gets as many quarters as this plan allows, even though it
+    // still needs 8 for a true YoY TTM figure and returns null until the plan is upgraded.
     expect(url).toBe(
-      'https://api.twelvedata.com/income_statement?symbol=AAPL&period=quarterly&outputsize=4&apikey=test-key',
+      'https://api.twelvedata.com/income_statement?symbol=AAPL&period=quarterly&outputsize=6&apikey=test-key',
     );
   });
 

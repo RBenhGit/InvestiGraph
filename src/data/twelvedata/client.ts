@@ -98,17 +98,19 @@ export async function fetchGrowthEstimates(
   return twelveDataFetch<GrowthEstimatesResponse>(url, 'growth_estimates');
 }
 
-/** Quarterly income statement, outputsize=4. The value 4 is deliberate, as it is the exact minimum
- * needed here (one TTM-EPS point for epsTtm). Note that the endpoint has a hard ceiling of 6
- * on this plan tier (HTTP 400, "Full access to historical data is available only in the Enterprise plan"),
- * but 4 is all we need. `historicalPe` (see historicalPe.ts) therefore computes its P/E windows
- * from *annual* EPS instead of quarterly, which isn't subject to this cap (see
+/** Quarterly income statement, outputsize=6 — the hard ceiling on this plan tier (HTTP 400,
+ * "Full access to historical data is available only in the Enterprise plan" above 6).
+ * `resolveTtmEps`/epsTtm only needs 4, but `calculateTtmEpsGrowthPercent` (normalize.ts) wants
+ * a true year-over-year TTM comparison, which needs 8 — 6 is as close as this plan tier gets, so
+ * that function correctly returns `null` (not a misleading shorter-window approximation) until
+ * the plan is upgraded past this cap. `historicalPe` (see historicalPe.ts) computes its P/E
+ * windows from *annual* EPS instead of quarterly, which isn't subject to this cap (see
  * fetchAnnualIncomeStatement below). */
 export async function fetchQuarterlyIncomeStatement(
   ticker: string,
   apiKey: string,
 ): Promise<IncomeStatementResponse> {
-  const url = `${BASE_URL}/income_statement?symbol=${encodeURIComponent(ticker)}&period=quarterly&outputsize=4&apikey=${apiKey}`;
+  const url = `${BASE_URL}/income_statement?symbol=${encodeURIComponent(ticker)}&period=quarterly&outputsize=6&apikey=${apiKey}`;
   return twelveDataFetch<IncomeStatementResponse>(url, 'income_statement (quarterly)');
 }
 

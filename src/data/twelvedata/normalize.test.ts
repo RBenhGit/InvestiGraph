@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertNonEmpty,
   calculateCagrPercent,
+  calculateTtmEpsGrowthPercent,
   parseNumber,
   resolveTtmEps,
   TwelveDataResponseError,
@@ -53,6 +54,39 @@ describe('resolveTtmEps', () => {
   it('treats API EPS of exactly 0 as missing and falls back to quarterly data', () => {
     const result = resolveTtmEps(0, [1, 1, 1, 1], [100, 100, 100, 100]);
     expect(result).toBe(4);
+  });
+});
+
+describe('calculateTtmEpsGrowthPercent', () => {
+  it('computes true YoY TTM growth from 8 quarters (current 4 vs. year-ago 4)', () => {
+    // Quarters 0-3 (current TTM): eps=3 each, shares=100 => TTM net income 1200, mean shares
+    // 100 => ttmNow = 12. Quarters 4-7 (year-ago TTM): eps=2 each => ttmYearAgo = 8.
+    // Growth = 12/8 - 1 = 50%.
+    const eps = [3, 3, 3, 3, 2, 2, 2, 2];
+    const shares = [100, 100, 100, 100, 100, 100, 100, 100];
+    expect(calculateTtmEpsGrowthPercent(eps, shares)).toBeCloseTo(50, 10);
+  });
+
+  it('returns null with fewer than 8 quarters — never approximates from a shorter window', () => {
+    // 6 quarters is exactly this plan tier's real-world ceiling (Twelve Data caps
+    // income_statement quarterly at 6) — the case this guard exists for.
+    const eps = [3, 3, 3, 3, 2, 2];
+    const shares = [100, 100, 100, 100, 100, 100];
+    expect(calculateTtmEpsGrowthPercent(eps, shares)).toBeNull();
+  });
+
+  it('returns null when the year-ago TTM window is zero or negative', () => {
+    // A company with a genuine year-ago loss doesn't have a meaningful "growth rate" here,
+    // same reasoning as calculateCagrPercent's epsPast <= 0 guard above.
+    const eps = [3, 3, 3, 3, -1, -1, -1, -1];
+    const shares = [100, 100, 100, 100, 100, 100, 100, 100];
+    expect(calculateTtmEpsGrowthPercent(eps, shares)).toBeNull();
+  });
+
+  it('returns null when shares data is missing entries relative to eps', () => {
+    const eps = [3, 3, 3, 3, 2, 2, 2, 2];
+    const shares = [100, 100, 100, 100, 100, 100, 100]; // only 7
+    expect(calculateTtmEpsGrowthPercent(eps, shares)).toBeNull();
   });
 });
 

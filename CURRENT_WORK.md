@@ -662,3 +662,60 @@ undefined`, but both fields are typed `number | null` and never actually `undefi
   AAPL makes no extra Yahoo call and shows no label, the raw `/api/valuate` JSON carries
   `epsSource:"yahoo-fallback"`, and the actual browser UI shows 3.31 consistently in both the price
   banner and the reference panel post-fix. Full details in "Known problems" above.
+- 2026-08-25 (still later) — User asked to compute ABBV's EPS growth by hand, from raw data,
+  explicitly not by trusting the app's own output. Fetched ABBV's raw quarterly/annual
+  `income_statement` from Twelve Data directly and independently re-derived 1Y (-0.84%) and 3Y CAGR
+  (-29.03%) — both matched the app's own figures exactly, confirming the app's calculation is
+  correct (unlike the earlier CSCO staleness case). Investigation didn't stop there: user then
+  asked for TTM growth specifically. Twelve Data's quarterly endpoint only returns 6 quarters (plan
+  cap), one short of the 8 needed for a true TTM-vs-TTM comparison, so pulled the missing two
+  quarters from SEC XBRL directly (`EarningsPerShareDiluted`, official) rather than approximating.
+  Result: **TTM EPS growth = +68.57%** ($3.54 now vs. $2.10 a year ago) — a very different number
+  from both the 1Y and 3Y figures. Traced why: ABBV's GAAP EPS is swung sharply every quarter by a
+  volatile one-time "Acquired IPR&D and Milestones Expense" line item ($0.42/share in Q2-2025,
+  only $0.17/share in Q2-2026) — confirmed directly from ABBV's own Q2-2026 and Q2-2025 earnings
+  press releases via SEC 8-K exhibits, which explicitly report Q2-2026 GAAP EPS up 290.4% YoY but
+  Adjusted (non-GAAP) EPS up only 22.9% YoY, i.e. the swing is mostly one-time-item timing, not a
+  290% improvement in the underlying business. No code changed — pure investigation, then wrote up
+  the full comparison (4 different "correct" growth figures for the same stock, and why) in
+  `wiki/שיטות-הערכה.md` (new section) and a `wiki/Home.md` pointer, since this is exactly the kind
+  of non-obvious domain gotcha the wiki exists to capture, not just a one-off answer.
+- 2026-08-25/26 — User asked for two features: (1) compute EPS TTM growth in the app itself, and
+  (2) an "about the app" page explaining what it does and how it calculates. For (1), clarified
+  scope with the user first rather than assuming: confirmed only Twelve Data's 6-quarter cap
+  should be used (no SEC XBRL supplement, even though that's what closed the gap in the ABBV
+  investigation above) — meaning a true 8-quarter YoY TTM comparison is not achievable on this
+  plan tier, and the user explicitly decided NOT to show a shorter-window (6-month-apart)
+  approximation, since the ABBV investigation had just shown that can diverge wildly from a real
+  YoY figure. Implemented `calculateTtmEpsGrowthPercent` (`normalize.ts`) needing a full 8
+  quarters and returning `null` otherwise (no partial/approximate result, ever) — new
+  `StockData.growth.epsTtmGrowthPercent` field. Bumped `fetchQuarterlyIncomeStatement`'s
+  `outputsize` from 4 to 6 (the actual plan ceiling, already documented but never actually
+  requested) so the function gets as many quarters as this plan allows, even though 6 still isn't
+  8. This also incidentally resolved a documented wiki gotcha ("client.ts:98 comment says
+  outputsize=4 but mentions a ceiling of 6, looks contradictory") since the URL and the ceiling
+  now match. Surfaced as a reference-only row ("EPS TTM growth (YoY)") in both the CLI
+  (`formatOutput.ts`) and the web reference panel (`app.js`'s `renderMultiplesTable`) — never fed
+  into either valuation method. 15 new tests across `normalize.test.ts` (the calculation function
+  directly: real growth from 8 quarters, null under 8, null on a non-positive year-ago window,
+  null on mismatched array lengths), `twelvedata/index.test.ts` (null with the realistic 4/6-
+  quarter fixtures, a real 50% growth value from a hand-built 8-quarter case), and `app.test.js`
+  (both the n/a and real-value display cases) — plus updates to 7 existing test files whose
+  `StockData`/`AnalystConsensus`-shaped mocks needed the new required field, and one existing
+  `client.test.ts` assertion updated for the outputsize 4→6 change. 226/226 tests (was 218, +8
+  net new), lint clean, build clean. Live-verified against real ABBV (already
+  known from the investigation to be short of 8 quarters): CLI prints "EPS TTM growth (YoY,
+  reference only): n/a%", the raw `/api/valuate` JSON carries `"epsTtmGrowthPercent":null`, and
+  the browser's reference panel shows "EPS TTM growth (YoY) n/a" — all honest, no invented number.
+  For (2), added `src/web/public/about.html` (a static page `@fastify/static` serves automatically
+  at `/about.html`, zero server wiring needed) plus an "About" link in `index.html`'s masthead.
+  Content covers: what the app is/isn't (not a DCF, not a recommendation engine), where each data
+  point comes from and which adapter uses which source, exactly how `epsTtm` is built from 4
+  quarters (not a passthrough API field), the staleness-detection and Yahoo-fallback mechanism
+  from the CSCO investigation, the growth-rate fallback chain and why 3Y CAGR is the usual
+  fallback, the new EPS TTM growth row and why it's null today, both formulas with their actual
+  variables, the Bear/Base/Bull defaults table, what's shown but unused in either calculation, and
+  a plainly-stated "known limitations" list — written to be honest about gaps, not just a features
+  list. Live-verified in the browser: page renders, the About link navigates correctly, content
+  matches the actual implementation (cross-checked against the code while writing it, not written
+  from memory of what the app "should" do).

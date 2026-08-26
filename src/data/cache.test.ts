@@ -87,6 +87,7 @@ describe('cache layer', () => {
         historical3yPercent: 12,
         historical5yPercent: 14,
         analystEstimate5yPercent: 15,
+        epsTtmGrowthPercent: null,
       },
       historicalPe: { avg1y: 25, avg3y: 26, avg5y: 27 },
       trailingPe: 27.7,

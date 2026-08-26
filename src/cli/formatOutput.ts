@@ -106,6 +106,13 @@ export function formatOutput(
   lines.push(`  3y: ${fmt(data.historicalPe.avg3y)}`);
   lines.push(`  5y: ${fmt(data.historicalPe.avg5y)}`);
   lines.push('');
+  // EPS TTM growth (rolling 12-month vs. 12-month-ago window) — distinct from the calendar-year
+  // CAGR figures above and never used by either valuation method; reference only. Needs 8
+  // consecutive quarters, which this plan tier's income_statement cap (6) cannot supply today —
+  // see calculateTtmEpsGrowthPercent's own comment for why a shorter-window approximation is
+  // deliberately never substituted, so this is "n/a" rather than a misleading number.
+  lines.push(`EPS TTM growth (YoY, reference only): ${fmt(data.growth.epsTtmGrowthPercent)}%`);
+  lines.push('');
   lines.push('Provider reference (not used in valuation):');
   lines.push(`  Trailing P/E: ${fmt(data.providerReference.trailingPe)}`);
   lines.push(`  PEG ratio: ${fmt(data.providerReference.pegRatio)}`);
