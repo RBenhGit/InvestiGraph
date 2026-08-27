@@ -462,7 +462,7 @@ function renderScenarioColumn(prefix, scenario, result, currentPrice, extraField
   fairValueEl.textContent = fmt(result.fairValue);
   renderVerdict(verdictEl, result.fairValue, currentPrice);
 
-  const existingDiff = colEl.querySelector('.scenario-diff');
+  const existingDiff = verdictEl.parentNode.querySelector('.scenario-diff');
   if (existingDiff) existingDiff.remove();
 
   if (isValidPrice(currentPrice) && result.fairValue !== null && result.fairValue !== undefined) {
