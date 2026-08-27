@@ -607,6 +607,15 @@ function renderHistoryTable(records) {
       }
       tr.append(tdTicker);
 
+      // Evaluator (only on first row)
+      if (isFirstRow) {
+        const tdEval = document.createElement('td');
+        tdEval.className = 'table-evaluator';
+        tdEval.rowSpan = rowSpan;
+        tdEval.textContent = item.evaluator || (evaluatorSelect ? evaluatorSelect.value : 'N/A');
+        tr.append(tdEval);
+      }
+
       // Price (only on first row)
       if (isFirstRow) {
         const tdPrice = document.createElement('td');
