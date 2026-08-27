@@ -1,6 +1,6 @@
 # Current Work — Eps_Evaluation
 
-**Updated:** 2026-08-26
+**Updated:** 2026-08-27
 
 ## Where things stand
 
@@ -10,6 +10,26 @@ EPS×multiple stock valuation tool — Node.js + TypeScript, shared core (`src/d
 
 ## Last completed
 
+- **Rule of 40 `ebitdaMargins === 0` fix** (uncommitted) — deep audit of the Rule of 40
+  calculation (`(revenueGrowth + ebitdaMargins) * 100`) found the units/formula correct but a
+  critical falsy-zero bug: Yahoo returns a literal `0` for `ebitdaMargins` both when a company
+  is genuinely breakeven AND when it has no EBITDA figure at all (live-confirmed: MS/JPM/BAC —
+  banks — all report `ebitda: undefined, ebitdaMargins: 0`) or when the underlying `ebitda` is
+  negative (live-confirmed: IONQ, `ebitda: -793,051,008` on ~246M revenue, a true margin of
+  about -322%, still reported `ebitdaMargins: 0`). The old code treated any non-null/undefined
+  `ebitdaMargins` as real, so MS showed a fabricated Rule of 40 of 28 ("warning" badge) and IONQ
+  showed 286.80 with a "good" badge for a company burning 3x its revenue. Fixed in
+  `src/data/yahoo/index.ts`: `ebitdaMargins === 0` is now only trusted when the raw `ebitda`
+  field (newly added to `client.ts`'s `QuoteSummaryResult` type, read-only, not otherwise
+  surfaced) is present and non-negative; otherwise `ruleOf40` is `null`. Two new regression
+  tests in `src/data/yahoo/index.test.ts` (the MS-shaped and IONQ-shaped cases above) written
+  failing first, then the fix applied. 228/228 tests (was 226, +2 net new), lint/build clean
+  (verified via SSH host 2026-08-27). Two lower-priority issues found in the same audit were
+  explicitly deferred (not asked for): `revenueGrowth` is Yahoo's **quarterly YoY** figure while
+  `ebitdaMargins` is **TTM** — mixed periods systematically inflate the score for accelerating
+  companies (NVDA: 150.49 vs. ~131 if both were annual) — and the `>= 40` "good" color threshold
+  doesn't distinguish a plausible score from an implausible one (NVDA 150%, formerly IONQ 286%,
+  both rendered "good").
 - **Cache-first Data Layer:** Wired `getCachedStockData` and `getCachedYahooData` into the entry points with TTL checks and `forceRefresh` support.
 - **Web UI & Server:** Added `forceRefresh` parameter to `POST /api/valuate` and a dedicated `🔄 Refresh Live` button in `index.html` + `app.js`. Re-calculating with different assumptions now runs in 0ms without hitting Twelve Data API rate limits.
 
@@ -266,6 +286,46 @@ shell operations on `Z:` work fine) — `sed` in-place on `Z:` also works for sm
 changes and is faster when applicable.
 
 ## Next up
+
+### Requested features (2026-08-27, from user) — not started
+
+1. **Evaluator field ("מבצע הערכת השווי")** — add a free-text/identifier field naming who
+   performed the valuation. Needs to flow through: web form (`src/web/public/index.html` +
+   `app.js`) → `POST /api/valuate`/`POST /api/history` body → `SavedValuation`
+   (`src/history/types.ts`, new optional field so existing records stay readable) → CLI
+   (`-H/--history` output column, and probably a `--by <name>` flag to mirror `-n/--notes`).
+   Open question to settle first: single free-text field, or a persisted list of users?
+   Task 5 below depends on this — "latest valuation per user" is meaningless without it.
+2. **"FAIR VALUE" label when the estimate is close to the market price** — when the computed
+   fair value lands within some tolerance band of the current price, render an explicit
+   `FAIR VALUE` marker instead of only over/under-valued. Decide the band (e.g. ±5%?) and
+   whether it applies to Lynch, Rule #1, or both/each independently. UI lives in `app.js`
+   next to the existing `renderPriceDelta` logic.
+3. **Remove the maximum-growth cap** — `src/valuation/shared/clampGrowthRate.ts` currently
+   clamps every rate to `[-5%, 25%]`. Drop the upper bound (keep or revisit the lower one —
+   note `calculateLynchValue` separately rejects non-positive growth with
+   `NEGATIVE_GROWTH_RATE`, so the lower bound is not the only guard). Update the tests that
+   assert the 25% ceiling, and check nothing in the UI copy still promises a 25% cap.
+4. **Show percentage difference in the Bear/Base/Bull price boxes** — each scenario box should
+   display the % gap between its fair value and the current market price (and/or vs. base).
+   Pure UI change in `app.js`/`index.html`; reuse the existing zero-price guard from the
+   `renderPriceDelta` fix so a `price === 0` doesn't divide by zero.
+5. **New page: valuations table** — a separate page listing saved valuations, showing the
+   **base scenario only**, and only the **most recent** valuation per ticker; when more than
+   one evaluator exists, the latest per (ticker, evaluator) pair. Reads `GET /api/history`;
+   needs the dedup/"latest" selection to happen server-side or client-side (decide) and must
+   handle both `SavedValuation` shapes (legacy flat vs. nested `base`) via the existing
+   `record.base ?? record` convention. Depends on task 1.
+6. **Sorting and filtering on that table** — sortable columns (ticker, evaluator, date, fair
+   value, upside %) and filters (by ticker, by evaluator, maybe by date range). `GET
+   /api/history` already accepts `?ticker=`; decide whether the rest is client-side over the
+   fetched set or new query params. Part of the same slice as task 5.
+
+Notes: tasks 1→5→6 are a dependency chain and are best done in that order; tasks 2, 3, 4 are
+independent and each small enough to stand alone. Task 3 is the only one that changes valuation
+math (and therefore existing test expectations) — the rest are additive.
+
+### Standing status
 
 1. The implementation is otherwise complete: the app covers the EPS×multiple valuation flow with
    two independent data sources (Twelve Data fundamentals + Yahoo analyst consensus) and a

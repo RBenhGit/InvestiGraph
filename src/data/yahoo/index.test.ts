@@ -237,6 +237,39 @@ describe('fetchAnalystConsensus', () => {
       expect(result.data.ruleOf40).toBeCloseTo(40, 10);
     });
 
+    it('nulls ruleOf40 when ebitdaMargins is 0 but ebitda itself is absent (banks: Yahoo has no EBITDA concept for them, but reports a literal 0 margin instead of omitting the field -- live-confirmed against MS/JPM/BAC, all ebitda: undefined, ebitdaMargins: 0)', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({
+          financialData: { revenueGrowth: 0.28, ebitdaMargins: 0, ebitda: undefined },
+        }),
+      );
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // Previously this returned 28 (revenueGrowth alone, misread as a real Rule of 40 score) --
+      // must be null instead, since there is no actual EBITDA data behind it.
+      expect(result.data.ruleOf40).toBeNull();
+    });
+
+    it('nulls ruleOf40 when ebitdaMargins is 0 but ebitda is actually negative (live-confirmed against IONQ: ebitda: -793,051,008 on revenue of 246,474,000 -- a true margin of about -322%, not 0)', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({
+          financialData: { revenueGrowth: 2.868, ebitdaMargins: 0, ebitda: -793_051_008 },
+        }),
+      );
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // Previously this returned 286.80 with a "good" health badge for a company burning 3x its
+      // revenue in EBITDA -- must be null, not a fabricated score in the opposite direction of
+      // the truth.
+      expect(result.data.ruleOf40).toBeNull();
+    });
+
     it('nulls ruleOf40 when revenueGrowth is missing', async () => {
       vi.mocked(fetchQuoteSummary).mockResolvedValue(
         quoteSummary({ financialData: { ebitdaMargins: 0.5 } }),

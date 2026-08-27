@@ -21,6 +21,11 @@ export interface QuoteSummaryResult {
     recommendationKey?: string | null;
     revenueGrowth?: number | null;
     ebitdaMargins?: number | null;
+    // Raw EBITDA, read only to disambiguate ebitdaMargins -- Yahoo reports a literal 0 for
+    // ebitdaMargins both when it's genuinely breakeven AND when it has no EBITDA figure to
+    // compute a margin from at all (e.g. banks) or when the underlying ebitda is negative (see
+    // index.ts's ruleOf40 guard). Not otherwise surfaced.
+    ebitda?: number | null;
   };
   summaryDetail?: {
     beta?: number | null;

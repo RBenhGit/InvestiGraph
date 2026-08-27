@@ -61,8 +61,27 @@ export async function fetchAnalystConsensus(
     const financialData = result.financialData;
     const summaryDetail = result.summaryDetail;
 
+    // Yahoo reports ebitdaMargins as a literal 0 both when a company is genuinely breakeven on
+    // EBITDA AND when it has no EBITDA figure to compute a margin from at all (confirmed live:
+    // MS/JPM/BAC -- banks, where EBITDA isn't a tracked concept -- all return
+    // `ebitda: undefined, ebitdaMargins: 0`), or when the underlying ebitda is negative
+    // (confirmed live: IONQ has `ebitda: -793,051,008` on ~246M revenue -- a true margin of
+    // about -322% -- yet still reports `ebitdaMargins: 0`). Treating that 0 as a real value
+    // previously fabricated a Rule of 40 score from revenueGrowth alone (MS: 28, tagged
+    // "warning") or produced the exact opposite of the truth (IONQ: 286.80, tagged "good" for a
+    // company burning 3x its revenue). A margin of exactly 0 is only trustworthy when the raw
+    // ebitda figure is actually present and non-negative -- a real negative ebitda can never
+    // round to a margin of exactly 0.
+    const ebitda = financialData?.ebitda;
+    const ebitdaMarginIsTrustworthy =
+      financialData?.ebitdaMargins !== 0 || (ebitda !== undefined && ebitda !== null && ebitda >= 0);
+
     let ruleOf40 = null;
-    if (financialData?.revenueGrowth !== undefined && financialData?.ebitdaMargins !== undefined) {
+    if (
+      financialData?.revenueGrowth !== undefined &&
+      financialData?.ebitdaMargins !== undefined &&
+      ebitdaMarginIsTrustworthy
+    ) {
       if (financialData.revenueGrowth !== null && financialData.ebitdaMargins !== null) {
         ruleOf40 = (financialData.revenueGrowth + financialData.ebitdaMargins) * 100;
       }
