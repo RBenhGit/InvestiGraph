@@ -144,7 +144,31 @@ async function fetchValuations() {
     if (body.ok) {
       allValuations = body.data;
       populateEvaluatorFilter();
-      renderTable();
+      renderTable(); // Initial render with cached prices
+      
+      // Fetch live prices in the background
+      const tickers = [...new Set(allValuations.map(v => v.ticker))].filter(Boolean);
+      if (tickers.length > 0) {
+        try {
+          const priceRes = await fetch(`/api/live-prices?tickers=${encodeURIComponent(tickers.join(','))}`);
+          const priceBody = await priceRes.json();
+          if (priceBody.ok && priceBody.prices) {
+            let updated = false;
+            for (const v of allValuations) {
+              const livePrice = priceBody.prices[v.ticker.toUpperCase()];
+              if (livePrice && livePrice !== v.currentPrice) {
+                v.currentPrice = livePrice;
+                updated = true;
+              }
+            }
+            if (updated) {
+              renderTable(); // Re-render with live prices and updated diffs
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch live prices", e);
+        }
+      }
     }
   } catch (err) {
     console.error('Failed to fetch valuations', err);

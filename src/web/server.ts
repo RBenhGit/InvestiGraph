@@ -260,6 +260,40 @@ export function buildServer() {
     return reply.status(200).send(result);
   });
 
+  fastify.get<{ Querystring: { tickers?: string } }>('/api/live-prices', async (request, reply) => {
+    const { tickers } = request.query;
+    if (!tickers) {
+      return reply.status(400).send({ ok: false, error: 'Tickers parameter is required' });
+    }
+    const tickerList = tickers.split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
+    if (tickerList.length === 0) {
+      return reply.status(400).send({ ok: false, error: 'No valid tickers provided' });
+    }
+    try {
+      // Import YahooFinance locally to avoid breaking other imports
+      const YahooFinance = (await import('yahoo-finance2')).default;
+      const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+      
+      const quotes = await yf.quote(tickerList);
+      const prices: Record<string, number> = {};
+      
+      // If it's a single result, quote returns an object, else an array
+      const quotesArray = Array.isArray(quotes) ? quotes : [quotes];
+      
+      for (const q of quotesArray) {
+        if (q && q.symbol && q.regularMarketPrice) {
+          prices[q.symbol.toUpperCase()] = q.regularMarketPrice;
+        }
+      }
+      return reply.status(200).send({ ok: true, prices });
+    } catch (err) {
+      return reply.status(500).send({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  });
+
   fastify.post<{ Body: SaveValuationInput & { evaluator?: string } }>('/api/history', async (request, reply) => {
     const result = await saveValuation(request.body);
     if (!result.ok) {
