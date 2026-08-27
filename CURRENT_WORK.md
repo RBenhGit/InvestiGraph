@@ -24,12 +24,32 @@ EPS×multiple stock valuation tool — Node.js + TypeScript, shared core (`src/d
   surfaced) is present and non-negative; otherwise `ruleOf40` is `null`. Two new regression
   tests in `src/data/yahoo/index.test.ts` (the MS-shaped and IONQ-shaped cases above) written
   failing first, then the fix applied. 228/228 tests (was 226, +2 net new), lint/build clean
-  (verified via SSH host 2026-08-27). Two lower-priority issues found in the same audit were
-  explicitly deferred (not asked for): `revenueGrowth` is Yahoo's **quarterly YoY** figure while
-  `ebitdaMargins` is **TTM** — mixed periods systematically inflate the score for accelerating
-  companies (NVDA: 150.49 vs. ~131 if both were annual) — and the `>= 40` "good" color threshold
-  doesn't distinguish a plausible score from an implausible one (NVDA 150%, formerly IONQ 286%,
-  both rendered "good").
+  (verified via SSH host 2026-08-27).
+- **Rule of 40 period-mismatch + color-threshold fixes** (uncommitted) — the two lower-priority
+  issues deferred from the falsy-zero fix above, both now fixed:
+  - **Period mismatch.** `financialData.revenueGrowth` is Yahoo's **quarterly YoY** figure, not
+    annual, while `ebitdaMargins` is **TTM** — live-confirmed to diverge sharply for
+    accelerating companies (NVDA: 85.2% quarterly vs. 65.47% true annual; PLTR 92.8% vs. 56.18%;
+    ANET 37.7% vs. 28.71%), systematically inflating `ruleOf40`. Fixed by adding
+    `fetchAnnualRevenueSeries` to `client.ts` (a separate `yahoo-finance2.fundamentalsTimeSeries`
+    call, `type: 'annual', module: 'financials'`, read for its `operatingRevenue` points) and a
+    new pure helper `deriveAnnualRevenueGrowth` in `index.ts` that computes YoY growth from the
+    two most recent annual points — period-matching the TTM `ebitdaMargins`. `ruleOf40` no
+    longer reads `financialData.revenueGrowth` at all; it is `null` when fewer than 2 annual
+    points are available (deliberately no fallback to the mismatched quarterly figure — that
+    would reintroduce the bug), and the new call degrades to `[]` on any failure
+    (`.catch(() => [])`, same auxiliary-data-source convention as the rest of this module) so it
+    can never fail the overall request. Live-verified: NVDA 150.49 → 130.77, ANET 81.72 → 72.61,
+    PLTR 136.05 → 99.44 (MS/IONQ correctly stayed `null` from the falsy-zero fix above).
+  - **Color threshold.** `>= 40` was tagged "good" with no ceiling, so NVDA at 150% and
+    (pre-falsy-zero-fix) IONQ at 286% both rendered the same green badge as a plausible ~45%
+    score. Fixed in `app.js`'s `renderAnalystTable`: `>= 100` is now tagged `bad` (reusing the
+    existing three-color `good`/`warning`/`bad` badge system rather than adding a fourth color),
+    since a Rule of 40 that high is far more likely a remaining data artifact than a real score.
+  - Both fixes written test-first (failing tests reproducing the NVDA/ANET/PLTR-shaped period
+    mismatch and the >=100 miscoloring, confirmed failing on the old code, then the fixes
+    applied). 240/240 tests (was 228, +12 net new across `client.test.ts`, `index.test.ts`,
+    `app.test.js`), lint/build clean (verified via SSH host 2026-08-27).
 - **Cache-first Data Layer:** Wired `getCachedStockData` and `getCachedYahooData` into the entry points with TTL checks and `forceRefresh` support.
 - **Web UI & Server:** Added `forceRefresh` parameter to `POST /api/valuate` and a dedicated `🔄 Refresh Live` button in `index.html` + `app.js`. Re-calculating with different assumptions now runs in 0ms without hitting Twelve Data API rate limits.
 

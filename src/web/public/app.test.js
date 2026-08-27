@@ -193,6 +193,43 @@ describe('app.js frontend', () => {
       expect(text).not.toContain('Rule of 40');
       expect(text).not.toContain('Beta (Volatility)');
     });
+
+    it('tags a plausible Rule of 40 (>= 40) as good', () => {
+      renderAnalystTable(baseConsensus({ ruleOf40: 45.67 }), 100);
+      const badge = analystTableEl.querySelector('.health-badge');
+      expect(badge.classList.contains('good')).toBe(true);
+    });
+
+    it('tags a borderline Rule of 40 (20-39.99) as warning', () => {
+      renderAnalystTable(baseConsensus({ ruleOf40: 28 }), 100);
+      const badge = analystTableEl.querySelector('.health-badge');
+      expect(badge.classList.contains('warning')).toBe(true);
+    });
+
+    it('tags a weak Rule of 40 (< 20) as bad', () => {
+      renderAnalystTable(baseConsensus({ ruleOf40: 12 }), 100);
+      const badge = analystTableEl.querySelector('.health-badge');
+      expect(badge.classList.contains('bad')).toBe(true);
+    });
+
+    it('tags an implausibly high Rule of 40 (>= 100) as bad, not good — values in this range are far more likely a data artifact than a real score (live-confirmed: NVDA/PLTR/ANET all land well above 40 and below 100 once period-matched; an unmatched-period figure like the pre-fix IONQ case of 286.80 or NVDA of 150.49 should read as suspicious, not excellent)', () => {
+      renderAnalystTable(baseConsensus({ ruleOf40: 130.77 }), 100);
+      const badge = analystTableEl.querySelector('.health-badge');
+      expect(badge.classList.contains('bad')).toBe(true);
+      expect(badge.classList.contains('good')).toBe(false);
+    });
+
+    it('tags exactly 100 as bad (boundary is inclusive)', () => {
+      renderAnalystTable(baseConsensus({ ruleOf40: 100 }), 100);
+      const badge = analystTableEl.querySelector('.health-badge');
+      expect(badge.classList.contains('bad')).toBe(true);
+    });
+
+    it('tags 99.99 as good, just under the implausible-high boundary', () => {
+      renderAnalystTable(baseConsensus({ ruleOf40: 99.99 }), 100);
+      const badge = analystTableEl.querySelector('.health-badge');
+      expect(badge.classList.contains('good')).toBe(true);
+    });
   });
 
   describe('handleSubmit — locked EPS field and bear/bull growth backfill', () => {

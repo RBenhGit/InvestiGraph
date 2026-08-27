@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchAnalystConsensus } from './index';
-import { fetchQuoteSummary } from './client';
+import { fetchQuoteSummary, fetchAnnualRevenueSeries } from './client';
 import { getCachedYahooData, saveCachedYahooData } from '../cache';
 
 vi.mock('../cache', () => ({
@@ -10,6 +10,7 @@ vi.mock('../cache', () => ({
 
 vi.mock('./client', () => ({
   fetchQuoteSummary: vi.fn(),
+  fetchAnnualRevenueSeries: vi.fn().mockResolvedValue([]),
 }));
 
 const TICKER = 'MSFT';
@@ -41,6 +42,11 @@ function quoteSummary(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // vi.clearAllMocks() resets call history but NOT a mock's resolved/rejected implementation --
+  // without this, an earlier test's fetchAnnualRevenueSeries fixture silently bleeds into any
+  // later test that doesn't set its own (confirmed live: broke 'nulls ruleOf40 when
+  // revenueGrowth is missing' when the ruleOf40 period-mismatch tests were added).
+  vi.mocked(fetchAnnualRevenueSeries).mockResolvedValue([]);
 });
 
 describe('fetchAnalystConsensus', () => {
@@ -206,29 +212,39 @@ describe('fetchAnalystConsensus', () => {
       expect(result.data.priceToSales).toBeNull();
     });
 
-    it('computes ruleOf40 as (revenueGrowth + ebitdaMargins) * 100 -- both fields are fractions, not percents', async () => {
-      // Real NVDA-shaped figures: 85.2% revenue growth + 65.3% EBITDA margin = 150.5,
-      // hand-verified live against Twelve Data/Yahoo before writing this expectation.
+    it('computes ruleOf40 as (annual revenue growth + ebitdaMargins) * 100 -- growth comes from fetchAnnualRevenueSeries, not the quarterly financialData.revenueGrowth (see period-mismatch fix below)', async () => {
+      // Real NVDA-shaped figures: annual revenue 130.50B -> 215.94B (65.47% YoY) + 65.3% TTM
+      // EBITDA margin, hand-verified live against Yahoo before writing this expectation.
       vi.mocked(fetchQuoteSummary).mockResolvedValue(
         quoteSummary({
           financialData: { revenueGrowth: 0.852, ebitdaMargins: 0.65294 },
         }),
       );
+      vi.mocked(fetchAnnualRevenueSeries).mockResolvedValue([
+        { date: '2024-01-31', operatingRevenue: 60_922_000_000 },
+        { date: '2025-01-31', operatingRevenue: 130_497_000_000 },
+        { date: '2026-01-31', operatingRevenue: 215_939_000_000 },
+      ]);
 
       const result = await fetchAnalystConsensus(TICKER);
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.data.ruleOf40).toBeCloseTo(150.494, 10);
+      // (215.939/130.497 - 1 + 0.65294) * 100 = 130.768
+      expect(result.data.ruleOf40).toBeCloseTo(130.768, 2);
     });
 
-    it('treats a genuine 0 for revenueGrowth or ebitdaMargins as a real value, not missing (falsy-zero regression guard)', async () => {
+    it('treats a genuine 0 annual revenue growth or 0 ebitdaMargins as a real value, not missing (falsy-zero regression guard)', async () => {
       // A flat-revenue, breakeven-EBITDA company: 0 + 0.4 = 40, not null.
       vi.mocked(fetchQuoteSummary).mockResolvedValue(
         quoteSummary({
           financialData: { revenueGrowth: 0, ebitdaMargins: 0.4 },
         }),
       );
+      vi.mocked(fetchAnnualRevenueSeries).mockResolvedValue([
+        { date: '2024-12-31', operatingRevenue: 1_000_000_000 },
+        { date: '2025-12-31', operatingRevenue: 1_000_000_000 },
+      ]);
 
       const result = await fetchAnalystConsensus(TICKER);
 
@@ -302,6 +318,79 @@ describe('fetchAnalystConsensus', () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.data.ruleOf40).toBeNull();
+    });
+
+    it('nulls ruleOf40 when fewer than 2 annual revenue points are available (period-mismatch fix: annual growth can no longer fall back to the quarterly financialData.revenueGrowth)', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({
+          financialData: { revenueGrowth: 0.928, ebitdaMargins: 0.43253 },
+        }),
+      );
+      vi.mocked(fetchAnnualRevenueSeries).mockResolvedValue([
+        { date: '2025-12-31', operatingRevenue: 4_480_000_000 },
+      ]);
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.ruleOf40).toBeNull();
+    });
+
+    it('nulls ruleOf40 when fetchAnnualRevenueSeries returns no points at all', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({
+          financialData: { revenueGrowth: 0.928, ebitdaMargins: 0.43253 },
+        }),
+      );
+      vi.mocked(fetchAnnualRevenueSeries).mockResolvedValue([]);
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.ruleOf40).toBeNull();
+    });
+
+    it('nulls ruleOf40 when fetchAnnualRevenueSeries rejects, without failing the overall request (auxiliary data source must degrade gracefully)', async () => {
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({
+          financialData: { revenueGrowth: 0.928, ebitdaMargins: 0.43253 },
+        }),
+      );
+      vi.mocked(fetchAnnualRevenueSeries).mockRejectedValue(new Error('network down'));
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.ruleOf40).toBeNull();
+      // The rest of the consensus data must still come through unaffected -- trailingEps comes
+      // from defaultKeyStatistics, untouched by this test's financialData override.
+      expect(result.data.trailingEps).toBe(11.03);
+    });
+
+    it('period-mismatch regression guard: does not use the quarterly financialData.revenueGrowth for ruleOf40, even when it differs sharply from the true annual figure', async () => {
+      // Real ANET-shaped figures: financialData.revenueGrowth (quarterly YoY) is 0.377, but
+      // annual revenue 7.00B -> 9.01B is only 28.71 percent YoY -- live-confirmed mismatch.
+      vi.mocked(fetchQuoteSummary).mockResolvedValue(
+        quoteSummary({
+          financialData: { revenueGrowth: 0.377, ebitdaMargins: 0.44016 },
+        }),
+      );
+      vi.mocked(fetchAnnualRevenueSeries).mockResolvedValue([
+        { date: '2024-12-31', operatingRevenue: 7_004_800_000 },
+        { date: '2025-12-31', operatingRevenue: 9_012_100_000 },
+      ]);
+
+      const result = await fetchAnalystConsensus(TICKER);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // (9012.1/7004.8 - 1 + 0.44016) * 100 is about 72.68, not (0.377 + 0.44016) * 100 = 81.72
+      // (the quarterly-YoY-inflated figure this ticker actually showed before the fix).
+      expect(result.data.ruleOf40).toBeCloseTo(72.68, 1);
+      expect(result.data.ruleOf40).not.toBeCloseTo(81.72, 1);
     });
   });
 });

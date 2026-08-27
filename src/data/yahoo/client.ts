@@ -47,3 +47,24 @@ export async function fetchQuoteSummary(ticker: string): Promise<QuoteSummaryRes
     modules: ['earningsTrend', 'financialData', 'summaryDetail', 'defaultKeyStatistics'],
   }) as Promise<QuoteSummaryResult>;
 }
+
+export interface AnnualFinancialsPoint {
+  date: string | Date;
+  operatingRevenue?: number | null;
+}
+
+// Raw annual revenue points, period-matched to ebitdaMargins (which quoteSummary's
+// financialData reports as a TTM figure) -- quoteSummary's own financialData.revenueGrowth is
+// quarterly YoY, not annual, and mixing the two periods in ruleOf40 systematically inflates the
+// score for accelerating companies (see index.ts's ruleOf40 annual-growth derivation). A
+// separate call, since quoteSummary has no annual-period revenue series of its own; confirmed
+// live to return one point per fiscal year (12M periodType) with `operatingRevenue`, oldest
+// first once sorted -- an unknown ticker resolves to an empty array rather than throwing.
+export async function fetchAnnualRevenueSeries(ticker: string): Promise<AnnualFinancialsPoint[]> {
+  const result = (await yahooFinance.fundamentalsTimeSeries(ticker, {
+    period1: '2015-01-01',
+    type: 'annual',
+    module: 'financials',
+  })) as AnnualFinancialsPoint[];
+  return Array.isArray(result) ? result : [];
+}

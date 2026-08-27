@@ -343,7 +343,14 @@ function renderAnalystTable(analystConsensus, currentPrice) {
     analystTableEl.append(divider);
 
     if (ruleOf40 !== undefined && ruleOf40 !== null) {
-      const healthClass = ruleOf40 >= 40 ? 'good' : ruleOf40 >= 20 ? 'warning' : 'bad';
+      // >= 100 is tagged bad, not good -- a Rule of 40 that high is far more likely a data
+      // artifact (e.g. a period mismatch between the growth and margin figures) than a real
+      // score. Live-confirmed after the period-mismatch fix: NVDA/PLTR/ANET all land well above
+      // 40 and below 100 once revenue growth and EBITDA margin are period-matched; a figure at
+      // or above 100 (like the pre-fix IONQ case of 286.80, or NVDA's pre-fix 150.49) should
+      // read as suspicious, not excellent.
+      const healthClass =
+        ruleOf40 >= 100 ? 'bad' : ruleOf40 >= 40 ? 'good' : ruleOf40 >= 20 ? 'warning' : 'bad';
       analystTableEl.append(
         tableRow(
           'Rule of 40',

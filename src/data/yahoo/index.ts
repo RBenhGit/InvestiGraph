@@ -8,7 +8,8 @@
 // supply on lower-tier keys. src/web/server.ts calls both in parallel and merges the results —
 // this module failing must never take down a valuation that only needed twelvedata's data.
 
-import { fetchQuoteSummary } from './client';
+import { fetchQuoteSummary, fetchAnnualRevenueSeries } from './client';
+import type { AnnualFinancialsPoint } from './client';
 import { saveCachedYahooData, getCachedYahooData } from '../cache';
 import type { AnalystConsensus, AnalystConsensusError, AnalystConsensusResult } from './types';
 
@@ -21,6 +22,31 @@ function toAnalystConsensusError(err: unknown, ticker: string): AnalystConsensus
     return { type: 'NOT_FOUND', ticker };
   }
   return { type: 'API_ERROR', ticker, message };
+}
+
+// Derives a single YoY revenue growth fraction from the two most recent annual points, to
+// period-match ebitdaMargins (a TTM figure from quoteSummary's financialData) inside ruleOf40.
+// financialData.revenueGrowth is Yahoo's quarterly YoY figure, not annual -- live-confirmed to
+// diverge sharply from the true annual figure for accelerating companies (e.g. NVDA reports
+// 85.2% quarterly vs. 65.47% actual annual growth), which previously inflated ruleOf40. Returns
+// null when fewer than 2 valid points are available -- deliberately no fallback to the
+// mismatched quarterly figure, since that's the exact bug being fixed.
+function deriveAnnualRevenueGrowth(points: AnnualFinancialsPoint[]): number | null {
+  const valid = points
+    .filter(
+      (p): p is AnnualFinancialsPoint & { operatingRevenue: number } =>
+        typeof p.operatingRevenue === 'number' && Number.isFinite(p.operatingRevenue),
+    )
+    .map((p) => ({ date: new Date(p.date), revenue: p.operatingRevenue }))
+    .filter((p) => !Number.isNaN(p.date.getTime()))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  if (valid.length < 2) return null;
+
+  const [previous, latest] = valid.slice(-2);
+  if (previous.revenue === 0) return null;
+
+  return latest.revenue / previous.revenue - 1;
 }
 
 export interface FetchAnalystOptions {
@@ -48,7 +74,13 @@ export async function fetchAnalystConsensus(
   }
 
   try {
-    const result = await fetchQuoteSummary(ticker);
+    const [result, annualRevenueSeries] = await Promise.all([
+      fetchQuoteSummary(ticker),
+      // Auxiliary to an auxiliary: this module already degrades gracefully to null if it fails
+      // entirely (see the module comment at the top of this file), and ruleOf40 is reference-
+      // only within it -- a failure here must not take down the rest of the consensus data.
+      fetchAnnualRevenueSeries(ticker).catch(() => []),
+    ]);
 
     if (!result.earningsTrend && !result.financialData) {
       return { ok: false, error: { type: 'EMPTY_RESPONSE', ticker } };
@@ -76,15 +108,18 @@ export async function fetchAnalystConsensus(
     const ebitdaMarginIsTrustworthy =
       financialData?.ebitdaMargins !== 0 || (ebitda !== undefined && ebitda !== null && ebitda >= 0);
 
+    // Growth numerator is annual (see deriveAnnualRevenueGrowth), not financialData.revenueGrowth
+    // (quarterly YoY) -- period-matched against ebitdaMargins, which is TTM.
+    const annualRevenueGrowth = deriveAnnualRevenueGrowth(annualRevenueSeries);
+
     let ruleOf40 = null;
     if (
-      financialData?.revenueGrowth !== undefined &&
+      annualRevenueGrowth !== null &&
       financialData?.ebitdaMargins !== undefined &&
+      financialData.ebitdaMargins !== null &&
       ebitdaMarginIsTrustworthy
     ) {
-      if (financialData.revenueGrowth !== null && financialData.ebitdaMargins !== null) {
-        ruleOf40 = (financialData.revenueGrowth + financialData.ebitdaMargins) * 100;
-      }
+      ruleOf40 = (annualRevenueGrowth + financialData.ebitdaMargins) * 100;
     }
 
     const defaultKeyStatistics = result.defaultKeyStatistics;
