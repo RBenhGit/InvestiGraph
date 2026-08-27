@@ -462,6 +462,9 @@ function renderScenarioColumn(prefix, scenario, result, currentPrice, extraField
   fairValueEl.textContent = fmt(result.fairValue);
   renderVerdict(verdictEl, result.fairValue, currentPrice);
 
+  const existingDiff = colEl.querySelector('.scenario-diff');
+  if (existingDiff) existingDiff.remove();
+
   if (isValidPrice(currentPrice) && result.fairValue !== null && result.fairValue !== undefined) {
     const diffPercent = (result.fairValue / currentPrice - 1) * 100;
     const sign = diffPercent > 0 ? '+' : '';
