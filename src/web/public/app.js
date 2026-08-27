@@ -43,7 +43,7 @@ const historyRefreshBtn = document.getElementById('history-refresh-btn');
 let currentValuation = null;
 
 // המרחק המקסימלי (באחוזים) מהמחיר הנוכחי שעדיין נחשב "הוגן", לא Undervalued/Overvalued.
-const FAIR_VALUE_TOLERANCE_PERCENT = 5;
+const FAIR_VALUE_TOLERANCE_PERCENT = 10;
 
 // Monotonic id for /api/valuate requests. The Go button is disabled while one is in flight,
 // but "Refresh Live" is not, and responses can arrive out of order -- so without this the LAST

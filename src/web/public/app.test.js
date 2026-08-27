@@ -1257,23 +1257,23 @@ describe('app.js frontend', () => {
   });
 
   describe('renderVerdict', () => {
-    it('shows FAIR VALUE when diff is within 5%', () => {
+    it('shows FAIR VALUE when diff is within 10%', () => {
       const el = document.createElement('div');
       renderVerdict(el, 102, 100);
       expect(el.textContent).toBe('FAIR VALUE');
       expect(el.className).toContain('neutral');
     });
 
-    it('shows Undervalued when fair value is > 5% above price', () => {
+    it('shows Undervalued when fair value is > 10% above price', () => {
       const el = document.createElement('div');
-      renderVerdict(el, 110, 100);
+      renderVerdict(el, 111, 100);
       expect(el.textContent).toBe('Undervalued');
       expect(el.className).toContain('good');
     });
 
-    it('shows Overvalued when fair value is > 5% below price', () => {
+    it('shows Overvalued when fair value is > 10% below price', () => {
       const el = document.createElement('div');
-      renderVerdict(el, 90, 100);
+      renderVerdict(el, 89, 100);
       expect(el.textContent).toBe('Overvalued');
       expect(el.className).toContain('bad');
     });
