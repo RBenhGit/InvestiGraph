@@ -256,9 +256,8 @@ Fair Value     =  Future Price  ÷  (1 + required return)^years</div>
       <h3>Growth rate clamp</h3>
       <p>
         Whatever growth rate is used — auto-selected or manually entered — both methods clamp it
-        to a <strong>&minus;5% to +25%</strong> range internally before calculating. The app
-        always shows you both the raw (unclamped) figure and the clamped one it actually used, so
-        an extreme growth number is visible rather than silently capped.
+        to a <strong>&minus;5% floor</strong> internally before calculating (no maximum cap). The app
+        always shows you both the raw figure and the clamped one it actually used.
       </p>
 
       <h2>Bear / Base / Bull scenarios (web only)</h2>

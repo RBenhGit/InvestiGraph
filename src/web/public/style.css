@@ -340,8 +340,10 @@ a:hover { color: var(--ink); }
 }
 .card.a .verdict.good { background: rgba(247, 246, 243, 0.16); color: var(--ink-on-accent); }
 .card.a .verdict.bad { background: rgba(247, 246, 243, 0.16); color: var(--ink-on-accent); }
+.card.a .verdict.neutral { background: rgba(247, 246, 243, 0.16); color: var(--ink-on-accent); }
 .card.b .verdict.good { background: var(--good-soft); color: var(--good); }
 .card.b .verdict.bad { background: var(--bad-soft); color: var(--bad); }
+.card.b .verdict.neutral { background: var(--surface-2); color: var(--ink-soft); }
 .inputs-used {
   display: flex; gap: 1.1rem; flex-wrap: wrap; padding-top: 0.9rem;
   border-top: 1px solid var(--line);

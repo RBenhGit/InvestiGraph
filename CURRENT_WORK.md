@@ -1,6 +1,6 @@
 # Current Work — Eps_Evaluation
 
-**Updated:** 2026-08-27
+**Updated:** 2026-08-27 (full-scope calculation audit)
 
 ## Where things stand
 
@@ -10,6 +10,23 @@ EPS×multiple stock valuation tool — Node.js + TypeScript, shared core (`src/d
 
 ## Last completed
 
+- **Full-scope calculation audit** (2026-08-27, at user request following the Rule of 40 fixes
+  below) — adversarial, hand-verified re-check of every numeric calculation in the app, not just
+  Rule of 40: `lynch`/`ruleOne` (incl. Rule #1's compound→exit-multiple→discount→MoS order),
+  `clampGrowthRate`, `normalize.ts` (`parseNumber`, `resolveTtmEps`, `calculateCagrPercent`,
+  `calculateTtmEpsGrowthPercent`), `historicalPe.ts` (EPS-year/close pairing, median-of-window),
+  the just-fixed `yahoo/index.ts` `ruleOf40` (re-verified `ebitdaMarginIsTrustworthy`'s 4 cases
+  have no gap, and hand-recomputed the NVDA case: `65.474% + 65.294% = 130.768`, matching the
+  test exactly), `resolveEps.ts`, and the CLI/web growth-fallback-chain parity (this codebase's
+  proven historical regression class) — confirmed still byte-identical between `cli/index.ts`
+  and `server.ts`. Ran the full suite over SSH for ground truth: 240/240 passing, confirmed via
+  MD5 hash that the SSH-host copy is byte-identical to the audited Windows-mount files. **No
+  calculation defects found** — every formula hand-traced against a concrete real-number example
+  matches its documented intent, and every calculation has tests with real numeric assertions
+  (not superficial `ok:true`/non-null checks). One non-numeric finding: a stale comment in
+  `cli/index.ts` claimed the growth fallback chain was "duplicated in web/public/app.js" — no
+  longer true since `app.js` only consumes the server's `effectiveGrowth` rather than
+  recomputing it; the actual duplicate is `server.ts`. Fixed the comment to name the right file.
 - **Rule of 40 `ebitdaMargins === 0` fix** (uncommitted) — deep audit of the Rule of 40
   calculation (`(revenueGrowth + ebitdaMargins) * 100`) found the units/formula correct but a
   critical falsy-zero bug: Yahoo returns a literal `0` for `ebitdaMargins` both when a company
@@ -130,8 +147,9 @@ computed-style inspection).
 
 ## In flight
 
-Nothing in flight. Suite is 226/226 green, lint clean, build clean (verified via SSH host
-2026-08-26).
+Nothing in flight. Suite is 240/240 green (verified via SSH host 2026-08-27 as part of the
+full-scope calculation audit above); lint/build not re-run in that pass, last confirmed clean
+2026-08-27 alongside the Rule of 40 period-mismatch fix.
 
 ## Known problems
 
@@ -835,3 +853,8 @@ undefined`, but both fields are typed `number | null` and never actually `undefi
   distinguish a durable growth trend from a one-time accounting swing (the ABBV TTM-growth
   investigation from 2026-08-25 is the concrete example) — not a bug, a heuristic limitation
   inherent to EPS×growth valuation.
+- 2026-08-27 — User asked for a full-scope re-audit of all calculations after fixing the Rule of
+  40 bugs. Hand-verified every numeric module against concrete real-number examples (see "Last
+  completed" above); 240/240 tests green via SSH, confirmed byte-identical to the audited files.
+  No calculation defects found. Fixed one stale comment in `cli/index.ts` misnaming which file
+  the growth-fallback-chain duplication is actually in (`server.ts`, not `app.js`).

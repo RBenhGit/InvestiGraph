@@ -124,8 +124,10 @@ async function run(
     analystConsensusResult && analystConsensusResult.ok ? analystConsensusResult.data : null;
   const resolvedEps = resolveEpsWithFallback(data, analystConsensus);
 
-  // Note: This growth fallback chain is duplicated in web/public/app.js.
-  // If you change the fallback logic here, make sure to update the web UI as well.
+  // Note: This growth fallback chain is duplicated in web/server.ts (app.js does not
+  // recompute it — it just consumes the server's effectiveGrowth). If you change the fallback
+  // logic here, make sure to update server.ts as well (see CLAUDE.md's warning about this
+  // exact pair having silently diverged once before).
   const growthSeed =
     data.growth.analystEstimate5yPercent ??
     data.growth.historical3yPercent ??

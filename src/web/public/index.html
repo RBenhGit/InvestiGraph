@@ -20,6 +20,7 @@
           Fair Value Ledger <small>EPS × MULTIPLE VALUATION</small>
         </div>
         <div class="method-key">
+          <a href="/valuations.html" class="about-link" style="margin-right: 15px;">All Valuations</a>
           <span class="method-key-chip a"><span class="dot"></span>Rule #1</span>
           <span class="method-key-chip b"><span class="dot"></span>Peter Lynch</span>
           <a href="/about.html" class="about-link">About</a>
@@ -204,8 +205,13 @@
             type="text"
             placeholder="Investment thesis / notes..."
           />
-          <button id="save-btn" class="save-btn" type="button">Save this valuation</button>
-          <span id="save-status" class="save-status"></span>
+          <select id="evaluator-select" class="assumption-input assumption-select" style="margin-left: 0.9rem;">
+            <option value="Aviv" selected>Aviv</option>
+            <option value="Bob">Bob</option>
+            <option value="Charlie">Charlie</option>
+          </select>
+          <button id="save-btn" class="save-btn" type="button" style="margin-left: 0.9rem;">Save this valuation</button>
+          <span id="save-status" class="save-status" style="margin-left: 0.9rem;"></span>
         </div>
       </div>
 

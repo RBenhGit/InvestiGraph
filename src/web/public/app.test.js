@@ -21,6 +21,7 @@ describe('app.js frontend', () => {
   let fmt;
   let fmtPercent;
   let formatDate;
+  let renderVerdict;
   let getCurrentValuation;
   let setCurrentValuation;
   let analystTableEl;
@@ -85,6 +86,10 @@ describe('app.js frontend', () => {
       </table>
       <input id="history-filter" />
       <button id="history-refresh-btn"></button>
+      <select id="evaluator-select">
+        <option value="Aviv" selected>Aviv</option>
+        <option value="Bob">Bob</option>
+      </select>
     `;
 
     // Mock fetch for initial fetchHistory
@@ -101,7 +106,7 @@ describe('app.js frontend', () => {
     const scriptExecutor = new Function(
       'window',
       'document',
-      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, renderPriceBanner, renderGrowthTable, renderMultiplesTable, renderGrowthChips, renderScenarioColumn, renderMethodCard, handleSaveValuation, fetchHistory, fmt, fmtPercent, formatDate, getCurrentValuation: () => currentValuation, setCurrentValuation: (v) => { currentValuation = v; } };`,
+      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, renderPriceBanner, renderGrowthTable, renderMultiplesTable, renderGrowthChips, renderScenarioColumn, renderMethodCard, handleSaveValuation, fetchHistory, fmt, fmtPercent, formatDate, renderVerdict, getCurrentValuation: () => currentValuation, setCurrentValuation: (v) => { currentValuation = v; } };`,
     );
     const exports = scriptExecutor(window, document);
     formatStockDataError = exports.formatStockDataError;
@@ -119,6 +124,7 @@ describe('app.js frontend', () => {
     fmt = exports.fmt;
     fmtPercent = exports.fmtPercent;
     formatDate = exports.formatDate;
+    renderVerdict = exports.renderVerdict;
     getCurrentValuation = exports.getCurrentValuation;
     setCurrentValuation = exports.setCurrentValuation;
     analystTableEl = document.getElementById('analyst-table');
@@ -1019,23 +1025,23 @@ describe('app.js frontend', () => {
 
   describe('fetchHistory', () => {
     it('requests the unfiltered endpoint when no filter is given', async () => {
-      let calledUrl = null;
+      let calledUrl;
       global.fetch = (url) => {
         calledUrl = url;
         return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
       };
       await fetchHistory('');
-      expect(calledUrl).toBe('/api/history');
+      expect(calledUrl).toBe('/api/history?evaluator=Aviv');
     });
 
     it('url-encodes a ticker filter', async () => {
-      let calledUrl = null;
+      let calledUrl;
       global.fetch = (url) => {
         calledUrl = url;
         return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
       };
       await fetchHistory('BRK B&');
-      expect(calledUrl).toBe('/api/history?ticker=BRK%20B%26');
+      expect(calledUrl).toBe('/api/history?ticker=BRK%20B%26&evaluator=Aviv');
     });
 
     it('swallows a rejected fetch without throwing', async () => {
@@ -1247,6 +1253,64 @@ describe('app.js frontend', () => {
       expect(historyEmptyEl.hidden).toBe(false);
       expect(historyTableContainerEl.hidden).toBe(true);
       expect(historyTbodyEl.innerHTML).toBe('');
+    });
+  });
+
+  describe('renderVerdict', () => {
+    it('shows FAIR VALUE when diff is within 5%', () => {
+      const el = document.createElement('div');
+      renderVerdict(el, 102, 100);
+      expect(el.textContent).toBe('FAIR VALUE');
+      expect(el.className).toContain('neutral');
+    });
+
+    it('shows Undervalued when fair value is > 5% above price', () => {
+      const el = document.createElement('div');
+      renderVerdict(el, 110, 100);
+      expect(el.textContent).toBe('Undervalued');
+      expect(el.className).toContain('good');
+    });
+
+    it('shows Overvalued when fair value is > 5% below price', () => {
+      const el = document.createElement('div');
+      renderVerdict(el, 90, 100);
+      expect(el.textContent).toBe('Overvalued');
+      expect(el.className).toContain('bad');
+    });
+
+    it('returns n/a for currentPrice 0', () => {
+      const el = document.createElement('div');
+      renderVerdict(el, 100, 0);
+      expect(el.textContent).toBe('n/a');
+    });
+  });
+
+  describe('renderScenarioColumn', () => {
+    it('appends percentage diff to verdict for valid prices', () => {
+      document.body.innerHTML = `
+        <div id="test-base-fv"></div>
+        <div id="test-base-verdict"></div>
+        <div id="test-base-inputs"></div>
+      `;
+      renderScenarioColumn('test', 'base', { ok: true, fairValue: 150, inputs: {} }, 100);
+      const verdictEl = document.getElementById('test-base-verdict');
+      const diffEl = verdictEl.nextSibling;
+      expect(diffEl.className).toBe('scenario-diff');
+      expect(diffEl.textContent).toContain('+50.00%');
+    });
+
+    it('does not append percentage diff if currentPrice is 0 (avoids Infinity)', () => {
+      document.body.innerHTML = `
+        <div id="test-base-fv"></div>
+        <div id="test-base-verdict"></div>
+        <div id="test-base-inputs"></div>
+      `;
+      renderScenarioColumn('test', 'base', { ok: true, fairValue: 150, inputs: {} }, 0);
+      const verdictEl = document.getElementById('test-base-verdict');
+      const diffEl = verdictEl.nextSibling;
+      if (diffEl) {
+        expect(diffEl.className).not.toBe('scenario-diff');
+      }
     });
   });
 });

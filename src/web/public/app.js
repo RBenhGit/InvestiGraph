@@ -29,6 +29,7 @@ const multiplesTableEl = document.getElementById('multiples-table');
 const analystTableEl = document.getElementById('analyst-table');
 
 // History elements
+const evaluatorSelect = document.getElementById('evaluator-select');
 const saveBtn = document.getElementById('save-btn');
 const saveStatus = document.getElementById('save-status');
 const historyEmpty = document.getElementById('history-empty');
@@ -38,6 +39,9 @@ const historyFilter = document.getElementById('history-filter');
 const historyRefreshBtn = document.getElementById('history-refresh-btn');
 
 let currentValuation = null;
+
+// המרחק המקסימלי (באחוזים) מהמחיר הנוכחי שעדיין נחשב "הוגן", לא Undervalued/Overvalued.
+const FAIR_VALUE_TOLERANCE_PERCENT = 5;
 
 // Monotonic id for /api/valuate requests. The Go button is disabled while one is in flight,
 // but "Refresh Live" is not, and responses can arrive out of order -- so without this the LAST
@@ -411,9 +415,22 @@ function renderGrowthChips(growth) {
 }
 
 function renderVerdict(el, fairValue, currentPrice) {
-  const undervalued = fairValue > currentPrice;
-  el.textContent = undervalued ? 'Undervalued' : 'Overvalued';
-  el.className = `verdict ${undervalued ? 'good' : 'bad'}`;
+  if (!isValidPrice(currentPrice) || fairValue === null || fairValue === undefined) {
+    el.textContent = 'n/a';
+    el.className = 'verdict';
+    return;
+  }
+  const diffPercent = (fairValue / currentPrice - 1) * 100;
+  if (Math.abs(diffPercent) <= FAIR_VALUE_TOLERANCE_PERCENT) {
+    el.textContent = 'FAIR VALUE';
+    el.className = 'verdict neutral';
+  } else if (diffPercent > 0) {
+    el.textContent = 'Undervalued';
+    el.className = 'verdict good';
+  } else {
+    el.textContent = 'Overvalued';
+    el.className = 'verdict bad';
+  }
 }
 
 function growthIO(inputs) {
@@ -442,6 +459,21 @@ function renderScenarioColumn(prefix, scenario, result, currentPrice, extraField
 
   fairValueEl.textContent = fmt(result.fairValue);
   renderVerdict(verdictEl, result.fairValue, currentPrice);
+
+  if (isValidPrice(currentPrice) && result.fairValue !== null && result.fairValue !== undefined) {
+    const diffPercent = (result.fairValue / currentPrice - 1) * 100;
+    const sign = diffPercent > 0 ? '+' : '';
+    const diffDiv = document.createElement('div');
+    diffDiv.className = 'scenario-diff';
+    diffDiv.style.fontSize = '0.8rem';
+    diffDiv.style.fontFamily = 'ui-monospace, monospace';
+    diffDiv.style.marginTop = '-0.8rem';
+    diffDiv.style.marginBottom = '1.1rem';
+    diffDiv.style.color = 'var(--ink-soft)';
+    diffDiv.textContent = `Diff: ${sign}${fmt(diffPercent)}%`;
+    // Insert diffDiv after verdictEl
+    verdictEl.parentNode.insertBefore(diffDiv, verdictEl.nextSibling);
+  }
 
   const extraHtml = (extraFields || [])
     .map(([label, value]) => `<span class="io">${label}: <b>${value}</b></span>`)
@@ -479,10 +511,13 @@ async function fetchHistory(filterTicker) {
   if (!historyTbody) return;
   const requestId = ++latestHistoryRequestId;
   try {
-    const url =
-      filterTicker && filterTicker.trim()
-        ? `/api/history?ticker=${encodeURIComponent(filterTicker.trim())}`
-        : '/api/history';
+    const evaluatorParam = evaluatorSelect ? `evaluator=${encodeURIComponent(evaluatorSelect.value)}` : '';
+    let url = '/api/history';
+    const params = [];
+    if (filterTicker && filterTicker.trim()) params.push(`ticker=${encodeURIComponent(filterTicker.trim())}`);
+    if (evaluatorParam) params.push(evaluatorParam);
+    if (params.length > 0) url += '?' + params.join('&');
+
     const response = await fetch(url);
     const body = await response.json();
 
@@ -700,7 +735,8 @@ function renderHistoryTable(records) {
         delBtn.textContent = 'Delete';
         delBtn.addEventListener('click', async () => {
           try {
-            await fetch(`/api/history/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+            const evaluatorParam = evaluatorSelect ? `?evaluator=${encodeURIComponent(evaluatorSelect.value)}` : '';
+            await fetch(`/api/history/${encodeURIComponent(item.id)}${evaluatorParam}`, { method: 'DELETE' });
             const filterVal = historyFilter ? historyFilter.value : '';
             fetchHistory(filterVal);
           } catch (err) {
@@ -727,6 +763,9 @@ async function handleSaveValuation() {
 
   if (notesInput) {
     currentValuation.notes = notesInput.value.trim();
+  }
+  if (evaluatorSelect) {
+    currentValuation.evaluator = evaluatorSelect.value;
   }
 
   try {
@@ -1005,6 +1044,11 @@ if (historyRefreshBtn) {
 if (historyFilter) {
   historyFilter.addEventListener('input', () => {
     fetchHistory(historyFilter.value);
+  });
+}
+if (evaluatorSelect) {
+  evaluatorSelect.addEventListener('change', () => {
+    fetchHistory(historyFilter ? historyFilter.value : '');
   });
 }
 

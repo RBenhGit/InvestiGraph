@@ -698,7 +698,7 @@ describe('GET /api/history', () => {
     const body = response.json();
     expect(body.ok).toBe(true);
     expect(body.data).toEqual(mockData);
-    expect(getHistory).toHaveBeenCalledWith('AAPL');
+    expect(getHistory).toHaveBeenCalledWith('AAPL', undefined, undefined);
   });
 });
 

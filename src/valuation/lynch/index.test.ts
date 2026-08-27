@@ -30,12 +30,12 @@ describe('calculateLynchValue', () => {
     expect(result).toEqual({ ok: false, error: 'MISSING_EPS' });
   });
 
-  it('clamps growth=40 to 25, proving the clamp actually fires', () => {
+  it('does not clamp high growth=40, proving there is no maximum ceiling', () => {
     const result = calculateLynchValue(5, 40);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.fairValue).toBe(125);
-      expect(result.inputs.growthRatePercentClamped).toBe(25);
+      expect(result.fairValue).toBe(200);
+      expect(result.inputs.growthRatePercentClamped).toBe(40);
       expect(result.inputs.growthRatePercentRaw).toBe(40);
     }
   });

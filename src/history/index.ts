@@ -20,7 +20,7 @@ export function formatHistoryError(error: HistoryError): string {
 }
 
 export async function saveValuation(
-  input: SaveValuationInput,
+  input: SaveValuationInput & { evaluator?: string },
   filePath?: string,
 ): Promise<HistoryResult<SavedValuation>> {
   if (!input.ticker || typeof input.ticker !== 'string' || input.ticker.trim() === '') {
@@ -33,19 +33,20 @@ export async function saveValuation(
   const ticker = input.ticker.trim().toUpperCase();
   const evaluatedAt = input.evaluatedAt || new Date().toISOString();
   const id = input.id || `${Date.now()}-${ticker}`;
+  const { evaluator, ...restInput } = input;
 
   const record: SavedValuation = {
-    ...input,
+    ...restInput,
     id,
     ticker,
     evaluatedAt,
   };
 
   try {
-    const existing = await readHistoryFile(filePath);
+    const existing = await readHistoryFile(filePath, evaluator);
     // Prepend newest at the beginning
     const updated = [record, ...existing.filter((item) => item.id !== id)];
-    await writeHistoryFile(updated, filePath);
+    await writeHistoryFile(updated, filePath, evaluator);
     return { ok: true, data: record };
   } catch (err) {
     return {
@@ -61,9 +62,10 @@ export async function saveValuation(
 export async function getHistory(
   ticker?: string,
   filePath?: string,
+  evaluator?: string,
 ): Promise<HistoryResult<SavedValuation[]>> {
   try {
-    const records = await readHistoryFile(filePath);
+    const records = await readHistoryFile(filePath, evaluator);
     let filtered = records;
     if (ticker && ticker.trim() !== '') {
       const target = ticker.trim().toUpperCase();
@@ -86,6 +88,7 @@ export async function getHistory(
 export async function deleteValuation(
   id: string,
   filePath?: string,
+  evaluator?: string,
 ): Promise<HistoryResult<SavedValuation>> {
   if (!id || typeof id !== 'string' || id.trim() === '') {
     return {
@@ -95,7 +98,7 @@ export async function deleteValuation(
   }
 
   try {
-    const existing = await readHistoryFile(filePath);
+    const existing = await readHistoryFile(filePath, evaluator);
     const index = existing.findIndex((item) => item.id === id);
     if (index === -1) {
       return {
@@ -104,8 +107,55 @@ export async function deleteValuation(
       };
     }
     const [deleted] = existing.splice(index, 1);
-    await writeHistoryFile(existing, filePath);
+    await writeHistoryFile(existing, filePath, evaluator);
     return { ok: true, data: deleted };
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        type: 'IO_ERROR',
+        message: err instanceof Error ? err.message : String(err),
+      },
+    };
+  }
+}
+
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { PROJECT_ROOT } from './store';
+
+export async function getAllLatestValuations(): Promise<HistoryResult<SavedValuation[]>> {
+  try {
+    const evaluatorsDir = path.resolve(PROJECT_ROOT, 'data', 'evaluators');
+    let files: string[] = [];
+    try {
+      files = await fs.readdir(evaluatorsDir);
+    } catch (err: any) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+
+    const allRecords: SavedValuation[] = [];
+    const legacy = await readHistoryFile();
+    allRecords.push(...legacy);
+
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        const evaluator = file.replace('.json', '');
+        const records = await readHistoryFile(undefined, evaluator);
+        records.forEach(r => r.evaluator = r.evaluator || evaluator);
+        allRecords.push(...records);
+      }
+    }
+
+    const latestByTicker = new Map<string, SavedValuation>();
+    for (const record of allRecords) {
+      const existing = latestByTicker.get(record.ticker);
+      if (!existing || new Date(record.evaluatedAt).getTime() > new Date(existing.evaluatedAt).getTime()) {
+        latestByTicker.set(record.ticker, record);
+      }
+    }
+
+    return { ok: true, data: Array.from(latestByTicker.values()) };
   } catch (err) {
     return {
       ok: false,

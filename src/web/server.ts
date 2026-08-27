@@ -8,7 +8,7 @@ import { safeTickerSegment } from '../data/cache';
 import { resolveEpsWithFallback } from '../data/resolveEps';
 import { calculateLynchValue } from '../valuation/lynch';
 import { calculateRuleOneValue } from '../valuation/ruleOne';
-import { saveValuation, getHistory, deleteValuation, type SaveValuationInput } from '../history';
+import { saveValuation, getHistory, deleteValuation, getAllLatestValuations, type SaveValuationInput } from '../history';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 3000/3001/3100 are already claimed by other projects on this machine (stock_vision, etc.) —
@@ -243,16 +243,24 @@ export function buildServer() {
     });
   });
 
-  fastify.get<{ Querystring: { ticker?: string } }>('/api/history', async (request, reply) => {
-    const { ticker } = request.query;
-    const result = await getHistory(ticker);
+  fastify.get<{ Querystring: { ticker?: string; evaluator?: string } }>('/api/history', async (request, reply) => {
+    const { ticker, evaluator } = request.query;
+    const result = await getHistory(ticker, undefined, evaluator);
     if (!result.ok) {
       return reply.status(500).send(result);
     }
     return reply.status(200).send(result);
   });
 
-  fastify.post<{ Body: SaveValuationInput }>('/api/history', async (request, reply) => {
+  fastify.get('/api/valuations', async (request, reply) => {
+    const result = await getAllLatestValuations();
+    if (!result.ok) {
+      return reply.status(500).send(result);
+    }
+    return reply.status(200).send(result);
+  });
+
+  fastify.post<{ Body: SaveValuationInput & { evaluator?: string } }>('/api/history', async (request, reply) => {
     const result = await saveValuation(request.body);
     if (!result.ok) {
       const status = result.error.type === 'INVALID_INPUT' ? 400 : 500;
@@ -261,9 +269,10 @@ export function buildServer() {
     return reply.status(201).send(result);
   });
 
-  fastify.delete<{ Params: { id: string } }>('/api/history/:id', async (request, reply) => {
+  fastify.delete<{ Params: { id: string }; Querystring: { evaluator?: string } }>('/api/history/:id', async (request, reply) => {
     const { id } = request.params;
-    const result = await deleteValuation(id);
+    const { evaluator } = request.query;
+    const result = await deleteValuation(id, undefined, evaluator);
     if (!result.ok) {
       const status = result.error.type === 'NOT_FOUND' ? 404 : 500;
       return reply.status(status).send(result);
