@@ -1,5 +1,6 @@
 const tbody = document.getElementById('valuations-tbody');
 const filterInput = document.getElementById('filter-input');
+const evaluatorFilter = document.getElementById('evaluator-filter');
 const table = document.getElementById('valuations-table');
 let allValuations = [];
 let sortCol = 'ticker';
@@ -15,12 +16,28 @@ function parsePct(fv, price) {
   return (fv / price - 1) * 100;
 }
 
+function populateEvaluatorFilter() {
+  const uniqueEvaluators = [...new Set(allValuations.map(v => v.evaluator || 'Aviv'))].sort();
+  const currentVal = evaluatorFilter.value;
+  evaluatorFilter.innerHTML = '<option value="">All Evaluators</option>';
+  for (const ev of uniqueEvaluators) {
+    const opt = document.createElement('option');
+    opt.value = ev.toLowerCase();
+    opt.textContent = ev;
+    evaluatorFilter.appendChild(opt);
+  }
+  evaluatorFilter.value = currentVal;
+}
+
 function renderTable() {
   const filter = filterInput.value.trim().toLowerCase();
+  const evalFilter = evaluatorFilter.value;
   
   let filtered = allValuations.filter(v => {
     const evaluator = v.evaluator || 'Aviv';
-    return v.ticker.toLowerCase().includes(filter) || evaluator.toLowerCase().includes(filter);
+    const matchesTicker = v.ticker.toLowerCase().includes(filter);
+    const matchesEval = evalFilter === '' || evaluator.toLowerCase() === evalFilter;
+    return matchesTicker && matchesEval;
   });
 
   filtered.sort((a, b) => {
@@ -126,6 +143,7 @@ async function fetchValuations() {
     const body = await res.json();
     if (body.ok) {
       allValuations = body.data;
+      populateEvaluatorFilter();
       renderTable();
     }
   } catch (err) {
@@ -134,6 +152,7 @@ async function fetchValuations() {
 }
 
 filterInput.addEventListener('input', renderTable);
+evaluatorFilter.addEventListener('change', renderTable);
 
 table.querySelectorAll('th').forEach(th => {
   th.addEventListener('click', () => {

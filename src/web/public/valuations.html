@@ -26,8 +26,11 @@
 
       <div class="hero">
         <p class="lede">Latest Base Scenario valuations across all tickers.</p>
-        <div class="querybar">
-          <input id="filter-input" class="assumption-input" type="text" placeholder="Filter ticker or evaluator..." style="width: 15rem;" />
+        <div class="querybar" style="display: flex; gap: 1rem; align-items: center; justify-content: center;">
+          <input id="filter-input" class="assumption-input" type="text" placeholder="Filter ticker..." style="width: 15rem;" />
+          <select id="evaluator-filter" class="assumption-input assumption-select" style="width: 12rem;">
+            <option value="">All Evaluators</option>
+          </select>
         </div>
       </div>
 
