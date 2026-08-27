@@ -68,7 +68,52 @@ export async function getHistory(
   evaluator?: string,
 ): Promise<HistoryResult<SavedValuation[]>> {
   try {
-    const records = await readHistoryFile(filePath, evaluator);
+    let records = await readHistoryFile(filePath, evaluator);
+    
+    // Merge legacy history.json records that belong to this evaluator (or have no evaluator)
+    if (evaluator && !filePath) {
+      try {
+        const legacy = await readHistoryFile(); // reads history.json
+        const matchingLegacy = legacy.filter(item => !item.evaluator || item.evaluator.toLowerCase() === evaluator.toLowerCase());
+        
+        // Combine, preferring evaluator file records over legacy ones by ID
+        const existingIds = new Set(records.map(r => r.id));
+        for (const leg of matchingLegacy) {
+          if (!existingIds.has(leg.id)) {
+            records.push(leg);
+          }
+        }
+      } catch (err: any) {
+        // ignore if history.json doesn't exist
+      }
+    }
+
+    // If no evaluator specified, merge all evaluators' files with history.json
+    if (!evaluator && !filePath) {
+      try {
+        const evaluatorsDir = path.resolve(PROJECT_ROOT, 'data', 'evaluators');
+        let files: string[] = [];
+        try { files = await fs.readdir(evaluatorsDir); } catch (e) {}
+        
+        for (const file of files) {
+          if (file.endsWith('.json')) {
+            const ev = file.replace('.json', '');
+            const evRecords = await readHistoryFile(undefined, ev);
+            evRecords.forEach(r => r.evaluator = r.evaluator || ev);
+            
+            const existingIds = new Set(records.map(r => r.id));
+            for (const r of evRecords) {
+              if (!existingIds.has(r.id)) {
+                records.push(r);
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        // ignore
+      }
+    }
+
     let filtered = records;
     if (ticker && ticker.trim() !== '') {
       const target = ticker.trim().toUpperCase();
