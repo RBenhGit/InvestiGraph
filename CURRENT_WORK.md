@@ -289,23 +289,48 @@ changes and is faster when applicable.
 
 ### Requested features (2026-08-27, from user) — not started
 
-1. **Evaluator field ("מבצע הערכת השווי")** — add a free-text/identifier field naming who
-   performed the valuation. Needs to flow through: web form (`src/web/public/index.html` +
-   `app.js`) → `POST /api/valuate`/`POST /api/history` body → `SavedValuation`
-   (`src/history/types.ts`, new optional field so existing records stay readable) → CLI
-   (`-H/--history` output column, and probably a `--by <name>` flag to mirror `-n/--notes`).
-   Open question to settle first: single free-text field, or a persisted list of users?
-   Task 5 below depends on this — "latest valuation per user" is meaningless without it.
+1. **Evaluator field ("מבצע הערכת השווי")** — add a field naming who performed the valuation.
+   **Decided 2026-08-27 (user, refined):** a small managed name list, NOT derived from history
+   and NOT a free-text/datalist-only field:
+   - A dropdown of predefined names, with an "add new name" affordance right in the picker.
+   - Deleting a name from the list must NOT delete or orphan any past valuations that used it —
+     `SavedValuation.evaluator` stores the name as a plain string on the record itself, so a
+     deletion only removes the name from future suggestions; existing history rows are
+     untouched and still display/group by whatever string they already have.
+   - Remember the last-used evaluator and preselect it next time.
+   Storage: a small disk-backed store mirroring `src/history/store.ts`'s own pattern (plain JSON
+   array, e.g. `evaluators.json` at the project root, path overridable via an
+   `EVALUATORS_FILE_PATH` env var the same way `HISTORY_FILE_PATH` works) rather than
+   `localStorage` — keeps it usable from the CLI too and consistent across browsers/devices,
+   matching how `cache.ts` and `history/store.ts` already do disk-backed persistence. New
+   module `src/evaluators/` (own `index.ts`/`store.ts`/`types.ts` + tests) is more consistent
+   with the codebase's one-concern-per-module layout than bolting it onto `src/history/`.
+   "Last-used" (for preselect) can live in the same small store or ride alongside it — decide
+   during implementation; either way it must work from both the web UI and the CLI so the two
+   adapters don't diverge (see the CLAUDE.md warning about the growth-fallback-chain incident —
+   same class of bug if evaluator handling forks between adapters).
+   Flows through: web form (`src/web/public/index.html` + `app.js`, dropdown+add UI) →
+   `POST /api/valuate`/`POST /api/history` body → `SavedValuation` (`src/history/types.ts`, new
+   **optional** `evaluator?: string` field so the 8 existing records stay readable) → CLI
+   (`-H/--history` output column + a `--by <name>` flag mirroring `-n/--notes`, validated/added
+   against the same managed list). New endpoints needed: something like
+   `GET/POST/DELETE /api/evaluators`.
+   Task 5 depends on this — "latest valuation per user" is meaningless without it.
 2. **"FAIR VALUE" label when the estimate is close to the market price** — when the computed
    fair value lands within some tolerance band of the current price, render an explicit
    `FAIR VALUE` marker instead of only over/under-valued. Decide the band (e.g. ±5%?) and
    whether it applies to Lynch, Rule #1, or both/each independently. UI lives in `app.js`
    next to the existing `renderPriceDelta` logic.
-3. **Remove the maximum-growth cap** — `src/valuation/shared/clampGrowthRate.ts` currently
-   clamps every rate to `[-5%, 25%]`. Drop the upper bound (keep or revisit the lower one —
-   note `calculateLynchValue` separately rejects non-positive growth with
-   `NEGATIVE_GROWTH_RATE`, so the lower bound is not the only guard). Update the tests that
-   assert the 25% ceiling, and check nothing in the UI copy still promises a 25% cap.
+3. **Remove the maximum-growth cap** — `src/valuation/shared/clampGrowthRate.ts` clamps every
+   rate to `[-5%, 25%]` via `GROWTH_RATE_FLOOR_PERCENT`/`GROWTH_RATE_CAP_PERCENT`.
+   **Decided 2026-08-27 (user):** drop the 25% cap; **keep the -5% floor.**
+   Both `calculateLynchValue` and `calculateRuleOneValue` call `clampGrowthRate` internally, so
+   removing the cap changes both methods at once. Note the cap bites the two methods very
+   differently: Rule #1 compounds the rate over `years`, so an uncapped 60% historical CAGR
+   produces a dramatically higher sticker price than it does today — that is the intended
+   consequence of this request, but eyeball a real high-growth ticker before closing the task.
+   Update `src/valuation/shared/clampGrowthRate.test.ts` (asserts the 25% ceiling) and check no
+   UI copy still promises a 25% cap.
 4. **Show percentage difference in the Bear/Base/Bull price boxes** — each scenario box should
    display the % gap between its fair value and the current market price (and/or vs. base).
    Pure UI change in `app.js`/`index.html`; reuse the existing zero-price guard from the
