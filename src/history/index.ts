@@ -42,6 +42,7 @@ export async function saveValuation(
     id,
     ticker,
     evaluatedAt,
+    ...(evaluator ? { evaluator } : {}),
   };
 
   try {

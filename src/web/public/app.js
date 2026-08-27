@@ -30,6 +30,8 @@ const analystTableEl = document.getElementById('analyst-table');
 
 // History elements
 const evaluatorSelect = document.getElementById('evaluator-select');
+const addEvaluatorBtn = document.getElementById('add-evaluator-btn');
+const delEvaluatorBtn = document.getElementById('del-evaluator-btn');
 const saveBtn = document.getElementById('save-btn');
 const saveStatus = document.getElementById('save-status');
 const historyEmpty = document.getElementById('history-empty');
@@ -1051,6 +1053,54 @@ if (evaluatorSelect) {
     fetchHistory(historyFilter ? historyFilter.value : '');
   });
 }
+
+function renderEvaluators() {
+  if (!evaluatorSelect) return;
+  const list = JSON.parse(localStorage.getItem('evaluatorsList')) || ['Aviv', 'Ran'];
+  const currentVal = evaluatorSelect.value;
+  evaluatorSelect.innerHTML = '';
+  list.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    evaluatorSelect.appendChild(opt);
+  });
+  if (list.includes(currentVal)) {
+    evaluatorSelect.value = currentVal;
+  }
+}
+
+if (addEvaluatorBtn) {
+  addEvaluatorBtn.addEventListener('click', () => {
+    const name = prompt('Enter new evaluator name:');
+    if (name && name.trim()) {
+      const list = JSON.parse(localStorage.getItem('evaluatorsList')) || ['Aviv', 'Ran'];
+      if (!list.includes(name.trim())) {
+        list.push(name.trim());
+        localStorage.setItem('evaluatorsList', JSON.stringify(list));
+        renderEvaluators();
+        evaluatorSelect.value = name.trim();
+        evaluatorSelect.dispatchEvent(new Event('change'));
+      }
+    }
+  });
+}
+
+if (delEvaluatorBtn) {
+  delEvaluatorBtn.addEventListener('click', () => {
+    const name = evaluatorSelect.value;
+    if (!name) return;
+    if (confirm(`Remove ${name} from the dropdown? (History files are not deleted)`)) {
+      let list = JSON.parse(localStorage.getItem('evaluatorsList')) || ['Aviv', 'Ran'];
+      list = list.filter(n => n !== name);
+      localStorage.setItem('evaluatorsList', JSON.stringify(list));
+      renderEvaluators();
+      evaluatorSelect.dispatchEvent(new Event('change'));
+    }
+  });
+}
+
+renderEvaluators();
 
 // Initial history load
 fetchHistory();
