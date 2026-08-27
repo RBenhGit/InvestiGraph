@@ -48,6 +48,7 @@ function renderTable() {
     const baseB = b.base || b;
     
     switch(sortCol) {
+      case 'date': valA = new Date(a.evaluatedAt || 0).getTime(); valB = new Date(b.evaluatedAt || 0).getTime(); break;
       case 'ticker': valA = a.ticker; valB = b.ticker; break;
       case 'price': valA = a.currentPrice; valB = b.currentPrice; break;
       case 'lynch': valA = baseA.lynchFairValue; valB = baseB.lynchFairValue; break;
@@ -58,8 +59,8 @@ function renderTable() {
       default: valA = a.ticker; valB = b.ticker; break;
     }
 
-    const nullA = (valA === null || valA === undefined || valA === 'n/a');
-    const nullB = (valB === null || valB === undefined || valB === 'n/a');
+    const nullA = (valA === null || valA === undefined || valA === 'n/a' || isNaN(valA));
+    const nullB = (valB === null || valB === undefined || valB === 'n/a' || isNaN(valB));
     
     if (nullA && nullB) return 0;
     if (nullA) return 1;
@@ -77,6 +78,13 @@ function renderTable() {
     const evaluator = v.evaluator || 'Aviv';
     
     const tr = document.createElement('tr');
+
+    // Date
+    const tdDate = document.createElement('td');
+    tdDate.className = 'table-date';
+    const dateObj = new Date(v.evaluatedAt);
+    tdDate.textContent = isNaN(dateObj.getTime()) ? 'N/A' : dateObj.toLocaleDateString();
+    tr.appendChild(tdDate);
     
     // Ticker
     const tdTicker = document.createElement('td');
@@ -137,6 +145,65 @@ function renderTable() {
   }
 }
 
+let chartInstance = null;
+
+function renderChart() {
+  const ctx = document.getElementById('upsideChart');
+  if (!ctx) return;
+  
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  
+  // Filter for last 6 months
+  const recentVals = allValuations.filter(v => new Date(v.evaluatedAt || 0) >= sixMonthsAgo);
+  
+  // Map to chart data
+  const chartData = recentVals.map(v => {
+    const base = v.base || v;
+    const rPct = parsePct(base.ruleOneFairValue, v.currentPrice);
+    return {
+      ticker: v.ticker,
+      upside: rPct !== null ? rPct : 0
+    };
+  }).sort((a, b) => b.upside - a.upside); // Sorted by height (descending)
+  
+  const labels = chartData.map(d => d.ticker);
+  const data = chartData.map(d => d.upside);
+  const bgColors = data.map(d => d >= 0 ? 'rgba(74, 222, 128, 0.7)' : 'rgba(248, 113, 113, 0.7)');
+  const borderColors = data.map(d => d >= 0 ? 'rgb(74, 222, 128)' : 'rgb(248, 113, 113)');
+
+  if (chartInstance) {
+    chartInstance.destroy();
+  }
+  
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Rule #1 Upside %',
+        data: data,
+        backgroundColor: bgColors,
+        borderColor: borderColors,
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Upside (%)'
+          }
+        }
+      }
+    }
+  });
+}
+
 async function fetchValuations() {
   try {
     const res = await fetch('/api/valuations');
@@ -145,6 +212,7 @@ async function fetchValuations() {
       allValuations = body.data;
       populateEvaluatorFilter();
       renderTable(); // Initial render with cached prices
+      renderChart(); // Initial chart
       
       // Fetch live prices in the background
       const tickers = [...new Set(allValuations.map(v => v.ticker))].filter(Boolean);
@@ -163,6 +231,7 @@ async function fetchValuations() {
             }
             if (updated) {
               renderTable(); // Re-render with live prices and updated diffs
+              renderChart(); // Re-render chart with live prices
             }
           }
         } catch (e) {
