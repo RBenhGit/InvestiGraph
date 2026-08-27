@@ -471,7 +471,8 @@ function renderScenarioColumn(prefix, scenario, result, currentPrice, extraField
     diffDiv.style.fontFamily = 'ui-monospace, monospace';
     diffDiv.style.marginTop = '-0.8rem';
     diffDiv.style.marginBottom = '1.1rem';
-    diffDiv.style.color = 'var(--ink-soft)';
+    // Use lighter color for Rule #1 (dark bg), darker color for Lynch (light bg)
+    diffDiv.style.color = prefix === 'rule1' ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)';
     diffDiv.textContent = `Diff: ${sign}${fmt(diffPercent)}%`;
     // Insert diffDiv after verdictEl
     verdictEl.parentNode.insertBefore(diffDiv, verdictEl.nextSibling);
