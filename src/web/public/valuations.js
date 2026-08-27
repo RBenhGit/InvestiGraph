@@ -190,6 +190,7 @@ function renderChart() {
     },
     options: {
       responsive: true,
+      aspectRatio: 4,
       scales: {
         y: {
           beginAtZero: true,
