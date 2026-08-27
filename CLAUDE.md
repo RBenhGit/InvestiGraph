@@ -305,21 +305,31 @@ span many sessions.
 - `CACHE_DIR_PATH` and `HISTORY_FILE_PATH` (`src/data/cache.ts`, `src/history/store.ts`) are
   optional env vars with safe defaults (`cache/` and `history.json` under the project root) —
   listed commented-out in `.env.example` the same way `PORT` is; almost nobody needs to set them.
-- **Tests/build/lint cannot run from the `Z:` drive — run them over SSH instead.** `Z:` is a
+- **Tests/build/lint cannot run from the `Z:` drive, and file edits (Edit/Write tools, `mkdir`,
+  even Node's own `fs.mkdirSync`) can fail on it too — do both over SSH instead.** `Z:` is a
   Windows SSHFS mount of the very same filesystem the project lives on (see CURRENT_WORK.md's
   "Known problems"); its driver returns `EPERM` instead of `EEXIST` when something calls
-  `mkdir` on an existing directory, so vitest dies at startup with
-  `EPERM: operation not permitted, mkdir 'node_modules/.vite-temp'`. `TMPDIR` does not help
-  (Vite derives that path from the project root) and `npx vitest` fails identically. Because it
-  is the same filesystem, there is nothing to copy — SSH in and run in place:
+  `mkdir` on an existing directory. This breaks vitest at startup
+  (`EPERM: operation not permitted, mkdir 'node_modules/.vite-temp'`) — `TMPDIR` does not help
+  (Vite derives that path from the project root) and `npx vitest` fails identically — **and it
+  also breaks editing an existing file** (confirmed 2026-08-27: both the Edit tool and a bare
+  `fs.mkdirSync(existingDir, {recursive: true})` throw the same `EPERM` on a directory that
+  already exists, for any file, not just ones under `node_modules`). It is intermittent per
+  directory/session, not a hard rule for every path, but treat any `EPERM: ... mkdir` while
+  editing on `Z:` as this same issue rather than investigating from scratch. Because it is the
+  same filesystem, there is nothing to copy — SSH in and run/edit in place. For tests/build/lint:
 
   ```bash
   ssh aviv@100.76.172.46 'cd ~/shared_disk/Cursor_apps/Eps_Evaluation && npm test'
   ```
 
+  For a file edit that hits the same `EPERM`, editing in place with `sed`/a heredoc, or `scp`-ing
+  a small Python/Node script and running it over the same SSH hop, both work — write the
+  replacement as a whole-file or exact-string substitution to avoid quoting issues over SSH.
+
   Host details: user `aviv`, Tailscale `100.76.172.46`, Ubuntu 26.04 LTS, Node v24.15.0,
   npm 11.17.0, key-based auth already in `~/.ssh/config` (`StrictHostKeyChecking no`). The LAN
   address `192.168.1.224` appears in `ip addr` on that box but **port 22 there times out from
   this machine — always use the Tailscale address**. `.claude/hooks/stop-test-gate.sh` already
-  routes its `TEST_CMD` through this same hop (commit `0d6082b`). Verified 2026-08-23:
-  137 tests across 15 files, all passing.
+  routes its `TEST_CMD` through this same hop (commit `0d6082b`). Verified 2026-08-27:
+  228 tests across 16 files, all passing.
