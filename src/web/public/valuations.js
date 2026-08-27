@@ -41,8 +41,12 @@ function renderTable() {
       default: valA = a.ticker; valB = b.ticker; break;
     }
 
-    if (valA === null || valA === undefined || valA === 'n/a') return 1;
-    if (valB === null || valB === undefined || valB === 'n/a') return -1;
+    const nullA = (valA === null || valA === undefined || valA === 'n/a');
+    const nullB = (valB === null || valB === undefined || valB === 'n/a');
+    
+    if (nullA && nullB) return 0;
+    if (nullA) return 1;
+    if (nullB) return -1;
     
     if (typeof valA === 'string') {
       return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);

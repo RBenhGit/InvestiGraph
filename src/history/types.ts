@@ -31,6 +31,7 @@ export interface SavedValuation {
   bull?: ScenarioValuation;
 
   notes?: string;
+  evaluator?: string;
 }
 
 export type SaveValuationInput = Omit<SavedValuation, 'id' | 'evaluatedAt'> & {

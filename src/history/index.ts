@@ -1,4 +1,6 @@
-import { readHistoryFile, writeHistoryFile } from './store';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { readHistoryFile, writeHistoryFile, PROJECT_ROOT } from './store';
 import type {
   SavedValuation,
   SaveValuationInput,
@@ -120,9 +122,6 @@ export async function deleteValuation(
   }
 }
 
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { PROJECT_ROOT } from './store';
 
 export async function getAllLatestValuations(): Promise<HistoryResult<SavedValuation[]>> {
   try {
