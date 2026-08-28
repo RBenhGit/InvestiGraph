@@ -44,7 +44,23 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
       type — the harness's available-agent list hadn't picked up the Phase 0 `.claude/agents/`
       files at launch time, though a later system message confirmed all three *did* register
       partway through the session (worth using the named types directly next time).
-- [ ] **Phase 5 — Extend the data layer.** IN PROGRESS — same setup, `data-layer-porter` spec.
+- [x] **Phase 5 — Extend the data layer.** Done and merged (`5eb5ae3`). 47 new tests, 422
+      passing total. Ported `sources/yahoo_consensus/` (adapter + models + a
+      `TemplateCache`-pattern cache, correctly not registered as a `DataSource`) and
+      `valuation/{growth,resolve_eps}.py`. Field mapping probed live against AAPL/MS/JPM/BAC/
+      IONQ/NVDA before writing the adapter; both required guards (the `ebitdaMargins == 0`
+      trap, annual-vs-quarterly revenue growth) present and fixture-tested. Reviewed and
+      live-verified against real AAPL data (no `TWELVEDATA_API_KEY` configured in this
+      environment, so the Twelve Data smoke check from the plan couldn't run — tested the
+      actual new code, the `yahoo_consensus` adapter, live instead, which needs no key).
+      **The agent's self-spawned code-reviewer caught a real bug** before finishing: an
+      earlier draft of `calculate_ttm_eps_growth_percent` used positional indexing
+      (`points[-5]`) as a proxy for "one year ago," which breaks because series builders drop
+      points on gaps — reproduced as 200% reported growth where the true figure was 33%. Fixed
+      with explicit date-window matching (`_find_year_ago_point`); both the fix and the
+      reviewer's independent re-check (clean pass, "ready to commit") were verified before
+      merging. The finding is preserved as a project memory (see the memory-fold commit
+      immediately before this one) rather than lost with the worktree.
 - [x] **Phase 6 — Port the history store.** Done and merged (`bb66aa9`). 26 new tests, 375
       passing total. Reviewed against the original TS `store.ts`/`types.ts`/`index.ts` in full
       (including `deleteValuation`/`getAllLatestValuations`, not just the two functions read
