@@ -148,15 +148,37 @@ export async function deleteValuation(
   try {
     const existing = await readHistoryFile(filePath, evaluator);
     const index = existing.findIndex((item) => item.id === id);
-    if (index === -1) {
+    let deletedItem: SavedValuation | undefined;
+    let found = false;
+
+    if (index !== -1) {
+      const [deleted] = existing.splice(index, 1);
+      deletedItem = deleted;
+      found = true;
+      await writeHistoryFile(existing, filePath, evaluator);
+    }
+
+    // Always check legacy history.json as well, in case there's a stranded copy or 
+    // it was never in the evaluator-specific file.
+    if (evaluator && !filePath) {
+      const legacy = await readHistoryFile();
+      const legacyIndex = legacy.findIndex((item) => item.id === id);
+      if (legacyIndex !== -1) {
+        const [deletedLegacy] = legacy.splice(legacyIndex, 1);
+        if (!deletedItem) deletedItem = deletedLegacy;
+        found = true;
+        await writeHistoryFile(legacy);
+      }
+    }
+
+    if (!found || !deletedItem) {
       return {
         ok: false,
         error: { type: 'NOT_FOUND', id },
       };
     }
-    const [deleted] = existing.splice(index, 1);
-    await writeHistoryFile(existing, filePath, evaluator);
-    return { ok: true, data: deleted };
+    
+    return { ok: true, data: deletedItem };
   } catch (err) {
     return {
       ok: false,

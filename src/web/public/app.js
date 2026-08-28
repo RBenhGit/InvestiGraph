@@ -750,7 +750,7 @@ function renderHistoryTable(records) {
         delBtn.textContent = 'Delete';
         delBtn.addEventListener('click', async () => {
           try {
-            const evaluatorParam = evaluatorSelect ? `?evaluator=${encodeURIComponent(evaluatorSelect.value)}` : '';
+            const evaluatorParam = item.evaluator ? `?evaluator=${encodeURIComponent(item.evaluator)}` : '';
             await fetch(`/api/history/${encodeURIComponent(item.id)}${evaluatorParam}`, { method: 'DELETE' });
             const filterVal = historyFilter ? historyFilter.value : '';
             fetchHistory(filterVal);
