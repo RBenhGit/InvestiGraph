@@ -1,0 +1,17 @@
+{
+  "info": {
+    "targetMeanPrice": 324.45282,
+    "targetHighPrice": 400.0,
+    "targetLowPrice": 215.0,
+    "numberOfAnalystOpinions": 39,
+    "recommendationKey": "buy",
+    "beta": 1.086,
+    "priceToSalesTrailing12Months": 10.024735,
+    "trailingEps": 8.71,
+    "ebitdaMargins": 0.35979,
+    "ebitda": 167959003136,
+    "mostRecentQuarter": 1782518400
+  },
+  "growth_estimates": "{\"columns\":[\"stockTrend\"],\"index\":[\"0q\",\"+1q\",\"0y\",\"+1y\",\"LTG\"],\"data\":[[0.0703],[0.0156],[0.1829],[0.0809],[null]]}",
+  "financials": "{\"columns\":[\"2025-09-30T00:00:00.000\",\"2024-09-30T00:00:00.000\",\"2023-09-30T00:00:00.000\",\"2022-09-30T00:00:00.000\",\"2021-09-30T00:00:00.000\"],\"index\":[\"Total Revenue\"],\"data\":[[416161000000.0,391035000000.0,383285000000.0,394328000000.0,null]]}"
+}

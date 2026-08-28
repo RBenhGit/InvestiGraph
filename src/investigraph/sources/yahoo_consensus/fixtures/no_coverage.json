@@ -1,0 +1,10 @@
+{
+  "info": {
+    "shortName": "State Street SPDR S&P 500 ETF Trust",
+    "quoteType": "ETF",
+    "regularMarketPrice": 769.64,
+    "trailingPegRatio": null
+  },
+  "growth_estimates": "{\"columns\":[\"stockTrend\"],\"index\":[],\"data\":[]}",
+  "financials": "{\"columns\":[],\"index\":[\"Total Revenue\"],\"data\":[]}"
+}
