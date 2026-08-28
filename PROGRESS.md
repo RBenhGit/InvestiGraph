@@ -143,42 +143,55 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
         non-recursive; no collision), and `calculate_ttm_eps_growth_percent` having no caller
         (it has a real consumer in the original, so it isn't speculative code).
       Full suite after all fixes: 430 passed (422 + 8 new regression tests).
-- [ ] **Phase 7 — Converge and build the merged web app.** IN PROGRESS. Turned out larger than
-      scoped — needed two ports the plan hadn't accounted for (`historicalPe.ts`'s median-P/E-
-      window calculation, a `historical_5y_growth_percent` addition) before the response could
-      even be assembled. User confirmed: continue through the full phase, one reviewable
-      commit per unit, rather than pausing per-unit.
-      - **Done:** `valuation/historical_pe.py` (8 tests, ported 1:1 from `historicalPe.test.ts`
-        — deliberately does *not* reuse `template/trailing.py`'s daily `PE_RATIO_TTM`, a
-        different statistic that would silently change what "median 3y P/E" means).
-        `growth.py`'s `historical_5y_growth_percent` (display-only, not part of the fallback
-        chain, matching the original). `resolve_eps.py`'s `ResolvedEps.template_eps_ttm` (the
-        raw pre-Yahoo-resolution figure, needed separately from the resolved `eps_ttm`).
-        **`POST /api/valuate`** (`web/valuate_service.py` + the route in `web/app.py`) —
-        incorporates the Warning-2 fix (always fetches `Period.ANNUAL` for the valuation panel
-        independent of chart-grid period) as a design constraint from the start. 21 contract
-        tests ported from `server.test.ts`; live-verified against real AAPL data. **Bug found
-        while writing the tests, fixed:** bear/bull `exitPeMultiple`/`requiredReturnPercent`
-        used Python's `or` for defaulting, which silently replaces an explicit `0` with the
-        default (the original JS's `??` only substitutes for missing/null) — a request with
-        `bearExitPeMultiple: 0` must reach `calculate_rule_one_value` as `0`, not get rewritten
-        to `10` first. Full suite: 461 passed.
-      - **Also done:** `/api/history` (GET/POST), `/api/history/<id>` (DELETE),
-        `/api/valuations` — new `web/case_conversion.py` (generic camelCase<->snake_case key
-        converter, used at every request/response boundary since the Pydantic models have no
-        field aliases) and `web/history_service.py` (incorporates the convergence review's
-        exception-mapping note: catches `(OSError, ValueError)` around every `history/store.py`
-        call, not just the two typed exceptions — `json.JSONDecodeError` is a `ValueError`
-        subclass, so this covers "corrupt `history.json`" without importing `json` directly).
-        `/api/live-prices` (yfinance `fast_info["lastPrice"]` per ticker, one bad ticker never
-        fails the batch). CLI `valuate` subcommand (`__main__.py`) — calls the exact same
-        `handle_valuate()`/`create_valuation()` the web routes use, so CLI/web parity holds by
-        construction rather than by discipline (the original kept two separate copies of this
-        flow that drifted once). 38 more tests across these three units. Full suite: 490 passed.
-      - **Remaining:** front-end unification (verbatim `public/` assets moved to `web/static/`,
-        `index.html` rewritten as the unified entry point — chart grid above, valuation panel
-        below, one shared ticker input) and porting whatever of `server.test.ts` isn't already
-        covered by the contract tests written alongside each route above.
+- [x] **Phase 7 — Converge and build the merged web app.** DONE, all 7 units, one reviewable
+      commit per unit (see `git log` on `merge/import-sources` between the convergence-review
+      commit and this one for the full trail). Turned out substantially larger than the
+      original plan scoped — needed two ports the plan hadn't accounted for before the response
+      could even be assembled.
+      1. `valuation/historical_pe.py` (8 tests, ported 1:1 from `historicalPe.test.ts` —
+         deliberately does *not* reuse `template/trailing.py`'s daily `PE_RATIO_TTM`, a
+         different statistic that would silently change what "median 3y P/E" means) +
+         `growth.py`'s `historical_5y_growth_percent` (display-only, not part of the fallback
+         chain) + `resolve_eps.py`'s `ResolvedEps.template_eps_ttm` (the raw pre-Yahoo figure,
+         needed separately from the resolved `eps_ttm`).
+      2. `POST /api/valuate` (`web/valuate_service.py`) — incorporates the convergence review's
+         Warning-2 fix (always fetches `Period.ANNUAL` for the valuation panel, independent of
+         chart-grid period) as a design constraint from the start. **Bug found while writing the
+         21 contract tests, fixed:** bear/bull `exitPeMultiple`/`requiredReturnPercent` used
+         Python's `or` for defaulting, silently replacing an explicit `0` with the default (the
+         original JS's `??` only substitutes for missing/null) — `bearExitPeMultiple: 0` must
+         reach `calculate_rule_one_value` as `0`, not get rewritten to `10` first.
+      3. `/api/history` (GET/POST), `/api/history/<id>` (DELETE), `/api/valuations` — new
+         `web/case_conversion.py` (generic camelCase↔snake_case key converter, used at every
+         request/response boundary since the Pydantic models have no field aliases) and
+         `web/history_service.py` (incorporates the review's exception-mapping note: catches
+         `(OSError, ValueError)` around every `history/store.py` call — `json.JSONDecodeError`
+         is a `ValueError` subclass — not just the two typed exceptions).
+      4. `/api/live-prices` (yfinance `fast_info["lastPrice"]` per ticker, one bad ticker never
+         fails the batch; no original test existed to port, 5 written directly).
+      5. CLI `valuate` subcommand (`__main__.py`) — calls the exact same
+         `handle_valuate()`/`create_valuation()` the web routes use, so CLI/web parity holds by
+         construction, not by discipline (the original kept two separate copies of this flow
+         that drifted once).
+      6. **Front-end unification.** `public/` moved to `web/static/` verbatim (Flask's default
+         `static_folder` already resolves there, no config needed); `index.html` rewritten as
+         one entry point where a shared `#ticker-input` drives both `/chart-data` and
+         `/api/valuate` from one form submit (`app.js` needed zero edits — a 3-line glue script
+         attaches its existing `handleSubmit` to the shared form). Three real collisions found
+         and fixed between the two design systems' CSS (both defined `:root` custom properties
+         named `--surface`/`--ink`/`--border` with different values; both defined a `.card`
+         class with different meanings) — resolved entirely on the FC side (renamed to
+         `--chart-*`, scoped under `#chart-section`), `style.css` stays verbatim as the plan
+         required.
+      Full suite: 490 passed. **Verified without a browser** (none available in this
+      environment): live dev-server smoke test of all four key endpoints against real AAPL
+      data, zero duplicate element ids across 69 in the rendered page, inline script/style
+      blocks syntax- and brace-checked, every DOM id `app.js` looks up confirmed present in the
+      merged markup. This is real signal, not a substitute for actually loading the page in a
+      browser and clicking through it — flagging that gap explicitly rather than claiming full
+      verification. **If a browser becomes available, the highest-value next check is simply
+      opening `/`, entering a ticker, and confirming both halves render without visual
+      surprises** — everything HTTP/JS-logic-verifiable already has been.
 - [ ] **Phase 8 — Front-end tests.** Wire vitest as a dev dependency; `scripts/test.sh` runs
       both suites, invoking Node 22 explicitly (see the resolved Node-version item below).
 - [ ] **Phase 9 — Harness, docs, cleanup.** Merge `.claude/`, prune `CLAUDE.md`, retire the
