@@ -59,12 +59,22 @@ uv run python -m investigraph TEVA.TA --source twelvedata --range 10y --out out/
 
 `TICKER [--source] [--period quarterly|ttm|annual] [--range 6m|1y|3y|5y|10y|max] [--chart-set]
 [--charts price,eps,margins] [--out PATH]`. `--out` accepts `.html`, `.png`, or `.pdf`; it
-defaults to `out/<TICKER>.html`. **`--period ttm` is accepted by the parser but not yet declared
-by any registered source** — it fails fast with a clear "source does not support period ttm"
-error rather than a blank or mislabeled chart. The default `fundamentals` chart set renders 6
-charts; the catalog holds 21 — use `--charts` (comma-separated ids) or the web UI's checkbox
-picker for any other combination. Tickers are matched by `^[A-Za-z0-9.\-]+$` — no
-exchange-qualified form like `AAPL:NASDAQ`; use the bare symbol (`.TA` routes to TASE).
+defaults to `out/<TICKER>.html`. **`--period ttm` is derived, not natively fetched from either
+source** — Twelve Data has no TTM endpoint at all, and yfinance's native TTM statements exist
+but only cover income statement / cash flow, not the balance sheet, and can disagree with a
+plain 4-quarter sum after a restatement; deriving both sources' TTM the same way keeps behavior
+uniform and avoids that surprise. Both adapters fetch `Period.QUARTERLY` and sum each flow
+metric (revenue, net income, EPS, FCF, EBITDA, …) themselves (`template/trailing.py`'s
+`derive_ttm_fundamentals`); balance-sheet metrics and price pass through as their full quarterly
+series unchanged, since summing snapshot values would be meaningless. `gross_margin` is the one
+exception: it can't be correctly recomputed for TTM (its numerator isn't tracked as its own
+series), so its whole quarterly series passes through as a labeled approximation instead — every
+point is that quarter's own margin, not a trailing figure — flagged in the page's source-limits
+panel; `net_margin` *is* correctly recomputed (both its inputs are available as flow series). The
+default `fundamentals` chart set renders 6 charts; the catalog holds 21 — use `--charts`
+(comma-separated ids) or the web UI's checkbox picker for any other combination. Tickers are
+matched by `^[A-Za-z0-9.\-]+$` — no exchange-qualified form like `AAPL:NASDAQ`; use the bare
+symbol (`.TA` routes to TASE).
 
 ### CLI — `valuate`: the same fair-value engine, from the command line
 

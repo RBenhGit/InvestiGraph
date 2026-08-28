@@ -19,7 +19,7 @@ from functools import reduce
 from operator import add
 from typing import Callable
 
-from investigraph.template.derived import ratio
+from investigraph.template.derived import DerivedMetric, ratio, resolve
 from investigraph.template.models import (
     CompanyFundamentals,
     Money,
@@ -65,6 +65,96 @@ def ttm_series(series: MetricSeries, period: Period) -> MetricSeries:
 
     return MetricSeries(
         metric_id=series.metric_id, points=ttm_points, available=bool(ttm_points)
+    )
+
+
+# The 20-metric catalog both `sources/yfinance/adapter.py` and
+# `sources/twelvedata/adapter.py` populate. Flow (income/cash-flow-statement) metrics
+# sum correctly over a trailing 4-quarter window; everything else in `CompanyFundamentals.series`
+# that isn't listed here (balance-sheet snapshots, `price`, `gross_margin`) is treated as
+# point-in-time and passed through unchanged by `derive_ttm_fundamentals` — the safe default
+# for any metric this table doesn't yet know about, since summing a point-in-time value would
+# be the wrong failure mode (a wrong number) rather than the right one (a missing one).
+_FLOW_METRIC_IDS = frozenset(
+    {
+        "revenue",
+        "net_income",
+        "eps",
+        "free_cash_flow",
+        "ebitda",
+        "research_and_development",
+        "selling_general_administrative",
+        "dividends_paid",
+        "ebit",
+    }
+)
+
+_NET_MARGIN = DerivedMetric(
+    metric_id="net_margin",
+    title="Net Margin",
+    inputs=("net_income", "revenue"),
+    compute=ratio,
+)
+
+_GROSS_MARGIN_TTM_NOTE = (
+    "gross_margin under the derived TTM period is each quarter's own margin, not a true "
+    "trailing-twelve-month figure (its numerator isn't tracked as its own series)"
+)
+
+
+def derive_ttm_fundamentals(quarterly: CompanyFundamentals) -> CompanyFundamentals:
+    """Derive a `Period.TTM` `CompanyFundamentals` from a `Period.QUARTERLY` one.
+
+    Both registered sources' `capability.py` now declare `Period.TTM`, but neither adapter
+    fetches it natively — Twelve Data has no TTM endpoint, and while yfinance does expose
+    one for income statement / cash flow, using it there and deriving here for Twelve Data
+    would make TTM behave differently depending on which source is selected. Both adapters
+    fetch `Period.QUARTERLY` and this function derives TTM from it uniformly, by summing the
+    trailing four quarters of each flow metric via `ttm_series`. Point-in-time
+    (balance-sheet) metrics and `price` pass through unchanged (their *whole* quarterly
+    series, not just the latest point), since each of their points already represents a
+    snapshot as of its own date. `net_margin` is recomputed from the newly-TTM'd
+    `net_income`/`revenue` (both independently available as flow series, so this is the
+    correct TTM figure, not an approximation) via the same `derived.resolve` machinery
+    `template/derived.py` already uses for other cross-metric ratios. `gross_margin` is the
+    one exception: its numerator (`Gross Profit`) isn't stored as its own series in either
+    adapter, so it can't be correctly recomputed here — its whole quarterly series passes
+    through instead (each point still that quarter's own margin, not a trailing one), with a
+    `source_limits` note disclosing the approximation.
+    """
+    if quarterly.period != Period.QUARTERLY:
+        raise ValueError(
+            "derive_ttm_fundamentals requires Period.QUARTERLY input, got "
+            f"{quarterly.period.value}"
+        )
+
+    new_series: dict[str, MetricSeries] = {}
+    for metric_id, series in quarterly.series.items():
+        if metric_id in _FLOW_METRIC_IDS:
+            new_series[metric_id] = ttm_series(series, Period.QUARTERLY)
+        elif metric_id != "net_margin":
+            new_series[metric_id] = series
+
+    if "net_margin" in quarterly.series:
+        # A temporary TTM-period view carrying the already-TTM'd net_income/revenue,
+        # so `resolve` joins on their new (still-matching) dates rather than the raw
+        # quarterly ones.
+        interim = quarterly.model_copy(
+            update={"period": Period.TTM, "series": new_series}
+        )
+        new_series["net_margin"] = resolve(interim, _NET_MARGIN)
+
+    source_limits = list(quarterly.source_limits)
+    gross_margin = quarterly.series.get("gross_margin")
+    if gross_margin is not None and gross_margin.available:
+        source_limits.append(_GROSS_MARGIN_TTM_NOTE)
+
+    return quarterly.model_copy(
+        update={
+            "period": Period.TTM,
+            "series": new_series,
+            "source_limits": source_limits,
+        }
     )
 
 

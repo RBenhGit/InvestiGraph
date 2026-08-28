@@ -21,6 +21,7 @@ from investigraph.template.models import (
     Point,
     Unit,
 )
+from investigraph.template.trailing import derive_ttm_fundamentals
 
 _BASE_URL = "https://api.twelvedata.com"
 
@@ -58,6 +59,10 @@ class TwelveDataAdapter:
     def fetch(
         self, ticker: str, market: Market, period: Period, range: str
     ) -> CompanyFundamentals:
+        if period == Period.TTM:
+            quarterly = self.fetch(ticker, market, Period.QUARTERLY, range)
+            return derive_ttm_fundamentals(quarterly)
+
         symbol = ticker.removesuffix(".TA") if market == Market.TASE else ticker
         mic_code = "XTAE" if market == Market.TASE else None
 

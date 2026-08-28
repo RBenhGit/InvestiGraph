@@ -145,6 +145,11 @@ def test_declares_capability():
     assert Market.US in capability.markets
     assert Market.TASE in capability.markets
     assert capability.max_history[Period.ANNUAL] == 10
+    # TTM is derived (template/trailing.py's derive_ttm_fundamentals), not native.
+    assert Period.TTM in capability.periods
+    assert (
+        capability.max_history[Period.TTM] == capability.max_history[Period.QUARTERLY]
+    )
 
 
 def test_transport_failure_raises_source_unavailable():
@@ -239,3 +244,21 @@ def test_price_params_reach_the_time_series_request():
     assert seen["time_series"]["outputsize"] == 2600
     # The statement endpoints take no range/date param — range bounds prices only.
     assert "interval" not in seen["income_statement"]
+
+
+def test_fetch_ttm_derives_from_a_quarterly_fetch():
+    # The actual trailing-four-quarters math is covered by
+    # template/trailing_test.py's derive_ttm_fundamentals tests; this only
+    # confirms the adapter wires a TTM request through a QUARTERLY fetch
+    # into that function, rather than trying to fetch TTM natively.
+    sentinel = object()
+    with patch(
+        "investigraph.sources.twelvedata.adapter.derive_ttm_fundamentals",
+        return_value=sentinel,
+    ) as mock_derive:
+        result = _fetch_with_fixture("aapl", "AAPL", Market.US, Period.TTM, "5y")
+
+    assert result is sentinel
+    mock_derive.assert_called_once()
+    (quarterly_arg,), _ = mock_derive.call_args
+    assert quarterly_arg.period == Period.QUARTERLY

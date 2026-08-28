@@ -7,8 +7,10 @@ from investigraph.template.models import Market, Period
 # what the source can supply in general, not a per-ticker guarantee.
 CAPABILITY = Capability(
     markets={Market.US, Market.TASE},
-    periods={Period.ANNUAL, Period.QUARTERLY},
-    max_history={Period.ANNUAL: 4, Period.QUARTERLY: 4},
+    periods={Period.ANNUAL, Period.QUARTERLY, Period.TTM},
+    # TTM is derived from the trailing four quarters (template/trailing.py's
+    # derive_ttm_fundamentals), so it needs the same history depth as QUARTERLY.
+    max_history={Period.ANNUAL: 4, Period.QUARTERLY: 4, Period.TTM: 4},
     metrics={
         "price",
         "revenue",

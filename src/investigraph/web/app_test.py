@@ -65,9 +65,7 @@ def test_index_shows_the_form(client):
 
 
 def test_render_returns_dashboard_html(client):
-    with patch(
-        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
-    ):
+    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
         response = client.get("/render?ticker=AAPL&source=yfinance")
 
     assert response.status_code == 200
@@ -155,9 +153,7 @@ def test_index_chart_set_dropdown_reflects_the_live_registry(client):
 
 
 def test_render_with_charts_param_selects_only_named_charts(client):
-    with patch(
-        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
-    ):
+    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
         response = client.get("/render?ticker=AAPL&charts=price")
 
     assert response.status_code == 200
@@ -174,9 +170,7 @@ def test_render_with_unknown_chart_param_shows_error(client):
 
 
 def test_render_with_duplicate_chart_params_renders_each_chart_once(client):
-    with patch(
-        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
-    ):
+    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
         response = client.get("/render?ticker=AAPL&charts=price&charts=price")
 
     assert response.status_code == 200
@@ -184,9 +178,7 @@ def test_render_with_duplicate_chart_params_renders_each_chart_once(client):
 
 
 def test_render_with_empty_charts_param_falls_back_to_chart_set(client):
-    with patch(
-        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
-    ):
+    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
         response = client.get("/render?ticker=AAPL&charts=")
 
     assert response.status_code == 200
@@ -223,13 +215,17 @@ def test_render_rejects_unsupported_range(client):
     assert "Unsupported range" in response.get_data(as_text=True)
 
 
-def test_render_rejects_ttm_period_before_fetching(client):
-    with patch("investigraph.web.app.load_fundamentals") as mock_load:
+def test_render_accepts_ttm_period(client):
+    # TTM is derived from the trailing four quarters (template/trailing.py's
+    # derive_ttm_fundamentals) — both sources declare it, so this must reach
+    # load_fundamentals like any other period, not be rejected pre-fetch.
+    with patch(
+        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
+    ) as mock_load:
         response = client.get("/render?ticker=AAPL&period=ttm")
 
-    assert response.status_code == 400
-    assert "does not support period ttm" in response.get_data(as_text=True)
-    mock_load.assert_not_called()
+    assert response.status_code == 200
+    mock_load.assert_called_once_with("AAPL", "yfinance", Period.TTM, "5y")
 
 
 def test_render_rejects_unknown_chart_set(client):
@@ -240,9 +236,7 @@ def test_render_rejects_unknown_chart_set(client):
 
 
 def test_chart_data_returns_dashboard_json(client):
-    with patch(
-        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
-    ):
+    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
         response = client.get("/chart-data?ticker=AAPL&source=yfinance&charts=price")
 
     assert response.status_code == 200

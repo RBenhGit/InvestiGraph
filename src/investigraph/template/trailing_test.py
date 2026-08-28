@@ -10,6 +10,7 @@ from investigraph.template.trailing import (
     ROE_TTM,
     TrailingInput,
     TrailingMetric,
+    derive_ttm_fundamentals,
     resolve_trailing,
     ttm_series,
 )
@@ -493,3 +494,103 @@ def test_roe_ttm_quarterly_sums_net_income():
 
     # TTM net income at the 5th quarter = 20, / 100 equity = 0.2
     assert series.points[0].value == pytest.approx(0.2)
+
+
+# --- derive_ttm_fundamentals ------------------------------------------------
+
+
+def test_derive_ttm_fundamentals_rejects_non_quarterly_input():
+    fundamentals = _fundamentals(
+        {"revenue": _money_series("revenue", [(date(2021, 1, 1), 100)])},
+        period=Period.ANNUAL,
+    )
+
+    with pytest.raises(ValueError, match="Period.QUARTERLY"):
+        derive_ttm_fundamentals(fundamentals)
+
+
+def test_derive_ttm_fundamentals_sums_flow_metrics():
+    fundamentals = _fundamentals(
+        {"revenue": _money_series("revenue", [(d, 10.0) for d in _Q])},
+        period=Period.QUARTERLY,
+    )
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    assert result.period == Period.TTM
+    # 5 quarterly points -> 2 rolling 4-quarter windows survive ttm_series's warm-up.
+    revenue_points = result.series["revenue"].points
+    assert len(revenue_points) == 2
+    assert revenue_points[-1].value.value == pytest.approx(40.0)
+
+
+def test_derive_ttm_fundamentals_passes_through_point_in_time_metrics():
+    equity = _money_series("total_equity", [(d, 200.0) for d in _Q])
+    fundamentals = _fundamentals({"total_equity": equity}, period=Period.QUARTERLY)
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    # Unchanged, not summed -- a balance-sheet snapshot doesn't accumulate over quarters.
+    assert result.series["total_equity"] is equity
+
+
+def test_derive_ttm_fundamentals_passes_through_price_unchanged():
+    price = _money_series("price", [(d, 150.0) for d in _Q])
+    fundamentals = _fundamentals({"price": price}, period=Period.QUARTERLY)
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    assert result.series["price"] is price
+
+
+def test_derive_ttm_fundamentals_recomputes_net_margin_from_ttm_flows():
+    fundamentals = _fundamentals(
+        {
+            "net_income": _money_series("net_income", [(d, 5.0) for d in _Q]),
+            "revenue": _money_series("revenue", [(d, 20.0) for d in _Q]),
+            # A stale per-quarter figure that must NOT survive into the result --
+            # net_margin is recomputed from the TTM'd flows, never passed through.
+            "net_margin": _float_series("net_margin", [(d, 0.9) for d in _Q]),
+        },
+        period=Period.QUARTERLY,
+    )
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    # TTM net_income = 20, TTM revenue = 80 -> 0.25, not 0.9.
+    assert result.series["net_margin"].points[0].value == pytest.approx(0.25)
+
+
+def test_derive_ttm_fundamentals_omits_net_margin_when_absent():
+    fundamentals = _fundamentals(
+        {"revenue": _money_series("revenue", [(d, 20.0) for d in _Q])},
+        period=Period.QUARTERLY,
+    )
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    assert "net_margin" not in result.series
+
+
+def test_derive_ttm_fundamentals_approximates_gross_margin_and_notes_it():
+    gross_margin = _float_series("gross_margin", [(_Q[-1], 0.42)])
+    fundamentals = _fundamentals(
+        {"gross_margin": gross_margin}, period=Period.QUARTERLY
+    )
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    # Passed through as-is (the latest quarter's margin), not recomputed.
+    assert result.series["gross_margin"] is gross_margin
+    assert any("gross_margin" in limit for limit in result.source_limits)
+
+
+def test_derive_ttm_fundamentals_skips_gross_margin_note_when_unavailable():
+    fundamentals = _fundamentals(
+        {"gross_margin": MetricSeries(metric_id="gross_margin", available=False)},
+        period=Period.QUARTERLY,
+    )
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    assert not any("gross_margin" in limit for limit in result.source_limits)

@@ -32,10 +32,14 @@ native currency, and degrade gracefully to "No Data" where a source lacks a metr
   developer can define **custom chart sets**. The dashboard renders a named chart set.
 - **Static output**: a single HTML page (grid of chart cards) with optional PNG/PDF export.
 - **Configurable-per-render** period (Quarterly / TTM / Annual) and time range
-  (6M / 1Y / 3Y / 5Y / 10Y / max), via CLI/config with sensible defaults. **Status:** `TTM`
-  is modeled in `Period` but no adapter has declared support for it yet — a request for it
-  is rejected pre-fetch by `require_supported_period` with a clear error, same as any other
-  declared gap, rather than silently mismapped.
+  (6M / 1Y / 3Y / 5Y / 10Y / max), via CLI/config with sensible defaults. **Status:** `TTM` is
+  derived, not natively fetched from either source — both adapters fetch `Period.QUARTERLY`
+  and sum the trailing four quarters themselves (`template/trailing.py`'s
+  `derive_ttm_fundamentals`), so behavior is uniform across sources regardless of which one
+  happens to expose its own native TTM endpoint. Point-in-time metrics and `price` pass
+  through their full quarterly series unchanged; `gross_margin` is a labeled approximation
+  (its numerator isn't tracked as its own series, so it can't be correctly recomputed) —
+  see `README.md`'s CLI section for the full breakdown.
 
 **Out of scope (v1):**
 - Interactive UI for the CLI's static PNG/HTML/PDF export — that output stays static
@@ -112,8 +116,9 @@ financial_charts/
   `fetch(ticker: str, market: Market, period: Period, range: Range) -> CompanyFundamentals`.
   Adapters raise `TickerNotFound`, `SourceUnavailable`, `MissingCredentials` (defined here).
   A fourth error, `UnsupportedPeriod`, is also defined here and raised pre-fetch by
-  `validation.require_supported_period` — it is the one a user actually hits today, via
-  `--period ttm`.
+  `validation.require_supported_period` — both registered sources currently declare all
+  three `Period` values (TTM via derivation, see above), so this exists for a future source
+  that doesn't, not one a user hits today.
 
 **Two separate capability checks — do not conflate:**
 - `sources/validation.py` (**render time**): given a declared `Capability` + a requested

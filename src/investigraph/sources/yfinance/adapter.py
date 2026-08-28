@@ -14,6 +14,7 @@ from investigraph.template.models import (
     Point,
     Unit,
 )
+from investigraph.template.trailing import derive_ttm_fundamentals
 
 # yfinance `history(period=...)` accepts each of these directly.
 _YFINANCE_PERIODS = {
@@ -39,6 +40,10 @@ class YFinanceAdapter:
         unchanged so callers can tell "no such ticker" from "source is down"
         (only the latter triggers the stale-cache fallback).
         """
+        if period == Period.TTM:
+            quarterly = self.fetch(ticker, market, Period.QUARTERLY, range)
+            return derive_ttm_fundamentals(quarterly)
+
         try:
             return self._fetch(ticker, market, period, range)
         except TickerNotFound:

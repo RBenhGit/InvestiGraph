@@ -253,7 +253,13 @@ def test_render_rejects_unsupported_range(capsys):
     assert "invalid choice" in capsys.readouterr().err
 
 
-def test_render_ttm_period_is_rejected_before_fetching(tmp_path, monkeypatch, capsys):
+def test_render_rejects_a_period_the_source_does_not_declare(
+    tmp_path, monkeypatch, capsys
+):
+    # Uses a stub source whose Capability declares only ANNUAL -- both real
+    # sources (yfinance, twelvedata) declare TTM (derived, see
+    # template/trailing.py); this exercises the generic pre-fetch gate itself,
+    # not real TTM support.
     monkeypatch.chdir(tmp_path)
     fetch_calls = []
 
