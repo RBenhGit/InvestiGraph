@@ -1,3 +1,31 @@
 # Personal, machine-local Claude Code files — never commit
 CLAUDE.local.md
 .claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+
+# Node (Phase 7+: Eps_Evaluation's front end and its vitest devDependency)
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# Secrets / env
+.env
+
+# Cached financial data and generated chart outputs
+.cache/
+cache/
+out/
+
+# Saved valuation history (Phase 6). Anchored to the repo root on purpose: a bare `data/`
+# would also match `src/data/`-style paths and hide new files under a module tree of that name.
+/data/
+history.json
+history-*.json
