@@ -175,9 +175,22 @@ def save_valuation(
     """Save `input`, prepending it to the history and replacing any existing
     record with the same id.
 
-    Assigns an id (`<epoch-ms>-<TICKER>`) and `evaluated_at` (now, ISO 8601) when
+    Assigns an id (`<epoch-ns>-<TICKER>`) and `evaluated_at` (now, ISO 8601) when
     `input` doesn't already supply them. Raises `InvalidHistoryInput` if `ticker`
     is blank.
+
+    The original TS generated this id from `Date.now()` (millisecond resolution).
+    Ported literally, two same-ticker saves within the same millisecond collide
+    and the second silently overwrites the first via save_valuation's own
+    replace-by-id semantics -- a real bug in the original design that its async
+    fs I/O (each save awaits a real read+write round trip) happened to mask in
+    practice. This port's I/O is synchronous and fast enough that two saves in a
+    tight loop routinely land in the same millisecond, which turned the latent
+    bug into a reliably-reproducing one (caught by
+    test_filters_history_by_ticker_case_insensitively_and_sorts_newest_first).
+    Nanosecond resolution removes the collision window; nothing else depends on
+    the id's exact numeric format, only on it being a unique opaque string
+    (confirmed: it's never parsed, only compared for equality or URL-encoded).
     """
     ticker = input.ticker.strip()
     if not ticker:
@@ -185,7 +198,7 @@ def save_valuation(
     ticker = ticker.upper()
 
     evaluated_at = input.evaluated_at or _now_iso()
-    id_ = input.id or f"{int(time.time() * 1000)}-{ticker}"
+    id_ = input.id or f"{time.time_ns()}-{ticker}"
     evaluator = input.evaluator or None
 
     record = input.model_copy(
