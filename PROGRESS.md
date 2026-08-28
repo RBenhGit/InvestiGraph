@@ -143,10 +143,33 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
         non-recursive; no collision), and `calculate_ttm_eps_growth_percent` having no caller
         (it has a real consumer in the original, so it isn't speculative code).
       Full suite after all fixes: 430 passed (422 + 8 new regression tests).
-- [ ] **Phase 7 — Converge and build the merged web app.** Starts only after 4–6 merge to
-      trunk and pass a combined `code-reviewer` pass. Convergence review done (above) — ready
-      to start. Must incorporate the two "not a code fix" items above as design constraints,
-      not discover them mid-implementation.
+- [ ] **Phase 7 — Converge and build the merged web app.** IN PROGRESS. Turned out larger than
+      scoped — needed two ports the plan hadn't accounted for (`historicalPe.ts`'s median-P/E-
+      window calculation, a `historical_5y_growth_percent` addition) before the response could
+      even be assembled. User confirmed: continue through the full phase, one reviewable
+      commit per unit, rather than pausing per-unit.
+      - **Done:** `valuation/historical_pe.py` (8 tests, ported 1:1 from `historicalPe.test.ts`
+        — deliberately does *not* reuse `template/trailing.py`'s daily `PE_RATIO_TTM`, a
+        different statistic that would silently change what "median 3y P/E" means).
+        `growth.py`'s `historical_5y_growth_percent` (display-only, not part of the fallback
+        chain, matching the original). `resolve_eps.py`'s `ResolvedEps.template_eps_ttm` (the
+        raw pre-Yahoo-resolution figure, needed separately from the resolved `eps_ttm`).
+        **`POST /api/valuate`** (`web/valuate_service.py` + the route in `web/app.py`) —
+        incorporates the Warning-2 fix (always fetches `Period.ANNUAL` for the valuation panel
+        independent of chart-grid period) as a design constraint from the start. 21 contract
+        tests ported from `server.test.ts`; live-verified against real AAPL data. **Bug found
+        while writing the tests, fixed:** bear/bull `exitPeMultiple`/`requiredReturnPercent`
+        used Python's `or` for defaulting, which silently replaces an explicit `0` with the
+        default (the original JS's `??` only substitutes for missing/null) — a request with
+        `bearExitPeMultiple: 0` must reach `calculate_rule_one_value` as `0`, not get rewritten
+        to `10` first. Full suite: 461 passed.
+      - **Remaining:** `/api/history` (GET/POST), `/api/history/<id>` (DELETE),
+        `/api/valuations`, `/api/live-prices`, CLI `valuate` subcommand, front-end unification
+        (verbatim `public/` assets moved to `web/static/`, `index.html` rewritten as the
+        unified entry point), and porting the rest of `server.test.ts` not yet covered.
+      - Still must incorporate the history-routes exception-mapping note (Convergence review,
+        above) when those routes are built — a bare `json.JSONDecodeError`/`OSError` from
+        `read_history_file` needs a catch-all, not just the two typed `history/` exceptions.
 - [ ] **Phase 8 — Front-end tests.** Wire vitest as a dev dependency; `scripts/test.sh` runs
       both suites, invoking Node 22 explicitly (see the resolved Node-version item below).
 - [ ] **Phase 9 — Harness, docs, cleanup.** Merge `.claude/`, prune `CLAUDE.md`, retire the
