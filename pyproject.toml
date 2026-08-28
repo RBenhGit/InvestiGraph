@@ -1,7 +1,7 @@
 [project]
-name = "financial-charts"
+name = "investigraph"
 version = "0.1.0"
-description = "Add your description here"
+description = "Fundamentals dashboard and EPS x multiple fair-value valuation for US and TASE tickers"
 authors = [
     { name = "Ran Benur", email = "ran@benhur.co" }
 ]
