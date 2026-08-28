@@ -37,14 +37,13 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
       against InvestiGraph's own `.claude/` and root docs is explicitly Phase 9's job, not
       Phase 3's — moving them now would be scope creep into a later phase's decisions. Phase 9
       needs to account for this leftover, not assume an empty directory.
-- [ ] **Phase 4 — Port the valuation domain.** IN PROGRESS — launched as a background
-      `general-purpose` agent (isolated worktree, branched off `merge/import-sources` @
-      `2835e70`), briefed with the full `valuation-porter` spec inline. (Note: the
-      `.claude/agents/valuation-porter.md` etc. definitions written in Phase 0 were not picked
-      up as registered subagent types this session — the harness's available-agent list didn't
-      refresh — so all three porters below run as `general-purpose` with the brief embedded in
-      the launch prompt instead of loaded from the agent file. Functionally equivalent; worth
-      checking in a fresh session whether the named agents register correctly.)
+- [x] **Phase 4 — Port the valuation domain.** Done and merged (`c6d9b3d`). 23 new tests
+      (clamp, Lynch, Rule #1), 349 passing total. Reviewed against the original TS source
+      before merging — `clamp.py`'s floor/no-ceiling behavior verified byte-for-byte against
+      `clampGrowthRate.ts`. Ran as a `general-purpose` agent, not the named `valuation-porter`
+      type — the harness's available-agent list hadn't picked up the Phase 0 `.claude/agents/`
+      files at launch time, though a later system message confirmed all three *did* register
+      partway through the session (worth using the named types directly next time).
 - [ ] **Phase 5 — Extend the data layer.** IN PROGRESS — same setup, `data-layer-porter` spec.
 - [ ] **Phase 6 — Port the history store.** IN PROGRESS — same setup, `history-porter` spec.
 - [ ] **Phase 7 — Converge and build the merged web app.** Starts only after 4–6 merge to
