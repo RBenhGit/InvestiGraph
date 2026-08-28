@@ -25,6 +25,7 @@ from investigraph.template.models import CompanyFundamentals, Period
 from investigraph.web.chart_data import ChartDataResponse, build_chart_specs
 from investigraph.web.chart_set_store import ChartSetStore
 from investigraph.web.service import load_fundamentals
+from investigraph.web.valuate_service import ValuateError, handle_valuate
 
 # Submitted values are still validated by the real get_source/get_chart_set inside the
 # render path, so an unsupported value produces a proper error, not a blank.
@@ -245,5 +246,30 @@ def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
             return jsonify(error=f"Could not save chart set: {exc}"), 500
         register_chart_set(name, charts)
         return jsonify(ok=True, name=name, charts=chart_ids)
+
+    @app.post("/api/valuate")
+    def valuate():
+        # A missing/non-JSON body must produce this typed shape, not an
+        # unhandled 500 -- matches server.test.ts's "missing request body" /
+        # "literal null request body" regression tests.
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify(
+                ok=False,
+                error={
+                    "type": "INSUFFICIENT_DATA",
+                    "ticker": "",
+                    "reason": "request body is required and must be a JSON object",
+                },
+            ), 400
+        try:
+            body = handle_valuate(payload)
+        except ValuateError as exc:
+            return jsonify(ok=False, error=exc.error), exc.status
+        # Unlike /chart-data, jsonify() is safe here: every computed float in this
+        # response (growth CAGRs, historical P/E medians, fair values) passes
+        # through an explicit math.isfinite guard at its source before reaching
+        # this dict, so none of them can be NaN in the first place.
+        return jsonify(body)
 
     return app
