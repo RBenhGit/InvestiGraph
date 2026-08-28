@@ -192,8 +192,27 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
       verification. **If a browser becomes available, the highest-value next check is simply
       opening `/`, entering a ticker, and confirming both halves render without visual
       surprises** — everything HTTP/JS-logic-verifiable already has been.
-- [ ] **Phase 8 — Front-end tests.** Wire vitest as a dev dependency; `scripts/test.sh` runs
-      both suites, invoking Node 22 explicitly (see the resolved Node-version item below).
+- [x] **Phase 8 — Front-end tests.** Done. Added root `package.json` (vitest ^4.1.10 + jsdom
+      ^30.0.1 as dev-only dependencies, `engines.node >=22.22.2` — jsdom's own declared floor,
+      not just "22") + `package-lock.json`, `vitest.config.ts` (`include:
+      src/investigraph/web/static/**/*.test.js`), and `scripts/test.sh` (runs `uv run pytest -q`
+      then `npx vitest run`). No test content changed — `app.test.js`/`valuations.test.js`
+      (1,316 + 390 LOC) were already ported verbatim in Phase 7; this phase only made them
+      runnable. Full suite: 490 pytest + 105 vitest, both green.
+      `scripts/test.sh` resolves Node 22 explicitly rather than trusting `$PATH` (system default
+      stays v18 per the Phase 0 nvm decision): prefers the nvm-installed
+      `~/.nvm/versions/node/v22.23.2/bin` if present, else checks the active `node --version`
+      against jsdom's real floor (22.22.2, via a `sort -V` comparison — not a regex that would
+      wrongly accept the v22.0–v22.22.1 band) and fails loudly with an install hint if neither
+      holds. Also bootstraps `npm install` automatically when `node_modules` is missing, so a
+      fresh clone doesn't hit `ERR_MODULE_NOT_FOUND` after pytest has already run.
+      **code-reviewer verdict: ready to commit**, no scope creep (`git diff bdabc3e HEAD --
+      src/investigraph/web/static/` empty — only new files added). Two Warnings found and
+      fixed before commit: the Node-version guard's regex accepted any v22.x though jsdom
+      itself declares `^22.22.2`; and a fresh clone with no `node_modules` failed vitest with a
+      confusing "Cannot find package 'vitest'" only after burning the pytest run first. Both
+      verified post-fix (version-gate boundary tested at 22.14.0/22.22.1/22.22.2/23.0.0;
+      fresh-clone bootstrap re-run end to end).
 - [ ] **Phase 9 — Harness, docs, cleanup.** Merge `.claude/`, prune `CLAUDE.md`, retire the
       porter agents, remove `legacy/eps_evaluation/`.
 
