@@ -3,10 +3,6 @@
 A Python tool that fetches a company's fundamentals (US and TASE markets) and renders a
 fixed, Qualtrim-style grid of charts all at once, for investor evaluation.
 
-<!-- Toolchain below is the intended target; there is no pyproject.toml yet, so the commands
-     are not runnable until the project is scaffolded. Charting library and paid data source
-     are still TBD. -->
-
 ## Commands
 
 - Build: `uv sync`
@@ -14,11 +10,19 @@ fixed, Qualtrim-style grid of charts all at once, for investor evaluation.
 - Test (single): `pytest -q path/to/test_file.py::test_name`
 - Lint: `ruff check`
 - Format: `ruff format`
-- Run locally (CLI): `python -m financial_charts <TICKER> [--source --period --range --out]`
+- Run locally (CLI): `python -m financial_charts <TICKER> [--source --period --range --chart-set --charts --out]`
 - Run locally (web UI): `python -m financial_charts.web --port 8000`
 - Verify a source: `python -m financial_charts verify-source <name> --ticker <sample>`
+- Inspect declared capabilities: `python -m financial_charts capabilities [<name>] [--matrix]`
+- Regenerate a capability from live probes: `python -m financial_charts commission-source <name>`
 
 ## Principles
+
+### 0. Think before coding
+- State assumptions explicitly. If uncertain, ask rather than guess.
+- When a request is ambiguous, present the interpretations — don't silently pick one.
+- Push back when a simpler approach exists, before implementing the one requested.
+- When confused, stop and name what's unclear. A wrong assumption costs more than a question.
 
 ### 1. Simplicity
 - Prefer the design a reader can hold in one read.
@@ -31,6 +35,12 @@ fixed, Qualtrim-style grid of charts all at once, for investor evaluation.
   capability declaration, and tests together).
 - Depend on published interfaces only — never reach into another module's internals.
 - A change should touch one slice and its tests. If it can't, say so before implementing.
+
+### 3. Surgical changes
+- Touch only what the task requires. Clean up only your own mess.
+- Don't refactor unbroken adjacent code or "improve" what you happened to read.
+- Match the existing style, even where you'd have chosen differently.
+- Only remove dead code that your own change created.
 
 ## Architecture
 
@@ -55,16 +65,18 @@ display**. The display layer reads only the template and never touches a data so
   live** — they trust the declared capability, so "missing data" is a declared property, not a
   runtime surprise. See [SPEC.md](SPEC.md) for the onboarding flow.
 - **Markets: US + TASE, native currency only** (₪ for TASE, $ for US; no FX conversion).
-- **Caching:** adapters cache the template to disk (keyed by ticker + source + date); the
-  display reads cache-first. Paid sources are metered — caching is a cost/reliability concern.
+- **Caching:** adapters cache the template to disk (keyed by ticker + source + period + range +
+  date); the display reads cache-first. Paid sources are metered — caching is a cost/reliability
+  concern.
 
 Suggested layout: `sources/<name>/` (adapter + capability declaration), `sources/validation/`
 (capability/config validation), `template/` (Pydantic models + `Money` + missing-data/timeframe
 rules), `cache/` (on-disk template cache), `charts/<name>/` (each reads the template),
 `dashboard/` (grid assembly). Full design — chart inventory, per-source capability matrix,
-tasks, edge cases — is in [SPEC.md](SPEC.md). Decided there: **static** output (matplotlib +
-HTML/PNG/PDF), paid source = **Twelve Data** (free = yfinance), routing by **`.TA` suffix**,
-period/range **configurable per render**.
+tasks, edge cases — is in [SPEC.md](SPEC.md). Decided there: **static** CLI output (matplotlib +
+HTML/PNG/PDF) — the browser dashboard in `web/` is interactive (Plotly.js) — paid source =
+**Twelve Data** (free = yfinance), routing by **`.TA` suffix**, period/range **configurable per
+render**.
 
 ## Verification policy
 
@@ -77,6 +89,8 @@ period/range **configurable per render**.
 
 - Non-trivial changes (multi-file, unfamiliar code, uncertain approach): explore and plan
   first; skip planning for one-line fixes.
+- For risky or multi-session work, start from a worktree on a new branch and confirm the
+  suite is green BEFORE the first edit — then any later failure is attributable to this change.
 - Before treating a feature as done, review the diff against the plan in a fresh context
   (code-reviewer agent or /code-review).
 - Commit with a descriptive message after each completed unit of work.

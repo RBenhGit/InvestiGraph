@@ -6,6 +6,10 @@ INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 [ -z "$FILE_PATH" ] && exit 0
 
+# `.env.example` is the committed placeholder template (no real credentials), so it is
+# exempt from the `.env` pattern below.
+[[ "$FILE_PATH" == *".env.example" ]] && exit 0
+
 PROTECTED_PATTERNS=(".env" ".git/" "package-lock.json" "yarn.lock" "pnpm-lock.yaml")
 
 for pattern in "${PROTECTED_PATTERNS[@]}"; do

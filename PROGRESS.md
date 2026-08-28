@@ -11,6 +11,8 @@ python -m financial_charts verify-source yfinance --ticker AAPL
 
 ## Web UI (step 1 — static)
 
+*Superseded by step 2 below — the iframe and the static-PNG grid are gone.*
+
 An independent `financial_charts/web/` module adds a browser UI. It composes only
 the published interfaces of the existing modules (nothing else was modified) and has
 its own entry point:
@@ -25,7 +27,8 @@ interactive charts — add a JSON endpoint in this same `web/` module and swap t
 front-end to a JS chart library; the template already serializes to JSON, so no
 changes to sources/cache/template are needed.
 
-240 tests passing, `ruff check` clean, `.claude` hooks wired to the uv toolchain.
+Suite green, `ruff check` clean, `.claude` hooks wired to the uv toolchain. (No test count
+here on purpose — it has gone stale twice; `pytest -q` is the authority.)
 
 ## Web UI (step 2 — interactive)
 
@@ -152,6 +155,35 @@ drops it from the regenerated `capability.py`; it's also stricter than the
 existing declarations tolerate, e.g. it would drop `gross_margin` for
 yfinance since bank samples lack a clean gross-profit line — a pre-existing
 imprecision, not something to silently fix as a side effect of Task 16).
+
+## Price-chart follow-ups
+
+Two fixes from using the dashboard on real tickers, both in the price slice:
+
+- **SMA overlay styling** (`ecc2e96`). The SMAs were drawn at the same weight as
+  the Close line — and on the web with a marker per point — burying the primary
+  series. Series specs now carry optional width/markers drawing hints, so the
+  price slice owns its own styling instead of the front-end pattern-matching
+  `"SMA "` labels.
+- **Daily bars from Twelve Data at every range** (`00a2a53`). The SMA overlays
+  count *points*, not days, so Twelve Data's per-range interval (weekly at 3y/5y,
+  monthly at 10y/max) silently turned "SMA 50" into a 50-week or 50-month
+  average and dropped SMA 150/200 entirely for want of bars — while yfinance,
+  always daily, drew all three. Every range now requests `1day` bars with a
+  per-range `outputsize`. Verified live: `outputsize` caps at 5000, behaves the
+  same on TASE (`mic_code=XTAE`), and `time_series` bills per request rather
+  than per point, so this costs no extra credits.
+
+## Documentation re-evaluation (2026-08-02)
+
+`Project_ReEvaluation_2026-08-02.md` audited the docs against the code and found
+the drift concentrated in `README.md`, which still described the pre-Plotly,
+pre-task-16 project. Its recommendations are applied: README/CLAUDE.md/SPEC.md
+corrected, the three undocumented CLI subcommands and `--charts` documented, a
+committed `.env.example` added, and two coverage gaps closed with
+`sources/currency_test.py` (the agorot→ILS mapping) plus range-boundary
+assertions in `ranges_test.py`. SPEC task 6's "TASE prices only" wording was
+amended rather than the declaration narrowed — see the note in SPEC.md.
 
 ## Trailing-TTM historical charts (Market Cap, P/E, Dividend Yield, ROE)
 

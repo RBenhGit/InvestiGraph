@@ -62,17 +62,22 @@ only shared contract.
 ### Module layout (vertical slices; tests colocated as `*_test.py`)
 ```
 financial_charts/
-  __main__.py          # CLI: TICKER [--source] [--period] [--range] [--chart-set] [--out]; subcommand: verify-source
-  config.py            # env config: DATA_SOURCE, API keys, defaults; loads .env
+  __main__.py          # CLI: TICKER [--source] [--period] [--range] [--chart-set] [--charts] [--out]; subcommands: render, verify-source, capabilities, commission-source
+  config.py            # env config: DATA_SOURCE + render defaults; loads .env (each adapter reads its own credentials)
+  chart_support.py     # which catalog charts a source's declared metrics can actually feed
   template/
     models.py          # Money, Currency, Unit, Period; Point, Series, MetricSeries; CompanyFundamentals (THE template)
-    models_test.py
+    derived.py         # metrics computed from base series (margins, ratios, ROIC/ROCE, …), not fetched
+    models_test.py derived_test.py
   sources/
     base.py            # DataSource Protocol + Capability model (published interface)
     validation.py      # RENDER-TIME: declared Capability vs a requested (market, period, range) → source_limits
     verify.py          # DEV-TIME: reconcile declared Capability vs a LIVE fetch → mismatch report (used by verify-source)
+    commission.py      # DEV-TIME: probe a source live across sample tickers → generated capability.py (commission-source)
     registry.py        # DATA_SOURCE env value → adapter instance
     market.py          # ticker → Market (US | TASE) via `.TA` suffix
+    ranges.py          # the shared --range vocabulary + its range → years table
+    currency.py        # source currency code → template Currency (incl. the agorot "ILA" rule)
     yfinance/
       adapter.py capability.py adapter_test.py
     twelvedata/
@@ -81,6 +86,7 @@ financial_charts/
     store.py store_test.py   # get/put template keyed by (ticker, source, period, range, date)
   charts/
     base.py            # Chart interface: name, title, required metrics, render(ax, template)
+    catalog.py         # every registered chart, by id — what --charts and the web picker choose from
     registry.py        # register charts + named chart SETS (built-in "fundamentals" set + custom)
     builtins/          # price.py revenue.py net_income.py free_cash_flow.py eps.py margins.py (+ more added incrementally)
     <chart>_test.py
@@ -88,6 +94,12 @@ financial_charts/
     layout.py          # select chart set → render each chart (matplotlib) → grid
     render.py          # compose grid into a static HTML page (Jinja2) + optional PNG/PDF export
     layout_test.py
+  web/                 # independent browser UI (Flask); composes published interfaces only
+    __main__.py app.py # dev server entry point + routes: / , /render , /chart-data , /chart-sets
+    service.py         # ticker → template, shared by the routes
+    chart_data.py      # template + chart set → JSON for the client-side Plotly charts
+    chart_set_store.py # disk persistence for user-created chart sets
+    templates/         # index.html (the dashboard page)
 ```
 
 ### Key interfaces
@@ -99,6 +111,9 @@ financial_charts/
 - `DataSource` (Protocol): `capability() -> Capability` and
   `fetch(ticker: str, market: Market, period: Period, range: Range) -> CompanyFundamentals`.
   Adapters raise `TickerNotFound`, `SourceUnavailable`, `MissingCredentials` (defined here).
+  A fourth error, `UnsupportedPeriod`, is also defined here and raised pre-fetch by
+  `validation.require_supported_period` — it is the one a user actually hits today, via
+  `--period ttm`.
 
 **Two separate capability checks — do not conflate:**
 - `sources/validation.py` (**render time**): given a declared `Capability` + a requested
@@ -155,7 +170,13 @@ onboarding or when a source changes — not part of any render.
 
 ### Dependencies to add (via `uv add`)
 `pydantic`, `yfinance`, `twelvedata` (or `requests` for its REST API), `matplotlib`,
-`jinja2`, `python-dotenv`. Dev: `pytest`, `ruff` (also wire the three `.claude/hooks`).
+`jinja2`, `python-dotenv`, `flask` (the `web/` dev server). Dev: `pytest`, `ruff` (also wire
+the three `.claude/hooks`).
+
+Plotly.js — the browser dashboard's chart library — is **not a Python package**: it is loaded
+from `cdn.plot.ly` by `web/templates/index.html`, pinned to an exact version, so it will never
+appear in `pyproject.toml`. The trade-off is that the browser UI needs network access to that
+CDN at page load; the CLI does not.
 
 ## 4. Tasks (in implementation order; each small and verifiable)
 
@@ -168,9 +189,16 @@ onboarding or when a source changes — not part of any render.
 4. `sources/base.py`: `Capability`, `DataSource` Protocol, error types.
 5. `sources/validation.py`: given a `Capability` + a requested (market, period, range),
    return the list of limits/unmet requests (feeds `source_limits`). Test the 4y-vs-10y case.
-6. `sources/yfinance/`: `capability.py` (declares US strong, TASE prices only / sparse
-   fundamentals) + `adapter.py` mapping yfinance data → template. Test with a recorded
-   fixture (no live network in tests).
+6. `sources/yfinance/`: `capability.py` + `adapter.py` mapping yfinance data → template. Test
+   with a recorded fixture (no live network in tests). **Decided while implementing:** the
+   declaration grants the same metrics to US and TASE rather than the originally-sketched "US
+   strong, TASE prices only / sparse fundamentals". `Capability` has one flat `metrics` set
+   and one flat `markets` set — per-market metrics aren't expressible without changing the
+   model — and yfinance's TASE sparseness is *per ticker*, not per market, so a market-level
+   narrowing would be wrong in both directions. Sparseness is therefore handled one level
+   down, by the adapter's per-metric `available` flag, which degrades an individual chart to
+   "No Data". `capability.py` says what the source can supply in general; it is not a
+   per-ticker guarantee.
 7. `cache/store.py`: disk get/put of `CompanyFundamentals` (JSON) keyed by
    `(ticker, source, period, range, date)`; cache-first read. Test round-trip + key.
 8. `sources/twelvedata/`: `capability.py` + `adapter.py` (US + TASE via exchange mapping,
@@ -189,8 +217,10 @@ onboarding or when a source changes — not part of any render.
     static HTML page (Jinja2 card grid); show `source_limits`; optional `--out` PNG/PDF.
 14. `__main__.py`: wire the render CLI (`TICKER [--source] [--period] [--range] [--chart-set]
     [--out]`) and the `verify-source` subcommand end-to-end.
-15. Wire `.claude/hooks` (`FORMAT_CMD="ruff format"`, `LINT_CMD="ruff check"`,
-    `TEST_CMD="pytest -q"`) now that the toolchain exists.
+15. Wire `.claude/hooks` now that the toolchain exists — venv-absolute so they don't depend on
+    an activated shell: `FORMAT_CMD="$CLAUDE_PROJECT_DIR/.venv/bin/ruff format"`,
+    `LINT_CMD="$CLAUDE_PROJECT_DIR/.venv/bin/ruff check"`,
+    `TEST_CMD="$CLAUDE_PROJECT_DIR/.venv/bin/pytest -q"`.
 16. Add remaining inventory charts incrementally as their own slices: EBITDA, Cash & Debt,
     Dividends, Return of Capital (ROIC/ROCE), Shares Outstanding, Ratios, Valuation (P/B),
     Expenses, Assets/Equity/Liabilities, Debt & Financial Leverage, plus KPI cards.
