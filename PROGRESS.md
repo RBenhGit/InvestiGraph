@@ -22,8 +22,21 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
       commit lists). Note: `git log --follow` does *not* show this directly — it can't detect
       a rename across differently-prefixed merge parents; that connects up once Phase 3's
       `git mv` creates an actual rename commit for `--follow` to walk through.
-- [ ] **Phase 3 — Make Financial_Charts the trunk.** Move `src/financial_charts` →
-      `src/investigraph`, wire hooks for real, rewrite imports.
+- [x] **Phase 3 — Make Financial_Charts the trunk.** Rename confirmed with the user (proceed).
+      `src/financial_charts` → `src/investigraph`, `pyproject.toml` renamed, ~100 files'
+      `financial_charts.` imports rewritten to `investigraph.` (326 tests still passing,
+      unchanged from baseline). Hooks wired to real commands (`ruff format`/`check`, `pytest`)
+      and smoke-tested. `SPEC.md`, `Project_ReEvaluation_2026-08-02.md`, and FC's `PROGRESS.md`
+      (renamed `docs/financial_charts_progress.md` — kept separate from this file rather than
+      merged, since they track different things: this file tracks merge phases, that one is
+      FC's own historical task-completion log) moved to `docs/`. Three source `.gitignore`s
+      merged into one root file. **Scope correction from the original plan:** Phase 9's step 5
+      assumed `legacy/financial_charts/` would already be empty after this phase; it isn't —
+      `.claude/` (hooks, agents, agent-memory, skills, settings.json), `README.md`, `CLAUDE.md`,
+      `.env.example`, and `.gitignore` are deliberately left there, since reconciling them
+      against InvestiGraph's own `.claude/` and root docs is explicitly Phase 9's job, not
+      Phase 3's — moving them now would be scope creep into a later phase's decisions. Phase 9
+      needs to account for this leftover, not assume an empty directory.
 - [ ] **Phase 4 — Port the valuation domain.** Owner: `valuation-porter` agent, worktree
       `../investigraph-valuation`.
 - [ ] **Phase 5 — Extend the data layer.** Owner: `data-layer-porter` agent, worktree
