@@ -140,9 +140,7 @@ def test_render_normalizes_lowercase_ticker(tmp_path, monkeypatch):
             fetch_calls.append(ticker)
             return super().fetch(ticker, market, period, range)
 
-    with patch(
-        "investigraph.__main__.get_source", return_value=_RecordingAdapter()
-    ):
+    with patch("investigraph.__main__.get_source", return_value=_RecordingAdapter()):
         code = main(["aapl", "--out", str(out)])
 
     assert code == 0
@@ -479,3 +477,239 @@ def test_commission_source_unknown_source_returns_error(capsys):
 
     assert code == 1
     assert "unknown data source" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# valuate
+# ---------------------------------------------------------------------------
+
+
+def _valuate_body(**overrides) -> dict:
+    body = {
+        "ok": True,
+        "data": {
+            "ticker": "AAPL",
+            "currentPrice": 200.0,
+            "currency": "USD",
+            "epsTtm": 10.0,
+            "asOf": "2026-08-28T00:00:00+00:00",
+            "staleTtmWarning": False,
+            "growth": {
+                "historical1yPercent": 8.0,
+                "historical3yPercent": 10.0,
+                "historical5yPercent": None,
+                "analystEstimate5yPercent": None,
+                "epsTtmGrowthPercent": None,
+            },
+            "historicalPe": {"avg1y": 20.0, "avg3y": 22.0, "avg5y": None},
+        },
+        "effectiveEps": 10.0,
+        "epsSource": "twelvedata",
+        "epsSourceDetail": "Template TTM EPS ($10.00), as of 2025-09-30",
+        "effectiveGrowth": 10.0,
+        "bearGrowth": 7.5,
+        "bullGrowth": 12.5,
+        "lynch": {
+            "base": {
+                "ok": True,
+                "fairValue": 100.0,
+                "inputs": {
+                    "epsTtm": 10.0,
+                    "growthRatePercentRaw": 10.0,
+                    "growthRatePercentClamped": 10.0,
+                },
+            },
+            "bear": {"ok": False, "error": "NEGATIVE_GROWTH_RATE"},
+            "bull": {"ok": True, "fairValue": 125.0, "inputs": {}},
+        },
+        "ruleOne": {
+            "base": {
+                "ok": True,
+                "fairValue": 150.0,
+                "inputs": {
+                    "epsTtm": 10.0,
+                    "growthRatePercentRaw": 10.0,
+                    "growthRatePercentClamped": 10.0,
+                    "exitPeMultiple": 15,
+                    "requiredReturnPercent": 15,
+                    "years": 10,
+                    "mosPercent": 0,
+                },
+                "intermediate": {"stickerPrice": 150.0},
+            },
+            "bear": {"ok": True, "fairValue": 100.0, "inputs": {}},
+            "bull": {"ok": True, "fairValue": 200.0, "inputs": {}},
+        },
+        "analystConsensus": None,
+    }
+    body.update(overrides)
+    return body
+
+
+def test_valuate_prints_fair_values(capsys):
+    with patch(
+        "investigraph.__main__.handle_valuate", return_value=_valuate_body()
+    ) as mock_handle:
+        code = main(["valuate", "AAPL"])
+
+    assert code == 0
+    mock_handle.assert_called_once_with(
+        {
+            "ticker": "AAPL",
+            "exitPeMultiple": 15,
+            "requiredReturnPercent": 15,
+            "years": 10,
+            "mosPercent": 0,
+        }
+    )
+    out = capsys.readouterr().out
+    assert "Ticker: AAPL" in out
+    assert "Method A (Lynch) fair value: 100.00" in out
+    assert "Method B (Rule #1) fair value: 150.00" in out
+
+
+def test_valuate_shows_mos_and_sticker_price_when_mos_provided(capsys):
+    body = _valuate_body()
+    body["ruleOne"]["base"]["inputs"]["mosPercent"] = 25
+    body["ruleOne"]["base"]["fairValue"] = 112.5
+    with patch(
+        "investigraph.__main__.handle_valuate", return_value=body
+    ) as mock_handle:
+        code = main(["valuate", "AAPL", "--mos", "25"])
+
+    assert code == 0
+    mock_handle.assert_called_once_with(
+        {
+            "ticker": "AAPL",
+            "exitPeMultiple": 15,
+            "requiredReturnPercent": 15,
+            "years": 10,
+            "mosPercent": 25.0,
+        }
+    )
+    out = capsys.readouterr().out
+    assert "MoS 25%" in out
+    assert "Sticker: 150.00" in out
+
+
+def test_valuate_shows_failed_method_with_error_code(capsys):
+    body = _valuate_body()
+    body["lynch"]["base"] = {"ok": False, "error": "MISSING_GROWTH_RATE"}
+    with patch("investigraph.__main__.handle_valuate", return_value=body):
+        code = main(["valuate", "AAPL"])
+
+    assert code == 0
+    assert (
+        "Method A (Lynch) fair value: FAILED (MISSING_GROWTH_RATE)"
+        in capsys.readouterr().out
+    )
+
+
+def test_valuate_shows_yahoo_fallback_source_note(capsys):
+    body = _valuate_body(
+        epsSource="yahoo-fallback",
+        epsSourceDetail="Yahoo Finance trailing EPS ($8.71) -- used because ...",
+    )
+    with patch("investigraph.__main__.handle_valuate", return_value=body):
+        code = main(["valuate", "AAPL"])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "source: Yahoo Finance" in out
+    assert "Yahoo Finance trailing EPS" in out
+
+
+def test_valuate_error_from_service_prints_and_returns_1(capsys):
+    from investigraph.web.valuate_service import ValuateError
+
+    with patch(
+        "investigraph.__main__.handle_valuate",
+        side_effect=ValuateError(404, {"type": "NOT_FOUND", "ticker": "ZZZZ"}),
+    ):
+        code = main(["valuate", "ZZZZ"])
+
+    assert code == 1
+    assert "NOT_FOUND" in capsys.readouterr().err
+
+
+def test_valuate_without_ticker_or_history_returns_error(capsys):
+    code = main(["valuate"])
+
+    assert code == 1
+    assert "--history" in capsys.readouterr().err
+
+
+def test_valuate_save_calls_create_valuation_with_camelcase_payload(capsys):
+    with (
+        patch("investigraph.__main__.handle_valuate", return_value=_valuate_body()),
+        patch("investigraph.__main__.create_valuation") as mock_create,
+    ):
+        code = main(["valuate", "AAPL", "--save", "--notes", "thesis"])
+
+    assert code == 0
+    mock_create.assert_called_once_with(
+        {
+            "ticker": "AAPL",
+            "currentPrice": 200.0,
+            "currency": "USD",
+            "epsTtm": 10.0,
+            "growthRatePercent": 10.0,
+            "exitPeMultiple": 15,
+            "requiredReturnPercent": 15,
+            "years": 10,
+            "mosPercent": 0,
+            "lynchFairValue": 100.0,
+            "ruleOneFairValue": 150.0,
+            "notes": "thesis",
+        }
+    )
+    assert "saved to history" in capsys.readouterr().out
+
+
+def test_valuate_save_skipped_when_growth_could_not_be_resolved(capsys):
+    body = _valuate_body(effectiveGrowth=None)
+    with (
+        patch("investigraph.__main__.handle_valuate", return_value=body),
+        patch("investigraph.__main__.create_valuation") as mock_create,
+    ):
+        code = main(["valuate", "AAPL", "--save"])
+
+    assert code == 0
+    mock_create.assert_not_called()
+
+
+def test_valuate_history_flag_prints_formatted_table(capsys):
+    records = [
+        {
+            "id": "1",
+            "ticker": "AAPL",
+            "evaluatedAt": "2026-08-19T10:00:00.000Z",
+            "currentPrice": 220.0,
+            "currency": "USD",
+            "growthRatePercent": 12.0,
+            "exitPeMultiple": 25.0,
+            "requiredReturnPercent": 15.0,
+            "years": 5,
+            "lynchFairValue": 156.0,
+            "ruleOneFairValue": 180.0,
+            "mosPercent": 0,
+            "notes": "",
+        }
+    ]
+    with patch("investigraph.__main__.list_history", return_value=records) as mock_list:
+        code = main(["valuate", "--history", "AAPL"])
+
+    assert code == 0
+    mock_list.assert_called_once_with("AAPL", None)
+    out = capsys.readouterr().out
+    assert "AAPL" in out
+    assert "156.00" in out
+    assert "180.00" in out
+
+
+def test_valuate_history_empty_shows_a_clear_message(capsys):
+    with patch("investigraph.__main__.list_history", return_value=[]):
+        code = main(["valuate", "--history"])
+
+    assert code == 0
+    assert "No saved valuations found." in capsys.readouterr().out

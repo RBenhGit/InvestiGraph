@@ -36,6 +36,12 @@ from investigraph.sources.registry import (
 from investigraph.sources.validation import check_request, require_supported_period
 from investigraph.sources.verify import reconcile
 from investigraph.template.models import CompanyFundamentals, Market, Period
+from investigraph.web.history_service import (
+    HistoryError,
+    create_valuation,
+    list_history,
+)
+from investigraph.web.valuate_service import ValuateError, handle_valuate
 
 
 def _add_render_arguments(parser: argparse.ArgumentParser) -> None:
@@ -386,13 +392,255 @@ def _run_commission_source(args: argparse.Namespace) -> int:
     return 0
 
 
-_COMMANDS = ("render", "verify-source", "capabilities", "commission-source")
+# Rule #1 assumption defaults, matching the original TS CLI's EXIT_PE_MULTIPLE/
+# REQUIRED_RETURN_PERCENT/YEARS constants exactly (live here, not in the
+# valuation layer, so calculate_rule_one_value stays pure and takes every
+# input explicitly).
+_CLI_EXIT_PE_MULTIPLE = 15
+_CLI_REQUIRED_RETURN_PERCENT = 15
+_CLI_YEARS = 10
+
+
+def _add_valuate_parser(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "valuate", help="EPS x multiple fair-value estimate (Lynch / Rule #1 style)"
+    )
+    parser.add_argument(
+        "ticker",
+        nargs="?",
+        help="e.g. AAPL (US) or TEVA.TA (TASE); with --history, filters by this ticker instead",
+    )
+    parser.add_argument(
+        "-s", "--save", action="store_true", help="save the result to history"
+    )
+    parser.add_argument(
+        "-m",
+        "--mos",
+        type=float,
+        default=0,
+        help="Margin of Safety percent for Rule #1 (e.g. 25 for 25%%)",
+    )
+    parser.add_argument(
+        "-n", "--notes", default=None, help="notes to attach to a saved valuation"
+    )
+    # The original TS CLI's `-H, --history [ticker]` takes its own optional value
+    # (separate from the main ticker argument). Simplified here to a plain flag
+    # that reuses the one `ticker` positional as the filter when set — argparse's
+    # "flag with its own optional value" support is clunkier than commander.js's,
+    # and this covers the same real usage (`valuate --history AAPL`,
+    # `valuate --history`) without a second ticker-shaped argument.
+    parser.add_argument(
+        "-H",
+        "--history",
+        action="store_true",
+        help="view saved valuations instead of valuating (optionally filtered by ticker)",
+    )
+
+
+def _fmt(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.2f}"
+
+
+def _format_valuate_output(body: dict) -> str:
+    data = body["data"]
+    lines = [
+        f"Ticker: {data['ticker']}",
+        f"Current price: {_fmt(data['currentPrice'])} {data['currency']}",
+    ]
+
+    eps_source = body["epsSource"]
+    if eps_source is None or eps_source == "twelvedata":
+        lines.append(f"EPS (TTM): {_fmt(data['epsTtm'])}")
+        if data["staleTtmWarning"]:
+            lines.append(
+                "  ⚠ WARNING: EPS (TTM) may be stale — it diverges >5% from "
+                "Yahoo Finance's independently-sourced trailing EPS."
+            )
+    elif eps_source == "yahoo-fallback":
+        lines.append(
+            f"EPS (TTM): {_fmt(body['effectiveEps'])} "
+            "[source: Yahoo Finance, not the primary source]"
+        )
+        lines.append(f"  ℹ {body['epsSourceDetail']}")
+    else:  # twelvedata-stale-no-fallback
+        lines.append(
+            f"EPS (TTM): {_fmt(data['epsTtm'])} "
+            "[source: primary — Yahoo fallback unavailable]"
+        )
+        lines.append(f"  ⚠ {body['epsSourceDetail']}")
+
+    lines.append("")
+    lines.append(f"Growth rate used: {_fmt(body['effectiveGrowth'])}%")
+    base_lynch = body["lynch"]["base"]
+    base_rule_one = body["ruleOne"]["base"]
+    inputs_used = None
+    if base_lynch["ok"]:
+        inputs_used = base_lynch["inputs"]
+    elif base_rule_one["ok"]:
+        inputs_used = base_rule_one["inputs"]
+    if inputs_used is not None:
+        raw = inputs_used["growthRatePercentRaw"]
+        clamped = inputs_used["growthRatePercentClamped"]
+        clamp_note = " (clamp applied)" if raw != clamped else ""
+        lines.append(f"  raw: {_fmt(raw)}%  clamped: {_fmt(clamped)}%{clamp_note}")
+
+    lines.append("")
+    if base_lynch["ok"]:
+        lines.append(f"Method A (Lynch) fair value: {_fmt(base_lynch['fairValue'])}")
+    else:
+        lines.append(f"Method A (Lynch) fair value: FAILED ({base_lynch['error']})")
+
+    if base_rule_one["ok"]:
+        mos_percent = base_rule_one["inputs"]["mosPercent"]
+        if mos_percent and mos_percent > 0:
+            sticker = base_rule_one.get("intermediate", {}).get(
+                "stickerPrice", base_rule_one["fairValue"]
+            )
+            lines.append(
+                f"Method B (Rule #1, MoS {mos_percent:g}%) fair value: "
+                f"{_fmt(base_rule_one['fairValue'])} (Sticker: {_fmt(sticker)})"
+            )
+        else:
+            lines.append(
+                f"Method B (Rule #1) fair value: {_fmt(base_rule_one['fairValue'])}"
+            )
+    else:
+        lines.append(
+            f"Method B (Rule #1) fair value: FAILED ({base_rule_one['error']})"
+        )
+
+    lines.append("")
+    lines.append("Historical P/E averages:")
+    lines.append(f"  1y: {_fmt(data['historicalPe']['avg1y'])}")
+    lines.append(f"  3y: {_fmt(data['historicalPe']['avg3y'])}")
+    lines.append(f"  5y: {_fmt(data['historicalPe']['avg5y'])}")
+    lines.append("")
+    # Reference only, matches the original -- never used by either valuation method.
+    lines.append(
+        f"EPS TTM growth (YoY, reference only): {_fmt(data['growth']['epsTtmGrowthPercent'])}%"
+    )
+    # No "Provider reference" section: the original's trailing_pe/peg_ratio came
+    # from Twelve Data's statistics endpoint, dropped in this merge (see
+    # docs/MERGE_SPEC.md) -- there is no longer any data behind it to show.
+
+    return "\n".join(lines)
+
+
+def _format_history_output(records: list[dict]) -> str:
+    if not records:
+        return "No saved valuations found."
+    rule = "-" * 130
+    lines = [
+        rule,
+        "Date                 Ticker   Price        Lynch FV   Rule #1 FV  "
+        "Growth %   Assumptions            Notes",
+        rule,
+    ]
+    for record in records:
+        # Web-saved records only populate base/bear/bull; the CLI's own --save
+        # still writes the legacy flat fields directly on the record. Read
+        # whichever shape is present so this table renders correctly either way.
+        scenario = record.get("base") or record
+        evaluated_at = record.get("evaluatedAt")
+        date_str = evaluated_at.replace("T", " ")[:16] if evaluated_at else "n/a"
+        ticker = (record.get("ticker") or "").ljust(8)
+        current_price = record.get("currentPrice")
+        currency = record.get("currency") or "USD"
+        price = (
+            f"{current_price:.2f} {currency}"
+            if isinstance(current_price, (int, float))
+            else "n/a"
+        ).ljust(12)
+        lynch = _fmt(scenario.get("lynchFairValue")).ljust(10)
+        rule_one = _fmt(scenario.get("ruleOneFairValue")).ljust(11)
+        growth = f"{_fmt(scenario.get('growthRatePercent'))}%".ljust(10)
+        mos_percent = scenario.get("mosPercent")
+        mos_str = f" MoS:{mos_percent}%" if mos_percent else ""
+        exit_pe = scenario.get("exitPeMultiple")
+        required_return = scenario.get("requiredReturnPercent")
+        assump = (
+            f"PE:{exit_pe if exit_pe is not None else 'n/a'} "
+            f"Req:{required_return if required_return is not None else 'n/a'}% "
+            f"{record.get('years')}y{mos_str}"
+        ).ljust(22)
+        notes = record.get("notes") or ""
+        lines.append(
+            f"{date_str.ljust(20)} {ticker} {price} {lynch} {rule_one} {growth} "
+            f"{assump} {notes}"
+        )
+    lines.append(rule)
+    return "\n".join(lines)
+
+
+def _run_valuate(args: argparse.Namespace) -> int:
+    if args.history:
+        try:
+            records = list_history(args.ticker, None)
+        except HistoryError as exc:
+            print(f"Error loading history: {exc.error}", file=sys.stderr)
+            return 1
+        print(_format_history_output(records))
+        return 0
+
+    if not args.ticker:
+        print(
+            "Error: Please provide a ticker symbol or use --history.", file=sys.stderr
+        )
+        return 1
+
+    payload = {
+        "ticker": args.ticker,
+        "exitPeMultiple": _CLI_EXIT_PE_MULTIPLE,
+        "requiredReturnPercent": _CLI_REQUIRED_RETURN_PERCENT,
+        "years": _CLI_YEARS,
+        "mosPercent": args.mos,
+    }
+    try:
+        body = handle_valuate(payload)
+    except ValuateError as exc:
+        print(f"Error: {exc.error}", file=sys.stderr)
+        return 1
+
+    print(_format_valuate_output(body))
+
+    if args.save and body["effectiveGrowth"] is not None:
+        base_lynch = body["lynch"]["base"]
+        base_rule_one = body["ruleOne"]["base"]
+        save_payload = {
+            "ticker": body["data"]["ticker"],
+            "currentPrice": body["data"]["currentPrice"],
+            "currency": body["data"]["currency"],
+            "epsTtm": body["effectiveEps"],
+            "growthRatePercent": body["effectiveGrowth"],
+            "exitPeMultiple": _CLI_EXIT_PE_MULTIPLE,
+            "requiredReturnPercent": _CLI_REQUIRED_RETURN_PERCENT,
+            "years": _CLI_YEARS,
+            "mosPercent": args.mos,
+            "lynchFairValue": base_lynch["fairValue"] if base_lynch["ok"] else None,
+            "ruleOneFairValue": (
+                base_rule_one["fairValue"] if base_rule_one["ok"] else None
+            ),
+            "notes": args.notes,
+        }
+        try:
+            create_valuation(save_payload)
+            print("\n✓ Valuation saved to history.")
+        except HistoryError as exc:
+            print(
+                f"\nFailed to save valuation to history: {exc.error}", file=sys.stderr
+            )
+
+    return 0
+
+
+_COMMANDS = ("render", "verify-source", "capabilities", "commission-source", "valuate")
 
 _DISPATCH: dict[str, Callable[[argparse.Namespace], int]] = {
     "render": _run_render,
     "verify-source": _run_verify_source,
     "capabilities": _run_capabilities,
     "commission-source": _run_commission_source,
+    "valuate": _run_valuate,
 }
 
 
@@ -408,6 +656,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_verify_source_parser(subparsers)
     _add_capabilities_parser(subparsers)
     _add_commission_source_parser(subparsers)
+    _add_valuate_parser(subparsers)
 
     return parser
 
