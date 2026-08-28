@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financial Charts</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --surface: #fcfcfb;
+    --page: #f9f9f7;
+    --ink: #0b0b0b;
+    --ink-secondary: #52514e;
+    --ink-muted: #898781;
+    --border: rgba(11, 11, 11, 0.10);
+    --error: #a33;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: #1a1a19;
+      --page: #0d0d0d;
+      --ink: #ffffff;
+      --ink-secondary: #c3c2b7;
+      --border: rgba(255, 255, 255, 0.10);
+      --error: #e66767;
+    }
+  }
+  body { font-family: system-ui, sans-serif; margin: 0; background: var(--page); color: var(--ink); }
+  header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); }
+  h1 { margin: 0 0 0.75rem; font-size: 1.25rem; }
+  form { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
+  .field { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
+  input, select, button { padding: 0.4rem 0.5rem; font-size: 0.9rem; }
+  button { cursor: pointer; }
+  /* Closed by default (just the <summary> line, same height as the other
+     fields) so it doesn't dominate the form's height; opens as a floating,
+     scrollable panel that overlays rather than pushing sibling fields down. */
+  details.chart-picker {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+  }
+  details.chart-picker summary { cursor: pointer; white-space: nowrap; }
+  .chart-picker-panel {
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  .chart-picker-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(3, 11rem);
+    gap: 0.15rem 1rem;
+    max-height: 12rem;
+    overflow-y: auto;
+  }
+  .chart-picker-checkboxes label { display: flex; align-items: center; gap: 0.3rem; padding: 0; font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chart-picker-checkboxes input[type="checkbox"] { padding: 0; flex-shrink: 0; }
+  .chart-picker-save { display: flex; align-items: center; gap: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--border); }
+  .chart-picker-save input[type="text"] { flex: 1; min-width: 0; }
+  .chart-picker-save button { white-space: nowrap; }
+  .chart-picker-save-message { font-size: 0.8rem; min-height: 1em; }
+  .chart-picker-save-message.error { color: var(--error); }
+  .chart-picker-save-message.success { color: var(--ink-secondary); }
+
+  #results { padding: 1.5rem; transition: opacity 0.15s ease; }
+  #results.loading { opacity: 0.5; }
+  .hint { color: var(--ink-muted); }
+  .results-header { margin: 0 0 1rem; font-size: 1.1rem; }
+  .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; background: var(--surface); }
+  .card h3 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--ink-secondary); }
+  .card .plot { width: 100%; height: 260px; }
+  .no-data { display: flex; align-items: center; justify-content: center; height: 260px; color: var(--ink-muted); }
+  .limits { margin-top: 1.5rem; color: var(--error); }
+  .error-banner { color: var(--error); font-size: 1rem; padding: 0.75rem 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Financial Charts</h1>
+  <form id="dashboard-form">
+    <label class="field">Ticker
+      <input name="ticker" placeholder="AAPL or TEVA.TA" required autofocus>
+    </label>
+    <label class="field">Source
+      <select name="source">
+        {% for s in sources %}<option value="{{ s }}" {{ 'selected' if s == defaults.source }}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">Period
+      <select name="period">
+        {% for p in periods %}<option value="{{ p }}" {{ 'selected' if p == defaults.period }}>{{ p }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">Range
+      <select name="range">
+        {% for r in ranges %}<option value="{{ r }}" {{ 'selected' if r == defaults.range }}>{{ r }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">Chart set
+      <select name="chart_set">
+        {% for c in chart_sets %}<option value="{{ c }}" {{ 'selected' if c == defaults.chart_set }}>{{ c }}</option>{% endfor %}
+      </select>
+    </label>
+    <details class="chart-picker">
+      <summary>Charts (optional — overrides Chart set)</summary>
+      <div class="chart-picker-panel">
+        <div class="chart-picker-checkboxes">
+          {% for c in charts %}
+          <label title="Supported by: {{ chart_support[c.name] | join(', ') }}"><input type="checkbox" name="charts" value="{{ c.name }}" {{ 'checked' if c.name in default_chart_names }}> {{ c.title }}</label>
+          {% endfor %}
+        </div>
+        <div class="chart-picker-save">
+          <input type="text" id="new-set-name" placeholder="New set name">
+          <button type="button" id="save-set-button">Save as new set</button>
+        </div>
+        <div id="save-set-message" class="chart-picker-save-message"></div>
+      </div>
+    </details>
+    <button type="submit">Render</button>
+  </form>
+</header>
+<script type="application/json" id="chart-set-members">{{ chart_set_members | tojson }}</script>
+<div id="results"><p class="hint">Enter a ticker to render its dashboard.</p></div>
+
+<script src="https://cdn.plot.ly/plotly-basic-3.7.0.min.js" charset="utf-8"></script>
+<script>
+(function () {
+  var PALETTE = [
+    '#2a78d6', '#eb6834', '#1baf7a', '#eda100',
+    '#e87ba4', '#008300', '#4a3aa7', '#e34948'
+  ];
+  var THEME = {
+    light: { surface: '#fcfcfb', ink: '#0b0b0b', grid: '#e1e0d9', axis: '#c3c2b7' },
+    dark: { surface: '#1a1a19', ink: '#ffffff', grid: '#2c2c2a', axis: '#383835' }
+  };
+
+  var form = document.getElementById('dashboard-form');
+  var results = document.getElementById('results');
+  var lastResponse = null;
+  var chartSetMembers = JSON.parse(document.getElementById('chart-set-members').textContent);
+
+  var chartSetSelect = form.querySelector('select[name="chart_set"]');
+  var newSetNameInput = document.getElementById('new-set-name');
+  var saveSetButton = document.getElementById('save-set-button');
+  var saveSetMessage = document.getElementById('save-set-message');
+
+  // Keeps the checkbox picker showing whatever the selected Chart set
+  // actually contains, instead of a fixed snapshot taken at page load.
+  function syncCheckboxesToChartSet(setName) {
+    var members = {};
+    (chartSetMembers[setName] || []).forEach(function (name) { members[name] = true; });
+    form.querySelectorAll('input[name="charts"]').forEach(function (checkbox) {
+      checkbox.checked = !!members[checkbox.value];
+    });
+  }
+
+  chartSetSelect.addEventListener('change', function () {
+    syncCheckboxesToChartSet(chartSetSelect.value);
+  });
+
+  function setSaveMessage(text, kind) {
+    saveSetMessage.textContent = text;
+    saveSetMessage.className = 'chart-picker-save-message' + (kind ? ' ' + kind : '');
+  }
+
+  function saveCurrentSelectionAsNewSet() {
+    var name = newSetNameInput.value.trim();
+    var checkedNames = Array.from(form.querySelectorAll('input[name="charts"]:checked'))
+      .map(function (checkbox) { return checkbox.value; });
+
+    var body = new URLSearchParams();
+    body.set('name', name);
+    checkedNames.forEach(function (chartName) { body.append('charts', chartName); });
+    setSaveMessage('');
+
+    fetch('/chart-sets', { method: 'POST', body: body })
+      .then(function (response) {
+        return response.json().then(function (data) { return { ok: response.ok, data: data }; });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          setSaveMessage(result.data.error || 'Could not save.', 'error');
+          return;
+        }
+        var option = document.createElement('option');
+        option.value = result.data.name;
+        option.textContent = result.data.name;
+        option.selected = true;
+        chartSetSelect.appendChild(option);
+        chartSetMembers[result.data.name] = result.data.charts;
+        newSetNameInput.value = '';
+        setSaveMessage('Saved "' + result.data.name + '".', 'success');
+      })
+      .catch(function (err) {
+        setSaveMessage('Network error: ' + err.message, 'error');
+      });
+  }
+
+  saveSetButton.addEventListener('click', saveCurrentSelectionAsNewSet);
+  newSetNameInput.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') {
+      event.preventDefault(); // this input lives inside the main form — don't submit it
+      saveCurrentSelectionAsNewSet();
+    }
+  });
+
+  function isDark() {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  function currentTheme() {
+    return isDark() ? THEME.dark : THEME.light;
+  }
+
+  function plotlyLayout(spec) {
+    var theme = currentTheme();
+    return {
+      margin: { l: 50, r: 16, t: 8, b: 36 },
+      showlegend: spec.series.length > 1,
+      legend: { orientation: 'h', font: { size: 11, color: theme.ink } },
+      paper_bgcolor: theme.surface,
+      plot_bgcolor: theme.surface,
+      font: { color: theme.ink, family: 'system-ui, sans-serif', size: 11 },
+      xaxis: { gridcolor: theme.grid, linecolor: theme.axis, tickfont: { size: 10 } },
+      yaxis: { title: spec.y_label, gridcolor: theme.grid, linecolor: theme.axis, tickfont: { size: 10 } },
+      hovermode: spec.kind === 'line' ? 'x unified' : 'closest'
+    };
+  }
+
+  function plotlyTraces(spec) {
+    return spec.series.map(function (s, i) {
+      var color = PALETTE[i % PALETTE.length];
+      if (spec.kind === 'bar') {
+        return { type: 'bar', name: s.label, x: s.dates, y: s.values, marker: { color: color } };
+      }
+      return {
+        type: 'scatter', mode: s.markers === false ? 'lines' : 'lines+markers', name: s.label,
+        x: s.dates, y: s.values, line: { color: color, width: s.width || 2 }, marker: { size: 6 }
+      };
+    });
+  }
+
+  function buildCardSkeleton(container, spec) {
+    var card = document.createElement('div');
+    card.className = 'card';
+    var h3 = document.createElement('h3');
+    h3.textContent = spec.title;
+    card.appendChild(h3);
+    container.appendChild(card);
+    return card;
+  }
+
+  function fillCard(card, spec) {
+    if (spec.kind === 'no_data') {
+      var empty = document.createElement('div');
+      empty.className = 'no-data';
+      empty.textContent = 'No data';
+      card.appendChild(empty);
+    } else {
+      var plotDiv = document.createElement('div');
+      plotDiv.className = 'plot';
+      card.appendChild(plotDiv);
+      Plotly.newPlot(plotDiv, plotlyTraces(spec), plotlyLayout(spec), { responsive: true, displaylogo: false });
+    }
+  }
+
+  function renderDashboard(data) {
+    lastResponse = data;
+    results.innerHTML = '';
+
+    var header = document.createElement('h2');
+    header.className = 'results-header';
+    header.textContent = data.ticker + ' (' + data.market + ') — ' + data.currency;
+    results.appendChild(header);
+
+    var grid = document.createElement('div');
+    grid.className = 'results-grid';
+    results.appendChild(grid);
+
+    // Two passes: first attach every card skeleton so the grid reaches its
+    // final column count, THEN call Plotly.newPlot on each. Plotly measures
+    // its container synchronously at call time, and its `responsive: true`
+    // only reacts to window resizes — not to the grid narrowing because a
+    // later sibling card was appended — so a chart plotted before its
+    // siblings exist gets stuck rendered at the wrong (too-wide) size.
+    var cards = data.charts.map(function (spec) { return buildCardSkeleton(grid, spec); });
+    data.charts.forEach(function (spec, i) { fillCard(cards[i], spec); });
+
+    if (data.source_limits && data.source_limits.length) {
+      var limits = document.createElement('div');
+      limits.className = 'limits';
+      var limitsHeader = document.createElement('h3');
+      limitsHeader.textContent = 'Source limits';
+      limits.appendChild(limitsHeader);
+      var ul = document.createElement('ul');
+      data.source_limits.forEach(function (limit) {
+        var li = document.createElement('li');
+        li.textContent = limit;
+        ul.appendChild(li);
+      });
+      limits.appendChild(ul);
+      results.appendChild(limits);
+    }
+  }
+
+  function showError(message) {
+    results.innerHTML = '';
+    var banner = document.createElement('div');
+    banner.className = 'error-banner';
+    banner.textContent = message;
+    results.appendChild(banner);
+  }
+
+  var requestId = 0;
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var thisRequest = ++requestId;
+    var params = new URLSearchParams(new FormData(form));
+    results.classList.add('loading');
+    fetch('/chart-data?' + params.toString())
+      .then(function (response) {
+        return response.json().then(function (data) { return { ok: response.ok, data: data }; });
+      })
+      .then(function (result) {
+        if (thisRequest !== requestId) return; // superseded by a later submit
+        if (!result.ok) {
+          showError(result.data.error || 'Something went wrong.');
+          return;
+        }
+        renderDashboard(result.data);
+      })
+      .catch(function (err) {
+        if (thisRequest !== requestId) return;
+        showError('Network error: ' + err.message);
+      })
+      .finally(function () {
+        if (thisRequest === requestId) results.classList.remove('loading');
+      });
+  });
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+    if (lastResponse) renderDashboard(lastResponse);
+  });
+})();
+</script>
+</body>
+</html>
