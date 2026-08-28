@@ -13,8 +13,15 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
       Financial_Charts and pushed; tagged locally only in Eps_Evaluation (not pushed — its
       `origin` is `avivinvetsting/Eps_Evaluation`, not ours; pushing there would contradict the
       hard-fork decision).
-- [ ] **Phase 2 — Import both histories into InvestiGraph.** `git read-tree --prefix` both
-      repos under `legacy/`.
+- [x] **Phase 2 — Import both histories into InvestiGraph.** Done on branch
+      `merge/import-sources` (not yet merged to `main` — this and Phase 3 stay on this branch
+      per CLAUDE.md's "risky/multi-session work" rule; Phases 4–6's worktrees branch off its
+      tip, not off `main`). 125 commits total. Both import commits verified as true 2-parent
+      merges with the original history reachable via the second parent (e.g. Financial_Charts'
+      `template/models.py` and Eps's `valuation/lynch/index.ts` both show their full original
+      commit lists). Note: `git log --follow` does *not* show this directly — it can't detect
+      a rename across differently-prefixed merge parents; that connects up once Phase 3's
+      `git mv` creates an actual rename commit for `--follow` to walk through.
 - [ ] **Phase 3 — Make Financial_Charts the trunk.** Move `src/financial_charts` →
       `src/investigraph`, wire hooks for real, rewrite imports.
 - [ ] **Phase 4 — Port the valuation domain.** Owner: `valuation-porter` agent, worktree
