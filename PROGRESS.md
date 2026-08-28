@@ -163,13 +163,22 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
         default (the original JS's `??` only substitutes for missing/null) — a request with
         `bearExitPeMultiple: 0` must reach `calculate_rule_one_value` as `0`, not get rewritten
         to `10` first. Full suite: 461 passed.
-      - **Remaining:** `/api/history` (GET/POST), `/api/history/<id>` (DELETE),
-        `/api/valuations`, `/api/live-prices`, CLI `valuate` subcommand, front-end unification
-        (verbatim `public/` assets moved to `web/static/`, `index.html` rewritten as the
-        unified entry point), and porting the rest of `server.test.ts` not yet covered.
-      - Still must incorporate the history-routes exception-mapping note (Convergence review,
-        above) when those routes are built — a bare `json.JSONDecodeError`/`OSError` from
-        `read_history_file` needs a catch-all, not just the two typed `history/` exceptions.
+      - **Also done:** `/api/history` (GET/POST), `/api/history/<id>` (DELETE),
+        `/api/valuations` — new `web/case_conversion.py` (generic camelCase<->snake_case key
+        converter, used at every request/response boundary since the Pydantic models have no
+        field aliases) and `web/history_service.py` (incorporates the convergence review's
+        exception-mapping note: catches `(OSError, ValueError)` around every `history/store.py`
+        call, not just the two typed exceptions — `json.JSONDecodeError` is a `ValueError`
+        subclass, so this covers "corrupt `history.json`" without importing `json` directly).
+        `/api/live-prices` (yfinance `fast_info["lastPrice"]` per ticker, one bad ticker never
+        fails the batch). CLI `valuate` subcommand (`__main__.py`) — calls the exact same
+        `handle_valuate()`/`create_valuation()` the web routes use, so CLI/web parity holds by
+        construction rather than by discipline (the original kept two separate copies of this
+        flow that drifted once). 38 more tests across these three units. Full suite: 490 passed.
+      - **Remaining:** front-end unification (verbatim `public/` assets moved to `web/static/`,
+        `index.html` rewritten as the unified entry point — chart grid above, valuation panel
+        below, one shared ticker input) and porting whatever of `server.test.ts` isn't already
+        covered by the contract tests written alongside each route above.
 - [ ] **Phase 8 — Front-end tests.** Wire vitest as a dev dependency; `scripts/test.sh` runs
       both suites, invoking Node 22 explicitly (see the resolved Node-version item below).
 - [ ] **Phase 9 — Harness, docs, cleanup.** Merge `.claude/`, prune `CLAUDE.md`, retire the
