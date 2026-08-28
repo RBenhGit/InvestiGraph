@@ -284,6 +284,37 @@ import-sources` has not yet been merged into it. Merging this branch into `main`
 whether to keep or squash the 125+ imported-history commits from Phase 2) is a deliberate
 next step for the user to trigger, not assumed here.
 
+## Post-merge features
+
+- [x] **2026-08-29 — Derive `Period.TTM` by summing trailing quarters.** `--period ttm` /
+      `?period=ttm` previously failed pre-fetch ("source does not support period ttm") — no
+      adapter declared it. Both `yfinance` and `twelvedata` adapters now derive it themselves:
+      fetch `Period.QUARTERLY`, then sum each flow metric's trailing four quarters
+      (`template/trailing.py`'s new `derive_ttm_fundamentals`, built on the pre-existing
+      `ttm_series`/`derived.resolve` machinery — that machinery already existed for the three
+      cherry-picked `PE_RATIO_TTM`/`DIVIDEND_YIELD_TTM`/`ROE_TTM` metrics; this applies the same
+      classification codebase-wide). Balance-sheet metrics and `price` pass through their full
+      quarterly series unchanged; `net_margin` is correctly recomputed from the TTM'd
+      `net_income`/`revenue`; `gross_margin` passes through as a labeled approximation (its
+      numerator isn't tracked as its own series in either adapter, so it can't be correctly
+      recomputed) — **user's explicit choice** when asked "No Data" vs. approximate.
+      Derivation lives inside each adapter's `fetch()`, not the CLI's or web's separate
+      fetch-orchestration layers (they don't share one, unlike the valuation growth-fallback
+      chain) — this avoids introducing a second CLI/web drift risk of the kind `CLAUDE.md`'s
+      Gotchas section already warns about for that chain. Planned via `EnterPlanMode` (multi-file,
+      real design decisions) before implementing.
+      **code-reviewer verdict: no logic bugs** (independently verified the net_income/revenue
+      TTM sums by hand against live yfinance and Twelve Data data), **5 doc/comment-accuracy
+      Warnings, all fixed:** README/`docs/SPEC.md` claimed neither source returns a native TTM
+      statement — false for yfinance (`ttm_income_stmt`/`ttm_cashflow` exist; the real reason to
+      derive uniformly is cross-source consistency, not impossibility; folded into a new
+      code-reviewer memory entry, `yfinance-has-native-ttm-statements.md`); "latest quarter"
+      wording undersold that the *entire* quarterly series passes through unchanged, not just
+      one point; a test comment claimed 5 quarterly points yield 1 TTM point (it's 2, now
+      asserted); a CLI test name implied TTM is unsupported at the product level when it
+      actually exercises the generic capability-gate mechanism via a deliberately limited stub
+      (renamed). 500 pytest + 105 vitest passing.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the
