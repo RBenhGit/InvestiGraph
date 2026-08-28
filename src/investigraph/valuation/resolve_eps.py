@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import date as date_
 from typing import Literal
 
 from investigraph.sources.yahoo_consensus.models import AnalystConsensus
@@ -70,6 +71,15 @@ class ResolvedEps:
     # used — never invented, always derived from the actual data present. The
     # UI must never show a Yahoo-sourced number as if it came from Twelve Data.
     detail: str
+    # The template's own TTM EPS *before* any Yahoo comparison/fallback --
+    # distinct from `eps_ttm` above, which can be Yahoo's figure when `source`
+    # is `"yahoo-fallback"`. The original TS's `StockData.epsTtm` was always
+    # this raw, pre-resolution figure (a separate field from the resolved one
+    # a caller actually uses); callers that need to show "what Twelve Data/the
+    # template itself reported" independent of the resolution outcome need
+    # this field, not `eps_ttm`.
+    template_eps_ttm: float
+    template_eps_as_of: date_
 
 
 def resolve_eps(
@@ -107,6 +117,8 @@ def resolve_eps(
             currency=currency,
             source="twelvedata",
             detail=f"Template TTM EPS ({symbol}{template_eps:.2f}), as of {latest_date}",
+            template_eps_ttm=template_eps,
+            template_eps_as_of=latest_date,
         )
 
     if yahoo_eps is not None and math.isfinite(yahoo_eps) and yahoo_eps > 0:
@@ -124,6 +136,8 @@ def resolve_eps(
                 f"because the template's TTM EPS ({symbol}{template_eps:.2f}) diverged more "
                 "than 5% from Yahoo's"
             ),
+            template_eps_ttm=template_eps,
+            template_eps_as_of=latest_date,
         )
 
     return ResolvedEps(
@@ -135,6 +149,8 @@ def resolve_eps(
             "possibly stale (diverges more than 5% from Yahoo), but Yahoo's own figure "
             "isn't usable as a replacement"
         ),
+        template_eps_ttm=template_eps,
+        template_eps_as_of=latest_date,
     )
 
 

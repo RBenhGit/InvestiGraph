@@ -106,6 +106,9 @@ def test_large_divergence_falls_back_to_a_positive_yahoo_figure():
     assert "2026-06-27" in resolved.detail
     # The UI must never show a Yahoo-sourced number as if it came from Twelve Data.
     assert "twelvedata" not in resolved.detail.lower()
+    # template_eps_ttm stays the raw, pre-resolution figure even on a Yahoo
+    # fallback -- distinct from eps_ttm (7.0) above, which is Yahoo's figure here.
+    assert resolved.template_eps_ttm == 8.71
 
 
 def test_large_divergence_with_a_non_positive_yahoo_figure_keeps_template_flagged():
