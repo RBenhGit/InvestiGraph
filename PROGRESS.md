@@ -213,8 +213,76 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
       confusing "Cannot find package 'vitest'" only after burning the pytest run first. Both
       verified post-fix (version-gate boundary tested at 22.14.0/22.22.1/22.22.2/23.0.0;
       fresh-clone bootstrap re-run end to end).
-- [ ] **Phase 9 — Harness, docs, cleanup.** Merge `.claude/`, prune `CLAUDE.md`, retire the
-      porter agents, remove `legacy/eps_evaluation/`.
+- [x] **Phase 9 — Harness, docs, cleanup.** Done — the merge's last phase. No application code
+      touched (`src/`, tests, `scripts/` untouched — confirmed by both the diff and a green
+      `scripts/test.sh`: 490 pytest + 105 vitest).
+      **`.claude/` reconciliation.** Three separate setups existed (repo root; `legacy/
+      financial_charts/.claude/`, a strict subset of root's; `legacy/eps_evaluation/.claude/`,
+      which had 6 agents root lacked — `architecture-reviewer`, `codebase-cartographer`,
+      `perf-investigator`, `security-auditor`, `task-implementer`, `test-auditor` — plus a
+      `standards/` dir they depend on, 5 extra skills — `extend`, `harness`, `onboard`,
+      `orient`, `slice` — and more robust hook implementations). User confirmed: bring the
+      agents+standards in (root's existing `code-reviewer`/`test-writer`/`debugger` were
+      byte-identical to eps_evaluation's, untouched); the 5 skills came along under the same
+      call (generic, `disable-model-invocation: true`, no conflict). The 3 now-obsolete porter
+      agents (`valuation-porter`/`data-layer-porter`/`history-porter` — Phases 4-6 they were
+      built for are long merged) were deleted.
+      **Hooks adapted, not copied verbatim.** `protect-files.sh` switched from substring
+      matching (root's old version blocked `.env.example` as a false positive on `.env` —
+      caught live, while writing this phase's own new `.env.example`) to basename matching
+      with an allowlist, sourced from a new shared `protected-paths.sh`; new `protect-bash.sh`
+      closes a real gap (root had no PreToolUse guard on `Bash`, so `echo x > .env` bypassed
+      `protect-files.sh` entirely). `post-edit.sh` and `stop-test-gate.sh` picked up
+      eps_evaluation's more defensive generic bodies (jq-presence checks, exit-127 detection,
+      `stop-test-gate.sh`'s fingerprint-based skip-if-unchanged cache) but kept
+      project-specific config: `post-edit.sh` stays `ruff format`/`ruff check`, `.py`-only (not
+      eps's prettier/eslint — the front-end JS under `web/static/` is kept verbatim per
+      MERGE_SPEC.md and isn't this project's to reformat); `stop-test-gate.sh`'s `TEST_CMD`
+      points at `scripts/test.sh` (not eps's SSH-tunneled `npm test`, a workaround for an
+      unrelated SSHFS bug on their own machine that doesn't apply here).
+      **Agent memory merge.** `legacy/financial_charts/.claude/agent-memory/code-reviewer/`
+      held 10 real findings from Financial_Charts' own review history, left there since Phase 3
+      with a pointer memory explicitly flagging the merge as Phase 9's job. All 10 copied into
+      root's collection (which already had 2 merge-era entries), the pointer file retired, one
+      cross-reference repointed to the entry it actually meant, `MEMORY.md` rebuilt as one
+      12-entry index. Nearly lost entirely: `git rm -r legacy/` was run before this was
+      noticed — caught before committing, recovered via `git show HEAD:<path>` since nothing
+      had been committed yet.
+      **`legacy/` removed.** Both `legacy/eps_evaluation/` and `legacy/financial_charts/`
+      deleted (git history keeps them reachable via the Phase 2 merge commits' second
+      parents). Confirmed no code/config dependency on either — only docstring provenance
+      comments (`ported from legacy/eps_evaluation/src/...`) remain, which is the intended
+      citation style. Eps_Evaluation's own project-management artifacts (`CURRENT_WORK.md`,
+      `wiki/`, `TASKS.md`, `PLAN_*.md`) were deliberately left behind, not ported.
+      **Docs.** Root `README.md` — previously the generic, non-project-specific "Claude Code
+      Starter Kit" template README, a real gap — rewritten from scratch (merged from
+      Financial_Charts' old README + the app's actual current CLI/web surface). New root
+      `.env.example` (didn't exist before), including `HISTORY_FILE_PATH`. `CLAUDE.md` lightly
+      pruned: the Commands section's Test line simplified now Phase 8 is done, not upcoming;
+      "Multi-session projects"/"Repository etiquette" reworded now the merge (and its
+      `merge/<slice>` worktree branch convention) is closing — hard-fork note and the
+      MERGE_SPEC.md pointer both kept.
+      **code-reviewer verdict: needs fixes → fixed.** One Critical: `protect-bash.sh`'s
+      write-boundary regex missed a redirect glued directly to a filename (`echo x >.env` /
+      `>>.env` slipped through — only the spaced `> .env` form was actually blocked, contrary
+      to what was believed verified). Fixed by adding `<`/`>` to the boundary character class;
+      reverified against all three forms plus that reads (`cat .env.example`) still pass. Four
+      Warnings in the newly authored docs, all fixed: `/valuations.html` doesn't exist (it's
+      `/static/valuations.html`, Flask's default static path — verified with the test client);
+      `commission-source`'s coverage caveat pointed at the wrong file (`PROGRESS.md` has no
+      such caveat; it's in `docs/financial_charts_progress.md`); `--period ttm` documented
+      without the "not yet supported by any source" caveat the original Financial_Charts README
+      had; the narrowed ticker charset (no `AAPL:NASDAQ`) was never actually noted in a README
+      despite `docs/MERGE_SPEC.md`'s risk register claiming it was — this was the first real
+      README, so the last chance to close that stated mitigation.
+      Full suite re-verified after all fixes: 490 pytest + 105 vitest, still green.
+
+## Merge complete
+
+All 9 phases done. `main` still points at the pre-merge Financial_Charts tip — `merge/
+import-sources` has not yet been merged into it. Merging this branch into `main` (and deciding
+whether to keep or squash the 125+ imported-history commits from Phase 2) is a deliberate
+next step for the user to trigger, not assumed here.
 
 ## Open items carried from Phase 0
 

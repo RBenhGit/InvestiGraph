@@ -1,94 +1,133 @@
-# Claude Code Starter Kit
+# InvestiGraph
 
-A minimal, opinionated foundation for starting a new project with [Claude Code](https://code.claude.com): a CLAUDE.md built on **simplicity** and **modularity**, deterministic quality gates as hooks, three specialized agents, and two workflow skills.
+A Python tool for **US and Tel Aviv Stock Exchange (TASE)** tickers that renders a fixed grid of
+fundamentals charts *and* a Lynch / Rule #1 fair-value panel (Bear/Base/Bull scenarios) from a
+single ticker lookup — one dashboard per company, chart grid and valuation side by side.
 
-Compiled from Anthropic's official guidance and field-tested community practice — the full research wiki with sources and rationale lives in [RBenhGit/CodeFundation](https://github.com/RBenhGit/CodeFundation) (see `wiki/topics/efficient-coding-foundation.md` for the playbook this kit implements).
+Use it two ways: a **CLI** for a static export, or a **local web UI** where you type a ticker
+once and both halves render together.
 
-## Contents
+InvestiGraph is a merge of two previously separate tools — [Financial_Charts](docs/financial_charts_progress.md)
+(the chart grid) and Eps_Evaluation (the valuation engine, ported from TypeScript) — see
+[docs/MERGE_SPEC.md](docs/MERGE_SPEC.md) for the full merge plan and rationale, and
+[PROGRESS.md](PROGRESS.md) for phase-by-phase status.
 
+## Quick start
+
+Requires **Python 3.12+** and [uv](https://docs.astral.sh/uv/). The web UI additionally needs
+network access to `cdn.plot.ly` (chart rendering) and `cdn.jsdelivr.net` (the valuations
+dashboard's Chart.js) at page load.
+
+```sh
+uv sync                                          # install dependencies
+uv run python -m investigraph.web --port 8000    # web UI → open the (forwarded) port
+uv run python -m investigraph AAPL --out out/AAPL.html   # CLI → static chart page
 ```
-├── CLAUDE.md                        # Project memory template ({{PLACEHOLDERS}} to fill)
-└── .claude/
-    ├── settings.json                # Hook wiring + minimal allow/deny permission rules
-    ├── hooks/
-    │   ├── protect-files.sh         # PreToolUse: blocks edits to .env, lockfiles, .git/
-    │   ├── post-edit.sh             # PostToolUse: format + lint each edited file
-    │   └── stop-test-gate.sh        # Stop: refuses to finish while tests fail
-    ├── agents/
-    │   ├── code-reviewer.md         # Read-only two-stage diff review, fresh context
-    │   ├── test-writer.md           # Failing-tests-first; never touches implementation
-    │   └── debugger.md              # Root cause only — never suppresses symptoms
-    └── skills/
-        ├── spec/SKILL.md            # /spec — interview → SPEC.md → implement fresh
-        └── new-module/SKILL.md      # /new-module — scaffold a vertical slice
+
+Copy [.env.example](.env.example) to `.env` and fill it in (`.env` is never committed):
+
+```sh
+DATA_SOURCE=yfinance        # or twelvedata; overridable per render with --source
+TWELVEDATA_API_KEY=         # only required when DATA_SOURCE=twelvedata
 ```
 
-## Get started
+`yfinance` needs no key. The Yahoo analyst-consensus data used by the valuation panel (growth
+estimates, price targets) also needs no key — it's a separate public endpoint.
 
-1. Click **Use this template** → create your project repo (or copy `CLAUDE.md` and `.claude/` into an existing one).
-2. Fill every `{{PLACEHOLDER}}` in `CLAUDE.md` — or run `/init` first and merge; keep the result under 200 lines.
-3. Open `.claude/hooks/post-edit.sh` and `.claude/hooks/stop-test-gate.sh` and set `FORMAT_CMD` / `LINT_CMD` / `TEST_CMD` for your stack. **They are no-ops until you do** — the kit never breaks an unconfigured repo. Keep the scripts executable (`chmod +x .claude/hooks/*.sh`; requires `jq`).
-4. Install the code-intelligence plugin for your language (`/plugin` → e.g. `typescript-lsp`, `pyright-lsp`, `rust-analyzer-lsp`) and, if you review PRs, `code-review` or `pr-review-toolkit`. Worth adding once the project is real: `hookify` (turn a correction you keep repeating into a hook), `session-report` (see which skills and agents actually cost you context), `claude-md-management` (audit and prune CLAUDE.md).
-5. Commit all of it. The foundation only works if every session and teammate gets it.
-6. **Start Claude interactively once in the repo and accept the trust dialog.** Until you do, the `permissions.allow` entries in `settings.json` are ignored and you'll be prompted for even `git status`. Headless (`claude -p`) runs in an untrusted directory silently skip them.
+## Usage
 
-The kit itself uses only long-standing features and works on any current Claude Code. Two things mentioned below are newer: `/code-review` runs as a background subagent from v2.1.218, and `/ultrareview` needs a plan with cloud review. If something in the kit misbehaves, `--safe-mode` starts with all customizations disabled and `/doctor` diagnoses setup problems.
+### Web UI — chart grid + fair-value panel together
 
-## The principles
+```sh
+uv run python -m investigraph.web --host 0.0.0.0 --port 8000
+```
 
-The CLAUDE.md template ships four, in the order Claude reads them:
+Enter a ticker once: the chart grid (Plotly.js, interactive) and the Bear/Base/Bull fair-value
+cards render from the same fetch. Save a valuation with an evaluator name and it shows up on
+`/static/valuations.html`, a sortable "all valuations" dashboard with live prices and an
+upside-% chart. Key endpoints: `GET /chart-data`, `POST /api/valuate`, `GET/POST /api/history`,
+`DELETE /api/history/<id>`, `GET /api/valuations`, `GET /api/live-prices`.
 
-0. **Think before coding** — state assumptions rather than guessing; surface ambiguity instead of silently picking; push back when a simpler approach exists; stop and say so when confused.
-1. **Simplicity** — a simple concept is less complicated to debug. No abstraction until variation is real; no speculative flags, layers, or config.
-2. **Modularity** — clear separation makes issues locatable. Domain directories with vertical slices, explicit interfaces, no reaching into internals; a change touches one slice and its tests.
-3. **Surgical changes** — touch only what the task requires; don't refactor unbroken adjacent code; match existing style; only remove dead code your own change created.
+### CLI — render a static dashboard
 
-1 and 2 are the architectural bet. 0 and 3 exist because the two most expensive agent failures aren't bad code — they're confidently building the wrong thing, and quietly changing more than you asked.
+```sh
+# US via the free source
+uv run python -m investigraph AAPL --source yfinance --period annual --range 10y --out out/AAPL.html
+# TASE via the paid source (native ₪, agorot/millions handled — see CLAUDE.md's Gotchas)
+uv run python -m investigraph TEVA.TA --source twelvedata --range 10y --out out/TEVA.html
+```
 
-## Daily loop (short version)
+`TICKER [--source] [--period quarterly|ttm|annual] [--range 6m|1y|3y|5y|10y|max] [--chart-set]
+[--charts price,eps,margins] [--out PATH]`. `--out` accepts `.html`, `.png`, or `.pdf`; it
+defaults to `out/<TICKER>.html`. **`--period ttm` is accepted by the parser but not yet declared
+by any registered source** — it fails fast with a clear "source does not support period ttm"
+error rather than a blank or mislabeled chart. The default `fundamentals` chart set renders 6
+charts; the catalog holds 21 — use `--charts` (comma-separated ids) or the web UI's checkbox
+picker for any other combination. Tickers are matched by `^[A-Za-z0-9.\-]+$` — no
+exchange-qualified form like `AAPL:NASDAQ`; use the bare symbol (`.TA` routes to TASE).
 
-Large feature → `/spec` → fresh session implements SPEC.md.
-Any non-trivial change → plan mode first.
-Risky or multi-session work → worktree on a new branch, suite green *before* the first edit.
-Bugs → `debugger` agent (or a failing test first).
-Before commit → `code-reviewer` agent or `/code-review` (runs as a background subagent, so it doesn't block you). For a high-stakes diff, escalate to `/ultrareview`.
-The Stop gate keeps a session honest when you walk away.
+### CLI — `valuate`: the same fair-value engine, from the command line
 
-## How the reviewer works
+```sh
+uv run python -m investigraph valuate AAPL
+```
 
-`code-reviewer` runs in two ordered stages, because the two questions are not interchangeable:
+Calls the exact same growth-fallback chain and valuation math the web UI's `/api/valuate` uses,
+so a CLI figure and a web figure for identical inputs always match (see CLAUDE.md's Gotchas on
+why that's a named invariant, not an accident).
 
-1. **Does this do what was asked?** — missing requirements, contradicted behavior, out-of-scope edits. If anything turns up here, it reports and **stops**: there's no point polishing code that solves the wrong problem.
-2. **Is the code sound?** — logic errors, edge cases, simplicity/modularity violations, weak tests, secrets.
+### Developer commands
 
-Before reporting, it tries to *refute* each finding and drops any it can't tie to a concrete failure, then tells you how many it dropped. A reviewer asked to find problems will always find some; unchallenged findings push you toward defensive code and abstractions you never needed.
+- `verify-source <name> --ticker <sample>` — live-reconciles a source's declared `Capability`
+  against what it actually returns. Never run during a normal render.
+- `capabilities [<name>] [--matrix]` — offline, prints a registered source's declared metrics/
+  markets/periods/history depth.
+- `commission-source <name>` — probes a source live and regenerates its `capability.py`; review
+  the diff before committing (see
+  [docs/financial_charts_progress.md](docs/financial_charts_progress.md) for a caveat on metric
+  coverage — its probe is scoped to metrics with a consuming chart, so it can drop a
+  not-yet-charted metric from the regenerated declaration).
 
-It's the one agent pinned to `model: opus` — it's the gate everything else rests on. `test-writer` and `debugger` are deliberately left unpinned so they inherit your session's model; pinning them to something cheaper would downgrade a session you deliberately started on a stronger model.
+## Architecture
 
-## Keep it healthy
+Data flows one way — **env-configured data source → per-source adapter → canonical template →
+display** — and the display layer (charts *and* valuation) reads only the template, never a
+data source directly.
 
-The setup layer decays — the model changes, the codebase grows, the rules stop matching reality. Two habits and one calendar item:
+- **Pluggable data sources.** `yfinance` (free) and `twelvedata` (paid), chosen by `DATA_SOURCE`.
+  Adding a source = an adapter + a declared `Capability` + a registry entry.
+- **Canonical template** (`template/models.py`, Pydantic): every monetary series is a
+  `Money`-style `(value, currency, scale)` value, so a TASE ticker's agorot-priced shares and
+  shekel-millions financials can never be silently combined.
+- **Valuation** (`valuation/`): pure functions ported from Eps_Evaluation's TS — Lynch/PEG-style
+  and Rule #1-style fair value, a single shared growth-rate fallback chain
+  (`analyst_estimate_5y → historical_3y → historical_1y → None`) used by both the CLI and the
+  web UI so they can't drift apart.
+- **History** (`history/`): disk-backed saved-valuation store, per-evaluator files, ported from
+  Eps_Evaluation's TS store. Storage location is overridable via the optional
+  `HISTORY_FILE_PATH` env var (see [.env.example](.env.example)) — it takes precedence over
+  per-evaluator storage when set.
+- **Markets: US + TASE, native currency only** (₪ / $, no FX conversion), routed by the `.TA`
+  suffix.
+- **Caching:** one on-disk cache directory (`.cache/`) serves both charts and valuation data.
 
-**When to add config** (don't add it preemptively):
+Full architectural detail, decisions, and gotchas live in [CLAUDE.md](CLAUDE.md).
 
-| Trigger | Goes in |
-|---|---|
-| Claude makes the same mistake twice | CLAUDE.md |
-| You type the same prompt a third time | a skill |
-| Something must happen *every* time | a hook |
-| A second repo needs the same setup | a plugin |
+## Status
 
-**Review every 3–6 months, and after major model releases**, with one named owner. Bottom-up adoption fragments without someone responsible for it. Run `/usage` and `session-report` to find what's expensive, `/doctor` to propose CLAUDE.md trims, `skill-creator` to benchmark a skill against not having it.
+See [PROGRESS.md](PROGRESS.md) for the merge's phase-by-phase history and
+[docs/financial_charts_progress.md](docs/financial_charts_progress.md) for the chart engine's
+own pre-merge build log.
 
-**Two habits that belong to you, not to CLAUDE.md:**
-- **Rewind rather than correct.** Double-Esc back to before the failure and re-prompt with what you learned. Corrections stack up in context; rewinding leaves nothing behind.
-- **Watch the fill.** Community practice keeps sessions under ~40% of the context window, ideally below 30% for work that needs Claude at its sharpest. Unofficial — Anthropic publishes no figure — but it's the only published threshold and it matches the shape of the problem.
+## Development
 
-## Deliberately NOT included
+```sh
+uv sync              # install/lock dependencies
+scripts/test.sh       # full suite: pytest (Python) + vitest (front-end jsdom tests)
+uv run ruff check    # lint
+uv run ruff format   # format
+```
 
-- **Explorer/planner agents** — Claude Code's built-in `Explore` and `Plan` agents already do this; duplicating them adds noise.
-- **A generic review skill** — the bundled `/code-review` exists; the `code-reviewer` agent here adds only the project-specific rules (simplicity/modularity findings).
-- **Dozens of role agents** — start minimal; add an agent only when you keep spawning the same worker with the same instructions.
-- **MCP servers** — connect per need (`claude mcp add`); prefer CLIs (`gh`) where they exist.
-- **Auto mode** — the classifier that handles routine permission prompts is a per-account choice, not a template default. It removes friction; the Stop gate and the PreToolUse guard here are what provide guarantees. `deny` rules beat `allow` rules unconditionally, and both sit *below* auto mode.
-- **A whole methodology** — if you want a full opinionated workflow rather than a foundation to build on, `superpowers` is in the official marketplace (mandatory 7-phase pipeline, subagent-per-task, enforced TDD). It's an alternative to this kit, not an addition to it.
+Conventions (simplicity, modularity, verification policy, workflow) live in
+[CLAUDE.md](CLAUDE.md). The `.claude/` hooks auto-format/lint edited files and gate turns on a
+green test suite.

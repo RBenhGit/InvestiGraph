@@ -3,7 +3,7 @@
 ## Commands
 
 - Build: `uv sync`
-- Test (all): `uv run pytest -q` (from Phase 8 of the merge onward: `scripts/test.sh`, which also runs `npx vitest run` for the front-end tests)
+- Test (all): `scripts/test.sh` (runs `uv run pytest -q` plus `npx vitest run` for the front-end tests; `uv run pytest -q` alone for a backend-only check)
 - Test (single): `uv run pytest -q <path>::<test_name>`
 - Lint: `uv run ruff check`
 - Format: `uv run ruff format`
@@ -56,13 +56,17 @@
 
 At the start of a session: read the git log and PROGRESS.md before making changes. Complete
 one feature at a time. Leave the code mergeable — no half-done work without a note in
-PROGRESS.md. The Financial_Charts + Eps_Evaluation merge is tracked in `docs/MERGE_SPEC.md`
-(full plan) and `PROGRESS.md` (per-phase status) — read both before touching merge work.
+PROGRESS.md. `docs/MERGE_SPEC.md` records the plan and rationale behind InvestiGraph's origin
+as a merge of Financial_Charts and Eps_Evaluation — read it when a design decision (the single
+canonical template, the shared growth-fallback chain, `Money`'s currency/scale tagging) needs
+its "why."
 
 ## Repository etiquette
 
-- Branch naming: `merge/<slice-name>` for merge-project work (e.g. `merge/valuation-port`),
-  matching the worktrees under `../investigraph-<slice>/`; otherwise short descriptive names.
+- Branch naming: `<type>/<slug>` (e.g. `fix/history-race`, `feat/live-prices`) — short and
+  descriptive. `merge/<slice-name>` was reserved for the now-complete Financial_Charts +
+  Eps_Evaluation merge (Phases 4-9, worktrees under `../investigraph-<slice>/`); no need to
+  reuse it for new work.
 - This repo is a hard fork of `avivinvetsting/Eps_Evaluation` (via `RBenhGit/Financial_Charts`
   and `RBenhGit/Eps_Evaluation` clones) — no upstream sync is expected or attempted.
 

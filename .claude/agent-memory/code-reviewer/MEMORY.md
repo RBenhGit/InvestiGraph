@@ -1,3 +1,13 @@
-- [Pre-merge reviewer memory collection](pre-merge-reviewer-memory-collection.md) — the real memory index lives under legacy/financial_charts/.claude/, read it before reviewing.
+- [Registry parallel dicts can drift](registry-parallel-dicts-drift.md) — sources/registry.py's `_ADAPTERS`/`_CAPABILITIES` dicts aren't checked for matching keys; reproduced crash when they diverge.
+- [Derived-metric No Data gating gap](derived-metric-no-data-gating-gap.md) — render_or_no_data ignores resolve()'s own availability; derived charts can render blank instead of "No Data".
+- [Unbounded user-fed registry growth](unbounded-user-fed-registry.md) — charts/registry.py's _CHART_SETS never evicts; user-input-keyed registration (chart picker) can grow it unboundedly and skips dedup, letting duplicate chart ids render duplicate cards.
+- [Custom chart-set prefix string duplicated](custom-chart-set-prefix-string-duplicated.md) — RESOLVED 2026-07: now a shared CUSTOM_CHART_SET_PREFIX constant in registry.py.
+- [Money currency guard bypassed via raw division](money-currency-guard-bypassed-via-raw-division.md) — RESOLVED 2026-08; keep the rule: any new two-Money combination must route through ratio() or an explicit require_same_currency.
+- [Skipped points interpolate across gaps](skipped-points-interpolate-across-gaps.md) — resolve()/resolve_trailing() drop failed points, and both renderers connect straight across; reproduced a 366-day fabricated P/E segment across a loss year.
+- [Plotly.newPlot on detached DOM node](plotly-newplot-on-detached-dom-node.md) — index.html's chart cards were plotted before being attached to the document, so every chart would render 0x0/blank on load.
+- [ChartSetStore.load() shape not validated](chart-set-store-load-shape-not-validated.md) — malformed (non-list) entry in chart_sets.json crashes create_app() at startup with TypeError, not a graceful skip.
+- [Register-then-persist ordering hazard](register-then-persist-ordering-hazard.md) — POST /chart-sets registers live before persisting; a failed disk save leaves a phantom in-memory-only entry and an unhandled 500.
+- [Series positional indexing defect class](review_series_positional_indexing.md) — series builders drop points, so `points[-5]` is not "one year ago"; check dates, not just `len()`. Found and fixed during the InvestiGraph merge's Phase 5 (`valuation/growth.py`).
 - [Valuation chain drops Money's currency tag](valuation-chain-drops-money-currency-tag.md) — resolve_eps/lynch/rule_one return untagged floats; statement currency vs market currency can silently mix.
 - [One-period fundamentals split the growth inputs](one-period-fundamentals-splits-growth-inputs.md) — historical CAGR needs ANNUAL, TTM growth needs QUARTERLY; one fetch can't feed both.
+- [Shell guard misses `>file` redirects](shell-guard-word-boundary-misses-redirects.md) — protect-bash.sh blocks `> .env` but not `>.env`; probe no-space/append variants of any shell guard.

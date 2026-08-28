@@ -29,12 +29,14 @@ WRITE_OPS='(>|\btee\b|\bsed\b[^|;]*-i|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bdd\b|\
 echo "$CMD_CLEAN" | grep -qE "$WRITE_OPS" || exit 0
 
 # A protected name used as a word: preceded/followed by whitespace, quote, /, = or a
-# shell metacharacter — so `out.env.txt` and `myenv` do not match `.env`.
+# shell metacharacter — so `out.env.txt` and `myenv` do not match `.env`. Redirect
+# operators (`>`/`<`) are included on both sides: `echo x >.env` has no space before the
+# name, and without `>` in the boundary class that write slips past unmatched.
 mentions() {
   local needle escaped
   needle="$1"
   escaped=$(printf '%s' "$needle" | sed -E 's/[.[\*^$()+?{}|\\]/\\&/g')
-  echo "$CMD_CLEAN" | grep -qE "(^|[[:space:]\"'\`/=(;&|])${escaped}($|[[:space:]\"'\`;&|)])"
+  echo "$CMD_CLEAN" | grep -qE "(^|[[:space:]\"'\`/=(;&|<>])${escaped}($|[[:space:]\"'\`;&|)<>])"
 }
 
 for name in "${PROTECTED_BASENAMES[@]}"; do

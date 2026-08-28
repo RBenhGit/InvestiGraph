@@ -6,8 +6,7 @@ metadata:
 ---
 
 New instance (found 2026-08-28 at the Phase 4-6 convergence gate) of the defect class in
-`money-currency-guard-bypassed-via-raw-division` in the legacy reviewer memory collection (see
-[[pre-merge-reviewer-memory-collection]]).
+[[money-currency-guard-bypassed-via-raw-division]].
 
 `valuation/resolve_eps.py` unwraps the template's `eps` `Money` via `as_base_units()` and returns a
 bare `float`; `valuation/lynch|rule_one` return a bare `fair_value` float; `history/SavedValuation`
