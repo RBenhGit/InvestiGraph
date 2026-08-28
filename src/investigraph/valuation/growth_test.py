@@ -18,6 +18,7 @@ from investigraph.valuation.growth import (
     calculate_ttm_eps_growth_percent,
     historical_1y_growth_percent,
     historical_3y_growth_percent,
+    historical_5y_growth_percent,
     resolve_growth_rate_percent,
 )
 
@@ -135,6 +136,35 @@ def test_historical_3y_needs_at_least_4_annual_points():
         }
     )
     assert historical_3y_growth_percent(fundamentals) is None
+
+
+def test_historical_5y_growth_needs_at_least_6_annual_points():
+    fundamentals = _annual_fundamentals(
+        {
+            date(2021, 12, 31): 1.8,
+            date(2022, 12, 31): 2.0,
+            date(2023, 12, 31): 2.2,
+            date(2024, 12, 31): 2.5,
+            date(2025, 12, 31): 3.0,
+        }
+    )
+    assert historical_5y_growth_percent(fundamentals) is None
+
+
+def test_historical_5y_growth_from_6_annual_points():
+    fundamentals = _annual_fundamentals(
+        {
+            date(2020, 12, 31): 1.5,
+            date(2021, 12, 31): 1.8,
+            date(2022, 12, 31): 2.0,
+            date(2023, 12, 31): 2.2,
+            date(2024, 12, 31): 2.5,
+            date(2025, 12, 31): 3.0,
+        }
+    )
+    assert historical_5y_growth_percent(fundamentals) == pytest.approx(
+        (math.pow(3.0 / 1.5, 1 / 5) - 1) * 100
+    )
 
 
 def test_historical_growth_is_none_when_eps_series_is_unavailable():

@@ -84,6 +84,21 @@ def historical_3y_growth_percent(fundamentals: CompanyFundamentals) -> float | N
     return calculate_cagr_percent(values[0], values[3], 3)
 
 
+def historical_5y_growth_percent(fundamentals: CompanyFundamentals) -> float | None:
+    """CAGR between the latest annual EPS point and the one 5 years before it.
+
+    Display-only — unlike `historical_1y`/`historical_3y`, this is **not** part of
+    `resolve_growth_rate_percent`'s fallback chain (the original never used it
+    there either; it's `analyst_estimate_5y -> historical_3y -> historical_1y`,
+    with no `historical_5y` step). Kept as its own function only because the web
+    UI's growth chips/table display it alongside the chain's actual inputs.
+    """
+    values = _annual_eps_values(fundamentals)
+    if values is None or len(values) < 6:
+        return None
+    return calculate_cagr_percent(values[0], values[5], 5)
+
+
 def resolve_growth_rate_percent(
     analyst_estimate_5y_percent: float | None,
     historical_3y_percent: float | None,
