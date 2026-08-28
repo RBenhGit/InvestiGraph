@@ -21,6 +21,12 @@ The parameter is kept so the chain's shape (and this function's tests) stay
 byte-identical to the original and so a future analyst-estimate source can be
 plugged in without touching every call site; in practice it is always `None` today,
 and the chain degrades to `historical_3y -> historical_1y -> None`.
+
+**Do not wire `sources/yahoo_consensus/models.py`'s `AnalystConsensus.next_year_eps_growth_percent`
+into this slot.** It looks like a plausible fill-in (both are analyst growth estimates) but
+is a different horizon (+1y, not 5y) and was strictly display-only in the original — see
+that field's own docstring for why plugging it in here would silently change every fair
+value in a way the CLI/web parity check can't catch.
 """
 
 from __future__ import annotations

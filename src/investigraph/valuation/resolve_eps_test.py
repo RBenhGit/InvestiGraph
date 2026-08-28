@@ -168,6 +168,45 @@ def test_detail_date_reflects_the_ttm_window_actually_used_not_the_newest_raw_po
     assert "2026-12-31" not in resolved.detail
 
 
+# Regression (found in the convergence review before Phase 7): a dual-listed company can
+# legitimately report financials in a different currency than the one its shares trade in
+# (e.g. a TASE ticker filing in USD while quoted in ILS) -- eps's Money carries that
+# statement currency, distinct from fundamentals.currency (the market/price currency).
+# Unwrapping the Money with as_base_units() silently dropped this, so a USD eps and an ILS
+# price could combine into a nonsense fair value with no error or warning.
+
+
+def test_returns_none_when_eps_currency_does_not_match_fundamentals_currency():
+    mismatched = CompanyFundamentals(
+        ticker="TEVA.TA",
+        market=Market.US,
+        currency=Currency.ILS,  # the market/price currency
+        period=Period.ANNUAL,
+        range="5y",
+        series={
+            "eps": MetricSeries(
+                metric_id="eps",
+                points=[
+                    # eps itself is tagged USD -- the statement currency, deliberately
+                    # different from fundamentals.currency above.
+                    Point(date=date(2024, 9, 30), value=_money(3.0)),
+                    Point(date=date(2025, 9, 30), value=_money(3.5)),
+                ],
+                available=True,
+            )
+        },
+    )
+
+    assert resolve_eps(mismatched, _consensus(trailing_eps=3.5)) is None
+
+
+def test_resolved_eps_carries_the_currency_it_is_actually_in():
+    resolved = resolve_eps(_annual_fundamentals(8.71), None)
+
+    assert resolved is not None
+    assert resolved.currency == Currency.USD
+
+
 def test_works_against_a_quarterly_period_fetch_via_ttm_series():
     fundamentals = CompanyFundamentals(
         ticker="AAPL",

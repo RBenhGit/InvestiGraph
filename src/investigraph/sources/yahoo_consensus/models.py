@@ -39,6 +39,13 @@ class AnalystConsensus(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     ticker: str
+    # NOT a source for valuation/growth.py's `analyst_estimate_5y_percent` slot in the
+    # CLI/web growth fallback chain -- different horizon (+1y here, vs. the chain's 5y),
+    # and originally strictly separate (the chain used Twelve Data's growth_estimates.
+    # next_5_years_pa; this field was display-only, see legacy/eps_evaluation/src/web/
+    # public/app.js's analyst table). Wiring this in would silently change every fair
+    # value, and the CLI/web parity check wouldn't catch it since both would drift
+    # together -- keep this display-only.
     next_year_eps_growth_percent: float | None = None
     price_target: AnalystPriceTarget
     recommendation_key: str | None = None

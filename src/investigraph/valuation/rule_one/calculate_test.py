@@ -66,3 +66,50 @@ def test_returns_invalid_mos_when_mos_percent_negative_or_gte_100():
     assert calculate_rule_one_value(10, 10, 15, 10, 10, 100) == ValuationErr(
         error="INVALID_MOS"
     )
+
+
+# Regression (found in the convergence review before Phase 7): SavedValuation/
+# ScenarioValuation model exit_pe_multiple/required_return_percent/mos_percent as
+# `float | None` and years as `float | None` -- re-valuing a saved record passes these
+# straight through, and a bare `None` used to raise TypeError instead of returning a typed
+# error, while a whole-number float year (Pydantic coerces `years=10` to `10.0` on save)
+# was rejected by `isinstance(years, int)` even though the original TS's
+# `Number.isInteger(10.0)` accepts it.
+
+
+def test_accepts_a_whole_number_float_for_years_matching_js_number_isinteger():
+    result = calculate_rule_one_value(10, 10, 15, 10, 10.0)
+    assert result.ok is True
+    assert result.fair_value == pytest.approx(150, abs=1e-6)
+    assert result.inputs.years == 10
+
+
+def test_returns_invalid_years_for_a_non_whole_float_instead_of_a_type_error():
+    assert calculate_rule_one_value(10, 10, 15, 10, 10.5) == ValuationErr(
+        error="INVALID_YEARS"
+    )
+
+
+def test_returns_invalid_years_for_none_instead_of_a_type_error():
+    assert calculate_rule_one_value(10, 10, 15, 10, None) == ValuationErr(
+        error="INVALID_YEARS"
+    )
+
+
+def test_returns_invalid_exit_pe_for_none_instead_of_a_type_error():
+    assert calculate_rule_one_value(10, 10, None, 10, 10) == ValuationErr(
+        error="INVALID_EXIT_PE"
+    )
+
+
+def test_returns_invalid_required_return_for_none_instead_of_a_type_error():
+    assert calculate_rule_one_value(10, 10, 15, None, 10) == ValuationErr(
+        error="INVALID_REQUIRED_RETURN"
+    )
+
+
+def test_treats_a_none_mos_percent_as_no_mos_not_an_error():
+    result = calculate_rule_one_value(10, 10, 15, 10, 10, None)
+    assert result.ok is True
+    assert result.fair_value == pytest.approx(150, abs=1e-6)
+    assert result.inputs.mos_percent == 0

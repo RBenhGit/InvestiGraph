@@ -1,0 +1,3 @@
+- [Pre-merge reviewer memory collection](pre-merge-reviewer-memory-collection.md) — the real memory index lives under legacy/financial_charts/.claude/, read it before reviewing.
+- [Valuation chain drops Money's currency tag](valuation-chain-drops-money-currency-tag.md) — resolve_eps/lynch/rule_one return untagged floats; statement currency vs market currency can silently mix.
+- [One-period fundamentals split the growth inputs](one-period-fundamentals-splits-growth-inputs.md) — historical CAGR needs ANNUAL, TTM growth needs QUARTERLY; one fetch can't feed both.

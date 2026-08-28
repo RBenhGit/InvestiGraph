@@ -28,10 +28,10 @@ class RuleOneInputsUsed(ValuationInputsUsed):
 def calculate_rule_one_value(
     eps_ttm: float | None,
     growth_rate_percent: float | None,
-    exit_pe_multiple: float,
-    required_return_percent: float,
-    years: int,
-    mos_percent: float = 0,
+    exit_pe_multiple: float | None,
+    required_return_percent: float | None,
+    years: int | float | None,
+    mos_percent: float | None = 0,
 ) -> ValuationOk[RuleOneInputsUsed] | ValuationErr:
     """Project EPS forward `years` at the (clamped) growth rate, apply an exit
     P/E multiple, discount back at `required_return_percent`.
@@ -43,6 +43,17 @@ def calculate_rule_one_value(
     Unlike `calculate_lynch_value`, a non-positive growth rate is not
     rejected here: compounding a positive EPS at a negative rate shrinks it
     without ever flipping the sign, so the result stays meaningful.
+
+    `exit_pe_multiple`, `required_return_percent`, `years`, and `mos_percent`
+    all accept `None` (not just the original TS's `undefined`) because
+    `history/models.py`'s `SavedValuation`/`ScenarioValuation` model every one
+    of them as optional -- a route re-valuing a saved record must get a typed
+    `INVALID_*`/graceful-default result here, not a `TypeError`. `years` also
+    accepts a whole-number `float` (e.g. `10.0`), because Pydantic coerces an
+    int assigned to `SavedValuation.years: float | None` on save/reload; the
+    original's `Number.isInteger(years)` already treated `10.0` and `10` as
+    the same value (JS has one number type), so this isn't a behavior change
+    from the original, only from a too-literal first port of it.
     """
     if eps_ttm is None or math.isnan(eps_ttm):
         return ValuationErr(error="MISSING_EPS")
@@ -50,12 +61,22 @@ def calculate_rule_one_value(
         return ValuationErr(error="NEGATIVE_OR_ZERO_EPS")
     if growth_rate_percent is None or math.isnan(growth_rate_percent):
         return ValuationErr(error="MISSING_GROWTH_RATE")
-    if not (exit_pe_multiple > 0):
+    if exit_pe_multiple is None or not (exit_pe_multiple > 0):
         return ValuationErr(error="INVALID_EXIT_PE")
-    if not (required_return_percent > 0):
+    if required_return_percent is None or not (required_return_percent > 0):
         return ValuationErr(error="INVALID_REQUIRED_RETURN")
-    if not isinstance(years, int) or isinstance(years, bool) or years <= 0:
+    if (
+        years is None
+        or isinstance(years, bool)
+        or not isinstance(years, (int, float))
+        or (isinstance(years, float) and not years.is_integer())
+        or years <= 0
+    ):
         return ValuationErr(error="INVALID_YEARS")
+    years = int(years)
+    # `None` means "omitted" here, same as the original's `undefined` default-parameter
+    # substitution -- both mean "no MoS", not "invalid MoS".
+    mos_percent = 0.0 if mos_percent is None else mos_percent
     if math.isnan(mos_percent) or mos_percent < 0 or mos_percent >= 100:
         return ValuationErr(error="INVALID_MOS")
 
