@@ -2,9 +2,9 @@ from datetime import date
 
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import draw_no_data, render_ratio_line
-from financial_charts.template.derived import BOOK_VALUE_PER_SHARE, resolve
-from financial_charts.template.models import CompanyFundamentals, Point
+from investigraph.charts.base import draw_no_data, render_ratio_line
+from investigraph.template.derived import BOOK_VALUE_PER_SHARE, resolve
+from investigraph.template.models import CompanyFundamentals, Point
 
 
 class ValuationChart:

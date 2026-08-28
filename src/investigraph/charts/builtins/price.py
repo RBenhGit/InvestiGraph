@@ -1,8 +1,8 @@
 import pandas as pd
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import currency_symbol
-from financial_charts.template.models import CompanyFundamentals
+from investigraph.charts.base import currency_symbol
+from investigraph.template.models import CompanyFundamentals
 
 _SMA_WINDOWS = (50, 150, 200)
 

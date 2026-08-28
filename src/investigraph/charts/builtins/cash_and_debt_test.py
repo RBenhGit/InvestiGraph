@@ -4,11 +4,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
-from financial_charts.charts.builtins.cash_and_debt import CashAndDebtChart
+from investigraph.charts.builtins.cash_and_debt import CashAndDebtChart
 
 
 def test_declares_cash_and_debt_as_required():

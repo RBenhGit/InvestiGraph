@@ -4,11 +4,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     ratio_series,
 )
-from financial_charts.charts.builtins.margins import MarginsChart
+from investigraph.charts.builtins.margins import MarginsChart
 
 
 def test_declares_gross_and_net_margin_as_required():

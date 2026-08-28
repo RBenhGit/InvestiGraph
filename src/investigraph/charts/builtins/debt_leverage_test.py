@@ -6,12 +6,12 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
-from financial_charts.charts.builtins.debt_leverage import DebtLeverageChart
-from financial_charts.template.models import Currency, MetricSeries, Money, Point, Unit
+from investigraph.charts.builtins.debt_leverage import DebtLeverageChart
+from investigraph.template.models import Currency, MetricSeries, Money, Point, Unit
 
 
 def test_declares_total_debt_and_equity_as_required():

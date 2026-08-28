@@ -1,11 +1,11 @@
 import argparse
 
-from financial_charts.web.app import create_app
+from investigraph.web.app import create_app
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="financial_charts.web",
+        prog="investigraph.web",
         description="Local web UI for Financial Charts (dev server, not for production).",
     )
     parser.add_argument("--host", default="127.0.0.1")

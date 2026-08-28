@@ -1,8 +1,8 @@
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import draw_no_data, render_ratio_line
-from financial_charts.template.derived import CURRENT_RATIO, resolve
-from financial_charts.template.models import CompanyFundamentals
+from investigraph.charts.base import draw_no_data, render_ratio_line
+from investigraph.template.derived import CURRENT_RATIO, resolve
+from investigraph.template.models import CompanyFundamentals
 
 
 class RatiosChart:

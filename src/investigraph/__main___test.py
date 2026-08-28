@@ -3,10 +3,10 @@ from unittest.mock import patch
 
 import pytest
 
-from financial_charts.__main__ import main
-from financial_charts.sources.base import Capability, MissingCredentials, TickerNotFound
-from financial_charts.sources.commission import CommissionCertificate, SampleResult
-from financial_charts.template.models import (
+from investigraph.__main__ import main
+from investigraph.sources.base import Capability, MissingCredentials, TickerNotFound
+from investigraph.sources.commission import CommissionCertificate, SampleResult
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,
@@ -67,7 +67,7 @@ def test_render_writes_html_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     out = tmp_path / "out.html"
 
-    with patch("financial_charts.__main__.get_source", return_value=_StubAdapter()):
+    with patch("investigraph.__main__.get_source", return_value=_StubAdapter()):
         code = main(["AAPL", "--out", str(out)])
 
     assert code == 0
@@ -79,7 +79,7 @@ def test_render_unknown_ticker_returns_error(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 
     with patch(
-        "financial_charts.__main__.get_source",
+        "investigraph.__main__.get_source",
         return_value=_StubAdapter(fetch_error=TickerNotFound("ZZZ")),
     ):
         code = main(["ZZZ", "--out", str(tmp_path / "out.html")])
@@ -92,7 +92,7 @@ def test_render_missing_credentials_returns_error(tmp_path, monkeypatch, capsys)
     monkeypatch.chdir(tmp_path)
 
     with patch(
-        "financial_charts.__main__.get_source",
+        "investigraph.__main__.get_source",
         side_effect=MissingCredentials("TWELVEDATA_API_KEY is not set"),
     ):
         code = main(
@@ -123,7 +123,7 @@ def test_render_uses_cache_before_fetching(tmp_path, monkeypatch):
             fetch_calls.append(ticker)
             return super().fetch(ticker, market, period, range)
 
-    with patch("financial_charts.__main__.get_source", return_value=_CountingAdapter()):
+    with patch("investigraph.__main__.get_source", return_value=_CountingAdapter()):
         main(["AAPL", "--out", str(tmp_path / "a.html")])
         main(["AAPL", "--out", str(tmp_path / "b.html")])
 
@@ -141,7 +141,7 @@ def test_render_normalizes_lowercase_ticker(tmp_path, monkeypatch):
             return super().fetch(ticker, market, period, range)
 
     with patch(
-        "financial_charts.__main__.get_source", return_value=_RecordingAdapter()
+        "investigraph.__main__.get_source", return_value=_RecordingAdapter()
     ):
         code = main(["aapl", "--out", str(out)])
 
@@ -153,7 +153,7 @@ def test_render_normalizes_lowercase_ticker(tmp_path, monkeypatch):
 def test_render_default_output_path_uses_normalized_ticker(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
-    with patch("financial_charts.__main__.get_source", return_value=_StubAdapter()):
+    with patch("investigraph.__main__.get_source", return_value=_StubAdapter()):
         code = main(["aapl"])
 
     assert code == 0
@@ -164,7 +164,7 @@ def test_render_with_charts_flag_selects_only_named_charts(tmp_path, monkeypatch
     monkeypatch.chdir(tmp_path)
     out = tmp_path / "out.html"
 
-    with patch("financial_charts.__main__.get_source", return_value=_StubAdapter()):
+    with patch("investigraph.__main__.get_source", return_value=_StubAdapter()):
         code = main(["AAPL", "--charts", "price", "--out", str(out)])
 
     assert code == 0
@@ -177,7 +177,7 @@ def test_render_with_duplicate_chart_ids_renders_each_chart_once(tmp_path, monke
     monkeypatch.chdir(tmp_path)
     out = tmp_path / "out.html"
 
-    with patch("financial_charts.__main__.get_source", return_value=_StubAdapter()):
+    with patch("investigraph.__main__.get_source", return_value=_StubAdapter()):
         code = main(["AAPL", "--charts", "price,price", "--out", str(out)])
 
     assert code == 0
@@ -221,7 +221,7 @@ def test_render_with_unknown_chart_set_returns_error_without_fetching(
             fetch_calls.append(ticker)
             return super().fetch(ticker, market, period, range)
 
-    with patch("financial_charts.__main__.get_source", return_value=_CountingAdapter()):
+    with patch("investigraph.__main__.get_source", return_value=_CountingAdapter()):
         code = main(
             [
                 "AAPL",
@@ -264,7 +264,7 @@ def test_render_ttm_period_is_rejected_before_fetching(tmp_path, monkeypatch, ca
             fetch_calls.append(ticker)
             return super().fetch(ticker, market, period, range)
 
-    with patch("financial_charts.__main__.get_source", return_value=_CountingAdapter()):
+    with patch("investigraph.__main__.get_source", return_value=_CountingAdapter()):
         code = main(["AAPL", "--period", "ttm", "--out", str(tmp_path / "out.html")])
 
     assert code == 1
@@ -277,14 +277,14 @@ def test_unrecognized_top_level_command_is_treated_as_ticker(
 ):
     # Documented residual limitation: a mistyped subcommand can't be told apart
     # from an unusual ticker without a mandatory verb, which would break the
-    # documented `financial_charts <TICKER> ...` invocation. This test pins
+    # documented `investigraph <TICKER> ...` invocation. This test pins
     # today's actual behavior rather than an aspirational one: "capabilites"
     # (a typo of "capabilities") is attempted as a fetch, not rejected as an
     # unknown command.
     monkeypatch.chdir(tmp_path)
     adapter = _StubAdapter(fetch_error=TickerNotFound("capabilites"))
 
-    with patch("financial_charts.__main__.get_source", return_value=adapter):
+    with patch("investigraph.__main__.get_source", return_value=adapter):
         code = main(["capabilites"])
 
     assert code == 1
@@ -303,7 +303,7 @@ def test_help_lists_every_subcommand(capsys):
 
 
 def test_verify_source_subcommand_dispatches(monkeypatch, capsys):
-    with patch("financial_charts.__main__.get_source", return_value=_StubAdapter()):
+    with patch("investigraph.__main__.get_source", return_value=_StubAdapter()):
         code = main(["verify-source", "yfinance", "--ticker", "AAPL"])
 
     assert code == 0
@@ -382,16 +382,16 @@ def test_commission_source_subcommand_dispatches(tmp_path, capsys):
     adapter = _StubAdapter()
 
     with (
-        patch("financial_charts.__main__.get_source", return_value=adapter),
+        patch("investigraph.__main__.get_source", return_value=adapter),
         patch(
-            "financial_charts.__main__.commission", return_value=_certificate()
+            "investigraph.__main__.commission", return_value=_certificate()
         ) as mock_commission,
         patch(
-            "financial_charts.__main__.capability_module_path",
+            "investigraph.__main__.capability_module_path",
             return_value=written_path,
         ),
         patch(
-            "financial_charts.__main__.write_capability_module",
+            "investigraph.__main__.write_capability_module",
             return_value=written_path,
         ) as mock_write,
     ):
@@ -410,12 +410,12 @@ def test_commission_source_subcommand_dispatches(tmp_path, capsys):
 
 def test_commission_source_forwards_range_flag(capsys):
     with (
-        patch("financial_charts.__main__.get_source", return_value=_StubAdapter()),
+        patch("investigraph.__main__.get_source", return_value=_StubAdapter()),
         patch(
-            "financial_charts.__main__.commission", return_value=_certificate()
+            "investigraph.__main__.commission", return_value=_certificate()
         ) as mock_commission,
-        patch("financial_charts.__main__.capability_module_path"),
-        patch("financial_charts.__main__.write_capability_module"),
+        patch("investigraph.__main__.capability_module_path"),
+        patch("investigraph.__main__.write_capability_module"),
     ):
         main(["commission-source", "yfinance", "--range", "10y"])
 
@@ -448,13 +448,13 @@ def _degenerate_certificate() -> CommissionCertificate:
 
 def test_commission_source_refuses_to_write_a_degenerate_certificate(capsys):
     with (
-        patch("financial_charts.__main__.get_source", return_value=_StubAdapter()),
+        patch("investigraph.__main__.get_source", return_value=_StubAdapter()),
         patch(
-            "financial_charts.__main__.commission",
+            "investigraph.__main__.commission",
             return_value=_degenerate_certificate(),
         ),
-        patch("financial_charts.__main__.capability_module_path"),
-        patch("financial_charts.__main__.write_capability_module") as mock_write,
+        patch("investigraph.__main__.capability_module_path"),
+        patch("investigraph.__main__.write_capability_module") as mock_write,
     ):
         code = main(["commission-source", "yfinance"])
 
@@ -465,7 +465,7 @@ def test_commission_source_refuses_to_write_a_degenerate_certificate(capsys):
 
 def test_commission_source_missing_credentials_returns_error(capsys):
     with patch(
-        "financial_charts.__main__.get_source",
+        "investigraph.__main__.get_source",
         side_effect=MissingCredentials("TWELVEDATA_API_KEY is not set"),
     ):
         code = main(["commission-source", "twelvedata"])

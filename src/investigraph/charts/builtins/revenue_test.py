@@ -4,11 +4,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
-from financial_charts.charts.builtins.revenue import RevenueChart
+from investigraph.charts.builtins.revenue import RevenueChart
 
 
 def test_declares_revenue_as_required():

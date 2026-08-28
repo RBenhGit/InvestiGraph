@@ -1,6 +1,6 @@
 import pytest
 
-from financial_charts.charts.catalog import available_charts, get_chart
+from investigraph.charts.catalog import available_charts, get_chart
 
 
 def test_available_charts_includes_all_builtins_and_fcf_margin():

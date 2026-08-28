@@ -3,8 +3,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from jinja2 import BaseLoader, Environment
 
-from financial_charts.dashboard.layout import render_chart_cards, render_grid_figure
-from financial_charts.template.models import CompanyFundamentals
+from investigraph.dashboard.layout import render_chart_cards, render_grid_figure
+from investigraph.template.models import CompanyFundamentals
 
 _PAGE_TEMPLATE = """<!doctype html>
 <html>

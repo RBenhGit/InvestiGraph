@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-_DEFAULT_STORE_DIR = Path(".cache") / "financial_charts"
+_DEFAULT_STORE_DIR = Path(".cache") / "investigraph"
 _FILENAME = "chart_sets.json"
 
 

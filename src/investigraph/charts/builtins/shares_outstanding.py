@@ -1,7 +1,7 @@
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import render_float_bar
-from financial_charts.template.models import CompanyFundamentals
+from investigraph.charts.base import render_float_bar
+from investigraph.template.models import CompanyFundamentals
 
 
 class SharesOutstandingChart:

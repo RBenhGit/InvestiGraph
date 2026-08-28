@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from financial_charts.template.trailing import (
+from investigraph.template.trailing import (
     DIVIDEND_YIELD_TTM,
     MARKET_CAP,
     PE_RATIO_TTM,
@@ -13,7 +13,7 @@ from financial_charts.template.trailing import (
     resolve_trailing,
     ttm_series,
 )
-from financial_charts.template.models import (
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,

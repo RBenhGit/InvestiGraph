@@ -1,7 +1,7 @@
 from datetime import date
 
-from financial_charts.sources.base import Capability, SourceUnavailable, TickerNotFound
-from financial_charts.sources.commission import (
+from investigraph.sources.base import Capability, SourceUnavailable, TickerNotFound
+from investigraph.sources.commission import (
     SAMPLE_TICKERS,
     CommissionCertificate,
     SampleResult,
@@ -10,7 +10,7 @@ from financial_charts.sources.commission import (
     is_degenerate,
     write_capability_module,
 )
-from financial_charts.template.models import (
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,

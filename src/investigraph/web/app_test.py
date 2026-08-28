@@ -7,11 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
-from financial_charts.charts.catalog import get_chart
-from financial_charts.charts.registry import register_chart_set
-from financial_charts.sources.base import MissingCredentials, TickerNotFound
-from financial_charts.web.chart_set_store import ChartSetStore
-from financial_charts.template.models import (
+from investigraph.charts.catalog import get_chart
+from investigraph.charts.registry import register_chart_set
+from investigraph.sources.base import MissingCredentials, TickerNotFound
+from investigraph.web.chart_set_store import ChartSetStore
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,
@@ -21,7 +21,7 @@ from financial_charts.template.models import (
     Point,
     Unit,
 )
-from financial_charts.web.app import create_app
+from investigraph.web.app import create_app
 
 
 def _fundamentals() -> CompanyFundamentals:
@@ -50,7 +50,7 @@ def _fundamentals() -> CompanyFundamentals:
 def client(tmp_path):
     # tmp_path-backed store: create_app() now bootstrap-loads persisted chart
     # sets on startup, and this suite must not read or write the real
-    # .cache/financial_charts/chart_sets.json on whatever machine runs it.
+    # .cache/investigraph/chart_sets.json on whatever machine runs it.
     return create_app(chart_set_store=ChartSetStore(tmp_path)).test_client()
 
 
@@ -66,7 +66,7 @@ def test_index_shows_the_form(client):
 
 def test_render_returns_dashboard_html(client):
     with patch(
-        "financial_charts.web.app.load_fundamentals", return_value=_fundamentals()
+        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
     ):
         response = client.get("/render?ticker=AAPL&source=yfinance")
 
@@ -84,7 +84,7 @@ def test_render_without_ticker_is_a_400(client):
 
 def test_render_unknown_ticker_shows_not_found(client):
     with patch(
-        "financial_charts.web.app.load_fundamentals",
+        "investigraph.web.app.load_fundamentals",
         side_effect=TickerNotFound("ZZZ"),
     ):
         response = client.get("/render?ticker=ZZZ")
@@ -95,7 +95,7 @@ def test_render_unknown_ticker_shows_not_found(client):
 
 def test_render_missing_credentials_names_env_var(client):
     with patch(
-        "financial_charts.web.app.get_source",
+        "investigraph.web.app.get_source",
         side_effect=MissingCredentials("TWELVEDATA_API_KEY is not set"),
     ):
         response = client.get("/render?ticker=AAPL&source=twelvedata")
@@ -132,7 +132,7 @@ def test_index_source_dropdown_reflects_the_live_registry(client):
     # registered (the same failure shape as the fixed registry-dicts-drift
     # bug, recurring in this sibling module).
     with patch(
-        "financial_charts.web.app.registered_sources",
+        "investigraph.web.app.registered_sources",
         return_value=["yfinance", "twelvedata", "acmedata"],
     ):
         response = client.get("/")
@@ -156,7 +156,7 @@ def test_index_chart_set_dropdown_reflects_the_live_registry(client):
 
 def test_render_with_charts_param_selects_only_named_charts(client):
     with patch(
-        "financial_charts.web.app.load_fundamentals", return_value=_fundamentals()
+        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
     ):
         response = client.get("/render?ticker=AAPL&charts=price")
 
@@ -175,7 +175,7 @@ def test_render_with_unknown_chart_param_shows_error(client):
 
 def test_render_with_duplicate_chart_params_renders_each_chart_once(client):
     with patch(
-        "financial_charts.web.app.load_fundamentals", return_value=_fundamentals()
+        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
     ):
         response = client.get("/render?ticker=AAPL&charts=price&charts=price")
 
@@ -185,7 +185,7 @@ def test_render_with_duplicate_chart_params_renders_each_chart_once(client):
 
 def test_render_with_empty_charts_param_falls_back_to_chart_set(client):
     with patch(
-        "financial_charts.web.app.load_fundamentals", return_value=_fundamentals()
+        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
     ):
         response = client.get("/render?ticker=AAPL&charts=")
 
@@ -194,7 +194,7 @@ def test_render_with_empty_charts_param_falls_back_to_chart_set(client):
 
 def test_render_normalizes_lowercase_ticker(client):
     with patch(
-        "financial_charts.web.app.load_fundamentals", return_value=_fundamentals()
+        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
     ) as mock_load:
         response = client.get("/render?ticker=aapl&charts=price")
 
@@ -224,7 +224,7 @@ def test_render_rejects_unsupported_range(client):
 
 
 def test_render_rejects_ttm_period_before_fetching(client):
-    with patch("financial_charts.web.app.load_fundamentals") as mock_load:
+    with patch("investigraph.web.app.load_fundamentals") as mock_load:
         response = client.get("/render?ticker=AAPL&period=ttm")
 
     assert response.status_code == 400
@@ -241,7 +241,7 @@ def test_render_rejects_unknown_chart_set(client):
 
 def test_chart_data_returns_dashboard_json(client):
     with patch(
-        "financial_charts.web.app.load_fundamentals", return_value=_fundamentals()
+        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
     ):
         response = client.get("/chart-data?ticker=AAPL&source=yfinance&charts=price")
 
@@ -263,7 +263,7 @@ def test_chart_data_without_ticker_is_a_400(client):
 
 def test_chart_data_unknown_ticker_shows_not_found(client):
     with patch(
-        "financial_charts.web.app.load_fundamentals",
+        "investigraph.web.app.load_fundamentals",
         side_effect=TickerNotFound("ZZZ"),
     ):
         response = client.get("/chart-data?ticker=ZZZ")
@@ -274,7 +274,7 @@ def test_chart_data_unknown_ticker_shows_not_found(client):
 
 def test_chart_data_missing_credentials_names_env_var(client):
     with patch(
-        "financial_charts.web.app.get_source",
+        "investigraph.web.app.get_source",
         side_effect=MissingCredentials("TWELVEDATA_API_KEY is not set"),
     ):
         response = client.get("/chart-data?ticker=AAPL&source=twelvedata")
@@ -306,7 +306,7 @@ def test_chart_data_rejects_unsupported_period(client):
 
 def test_chart_data_normalizes_lowercase_ticker(client):
     with patch(
-        "financial_charts.web.app.load_fundamentals", return_value=_fundamentals()
+        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
     ) as mock_load:
         response = client.get("/chart-data?ticker=aapl&charts=price")
 
@@ -380,7 +380,7 @@ def test_created_chart_set_persists_across_a_server_restart(tmp_path):
     )
 
     # A fresh create_app() call against the same on-disk store simulates
-    # restarting `python -m financial_charts.web` — the bootstrap loop in
+    # restarting `python -m investigraph.web` — the bootstrap loop in
     # create_app() should re-register what was saved above.
     second_run = create_app(chart_set_store=store).test_client()
     index_body = second_run.get("/").get_data(as_text=True)

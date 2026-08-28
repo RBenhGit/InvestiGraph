@@ -1,8 +1,8 @@
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import draw_no_data, render_percentage_line
-from financial_charts.template.models import CompanyFundamentals
-from financial_charts.template.trailing import ROE_TTM, resolve_trailing
+from investigraph.charts.base import draw_no_data, render_percentage_line
+from investigraph.template.models import CompanyFundamentals
+from investigraph.template.trailing import ROE_TTM, resolve_trailing
 
 
 class ReturnOnEquityChart:

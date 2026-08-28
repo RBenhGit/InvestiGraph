@@ -1,4 +1,4 @@
-from financial_charts.template.models import Currency
+from investigraph.template.models import Currency
 
 _CURRENCY_BY_CODE = {"USD": Currency.USD, "ILS": Currency.ILS}
 

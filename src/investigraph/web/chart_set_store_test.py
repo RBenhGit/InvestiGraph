@@ -1,6 +1,6 @@
 import json
 
-from financial_charts.web.chart_set_store import ChartSetStore
+from investigraph.web.chart_set_store import ChartSetStore
 
 
 def test_load_returns_empty_when_no_file_exists(tmp_path):

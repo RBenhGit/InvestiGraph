@@ -4,11 +4,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     ratio_series,
 )
-from financial_charts.charts.builtins.shares_outstanding import SharesOutstandingChart
+from investigraph.charts.builtins.shares_outstanding import SharesOutstandingChart
 
 
 def test_declares_shares_outstanding_as_required():

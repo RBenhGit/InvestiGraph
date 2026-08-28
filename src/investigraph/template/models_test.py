@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from financial_charts.template.models import (
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,

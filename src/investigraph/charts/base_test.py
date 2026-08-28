@@ -6,18 +6,18 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.base import (
+from investigraph.charts.base import (
     currency_symbol,
     render_or_no_data,
     render_percentage_line,
 )
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
     unavailable_series,
 )
-from financial_charts.charts.builtins.revenue import RevenueChart
-from financial_charts.template.models import Currency
+from investigraph.charts.builtins.revenue import RevenueChart
+from investigraph.template.models import Currency
 
 
 def test_renders_chart_when_metric_available():

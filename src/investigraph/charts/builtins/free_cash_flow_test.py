@@ -4,11 +4,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
-from financial_charts.charts.builtins.free_cash_flow import FreeCashFlowChart
+from investigraph.charts.builtins.free_cash_flow import FreeCashFlowChart
 
 
 def test_declares_free_cash_flow_as_required():

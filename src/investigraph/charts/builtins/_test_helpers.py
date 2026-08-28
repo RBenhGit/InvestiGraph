@@ -1,6 +1,6 @@
 from datetime import date
 
-from financial_charts.template.models import (
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,

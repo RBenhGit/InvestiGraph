@@ -2,7 +2,7 @@ from typing import Protocol
 
 from matplotlib.axes import Axes
 
-from financial_charts.template.models import CompanyFundamentals
+from investigraph.template.models import CompanyFundamentals
 
 
 class Chart(Protocol):

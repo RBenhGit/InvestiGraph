@@ -1,6 +1,6 @@
 import re
 
-from financial_charts.template.models import Market
+from investigraph.template.models import Market
 
 _VALID_TICKER = re.compile(r"^[A-Za-z0-9.\-]+$")
 

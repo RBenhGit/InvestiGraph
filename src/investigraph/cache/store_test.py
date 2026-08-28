@@ -1,7 +1,7 @@
 from datetime import date
 
-from financial_charts.cache.store import TemplateCache
-from financial_charts.template.models import (
+from investigraph.cache.store import TemplateCache
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,

@@ -6,13 +6,13 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
     ratio_series,
 )
-from financial_charts.charts.builtins.dividend_yield import DividendYieldChart
-from financial_charts.template.models import (
+from investigraph.charts.builtins.dividend_yield import DividendYieldChart
+from investigraph.template.models import (
     Currency,
     MetricSeries,
     Money,

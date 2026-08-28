@@ -23,9 +23,9 @@ from typing import Annotated, Callable, Literal
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from financial_charts.charts.base import currency_symbol
-from financial_charts.charts.registry import get_chart_set
-from financial_charts.template.derived import (
+from investigraph.charts.base import currency_symbol
+from investigraph.charts.registry import get_chart_set
+from investigraph.template.derived import (
     BOOK_VALUE_PER_SHARE,
     CURRENT_RATIO,
     DEBT_TO_EQUITY,
@@ -35,8 +35,8 @@ from financial_charts.template.derived import (
     DerivedMetric,
     resolve,
 )
-from financial_charts.template.models import CompanyFundamentals, Point
-from financial_charts.template.trailing import (
+from investigraph.template.models import CompanyFundamentals, Point
+from investigraph.template.trailing import (
     DIVIDEND_YIELD_TTM,
     MARKET_CAP,
     PE_RATIO_TTM,

@@ -1,5 +1,5 @@
-from financial_charts.charts.base import Chart
-from financial_charts.charts.catalog import get_chart
+from investigraph.charts.base import Chart
+from investigraph.charts.catalog import get_chart
 
 # Shared with __main__.py/web/app.py, which each build an ad-hoc set name as
 # CUSTOM_CHART_SET_PREFIX + ",".join(sorted(chart_ids)) for one-off

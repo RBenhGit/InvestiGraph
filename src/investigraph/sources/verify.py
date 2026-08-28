@@ -1,8 +1,8 @@
 from pydantic import BaseModel
 
-from financial_charts.sources.base import Capability, DataSource
-from financial_charts.sources.ranges import approx_years, range_years
-from financial_charts.template.models import (
+from investigraph.sources.base import Capability, DataSource
+from investigraph.sources.ranges import approx_years, range_years
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,

@@ -6,9 +6,9 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from financial_charts.sources.base import SourceUnavailable, TickerNotFound
-from financial_charts.sources.yfinance.adapter import YFinanceAdapter
-from financial_charts.template.models import Currency, Market, Period
+from investigraph.sources.base import SourceUnavailable, TickerNotFound
+from investigraph.sources.yfinance.adapter import YFinanceAdapter
+from investigraph.template.models import Currency, Market, Period
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -66,7 +66,7 @@ def _fetch_with_fixture(
     fixture_name: str, ticker: str, market: Market, period: Period, range: str
 ):
     with patch(
-        "financial_charts.sources.yfinance.adapter.yf.Ticker",
+        "investigraph.sources.yfinance.adapter.yf.Ticker",
         lambda _ticker: _FakeTicker(fixture_name),
     ):
         return YFinanceAdapter().fetch(ticker, market, period, range)
@@ -150,7 +150,7 @@ def test_price_series_skips_rows_with_a_nan_close():
     fixture._frames["history"] = history
 
     with patch(
-        "financial_charts.sources.yfinance.adapter.yf.Ticker",
+        "investigraph.sources.yfinance.adapter.yf.Ticker",
         lambda _ticker: fixture,
     ):
         fundamentals = YFinanceAdapter().fetch("AAPL", Market.US, Period.ANNUAL, "5y")
@@ -169,7 +169,7 @@ def test_unknown_ticker_raises_ticker_not_found():
             return pd.DataFrame()
 
     with patch(
-        "financial_charts.sources.yfinance.adapter.yf.Ticker",
+        "investigraph.sources.yfinance.adapter.yf.Ticker",
         lambda _ticker: _EmptyTicker(),
     ):
         with pytest.raises(TickerNotFound):
@@ -190,7 +190,7 @@ def test_network_failure_raises_source_unavailable():
             raise ConnectionError("network is down")
 
     with patch(
-        "financial_charts.sources.yfinance.adapter.yf.Ticker",
+        "investigraph.sources.yfinance.adapter.yf.Ticker",
         lambda _ticker: _BrokenTicker(),
     ):
         with pytest.raises(SourceUnavailable):

@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from financial_charts.sources.base import Capability
-from financial_charts.template.models import Market, Period
+from investigraph.sources.base import Capability
+from investigraph.template.models import Market, Period
 
 
 def _capability() -> Capability:

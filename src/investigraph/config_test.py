@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from financial_charts.config import data_source_name
+from investigraph.config import data_source_name
 
 
 def test_defaults_to_yfinance():

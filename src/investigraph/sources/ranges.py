@@ -3,7 +3,7 @@ picker, and both adapters (each of which also keeps its own range -> API-token
 mapping — a different concern from this shared vocabulary/years table).
 """
 
-from financial_charts.template.models import Period
+from investigraph.template.models import Period
 
 RANGES: tuple[str, ...] = ("6m", "1y", "3y", "5y", "10y", "max")
 

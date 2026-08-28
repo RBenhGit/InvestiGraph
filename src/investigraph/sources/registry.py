@@ -1,12 +1,12 @@
 from typing import NamedTuple
 
-from financial_charts.sources.base import Capability, DataSource
-from financial_charts.sources.twelvedata.adapter import TwelveDataAdapter
-from financial_charts.sources.twelvedata.capability import (
+from investigraph.sources.base import Capability, DataSource
+from investigraph.sources.twelvedata.adapter import TwelveDataAdapter
+from investigraph.sources.twelvedata.capability import (
     CAPABILITY as _TWELVEDATA_CAPABILITY,
 )
-from financial_charts.sources.yfinance.adapter import YFinanceAdapter
-from financial_charts.sources.yfinance.capability import (
+from investigraph.sources.yfinance.adapter import YFinanceAdapter
+from investigraph.sources.yfinance.capability import (
     CAPABILITY as _YFINANCE_CAPABILITY,
 )
 

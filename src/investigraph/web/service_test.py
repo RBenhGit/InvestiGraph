@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from financial_charts.sources.base import Capability, SourceUnavailable, TickerNotFound
-from financial_charts.template.models import (
+from investigraph.sources.base import Capability, SourceUnavailable, TickerNotFound
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,
@@ -14,7 +14,7 @@ from financial_charts.template.models import (
     Point,
     Unit,
 )
-from financial_charts.web import service
+from investigraph.web import service
 
 
 def _fundamentals(ticker: str = "AAPL") -> CompanyFundamentals:
@@ -62,7 +62,7 @@ class _StubAdapter:
 
 def test_load_fundamentals_merges_capability_limits(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    with patch("financial_charts.web.service.get_source", return_value=_StubAdapter()):
+    with patch("investigraph.web.service.get_source", return_value=_StubAdapter()):
         fundamentals = service.load_fundamentals(
             "AAPL", "yfinance", Period.ANNUAL, "10y"
         )
@@ -74,7 +74,7 @@ def test_load_fundamentals_merges_capability_limits(tmp_path, monkeypatch):
 def test_load_fundamentals_is_cache_first(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     adapter = _StubAdapter()
-    with patch("financial_charts.web.service.get_source", return_value=adapter):
+    with patch("investigraph.web.service.get_source", return_value=adapter):
         service.load_fundamentals("AAPL", "yfinance", Period.ANNUAL, "10y")
         service.load_fundamentals("AAPL", "yfinance", Period.ANNUAL, "10y")
 
@@ -84,7 +84,7 @@ def test_load_fundamentals_is_cache_first(tmp_path, monkeypatch):
 def test_capability_limits_are_merged_even_on_a_cache_hit(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     adapter = _StubAdapter()
-    with patch("financial_charts.web.service.get_source", return_value=adapter):
+    with patch("investigraph.web.service.get_source", return_value=adapter):
         service.load_fundamentals(
             "AAPL", "yfinance", Period.ANNUAL, "10y"
         )  # populate cache
@@ -97,7 +97,7 @@ def test_capability_limits_are_merged_even_on_a_cache_hit(tmp_path, monkeypatch)
 def test_load_fundamentals_propagates_ticker_not_found(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     adapter = _StubAdapter(fetch_error=TickerNotFound("ZZZ"))
-    with patch("financial_charts.web.service.get_source", return_value=adapter):
+    with patch("investigraph.web.service.get_source", return_value=adapter):
         with pytest.raises(TickerNotFound):
             service.load_fundamentals("ZZZ", "yfinance", Period.ANNUAL, "10y")
 
@@ -109,13 +109,13 @@ def test_load_fundamentals_falls_back_to_stale_cache_on_source_unavailable(
 
     # Seed a cache entry via a successful load, then a later fetch fails.
     good_adapter = _StubAdapter()
-    with patch("financial_charts.web.service.get_source", return_value=good_adapter):
+    with patch("investigraph.web.service.get_source", return_value=good_adapter):
         service.load_fundamentals("AAPL", "yfinance", Period.ANNUAL, "10y")
 
     failing_adapter = _StubAdapter(fetch_error=SourceUnavailable("boom"))
     with (
-        patch("financial_charts.web.service.get_source", return_value=failing_adapter),
-        patch("financial_charts.web.service.date") as fake_date,
+        patch("investigraph.web.service.get_source", return_value=failing_adapter),
+        patch("investigraph.web.service.date") as fake_date,
     ):
         fake_date.today.return_value = date(2030, 1, 1)  # miss today's key, force fetch
         fundamentals = service.load_fundamentals(

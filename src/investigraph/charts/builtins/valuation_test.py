@@ -6,9 +6,9 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import fundamentals_with
-from financial_charts.charts.builtins.valuation import ValuationChart
-from financial_charts.template.models import Currency, MetricSeries, Money, Point, Unit
+from investigraph.charts.builtins._test_helpers import fundamentals_with
+from investigraph.charts.builtins.valuation import ValuationChart
+from investigraph.template.models import Currency, MetricSeries, Money, Point, Unit
 
 
 def _price_series(

@@ -1,8 +1,8 @@
 import pytest
 
-from financial_charts.sources.base import Capability, UnsupportedPeriod
-from financial_charts.sources.validation import check_request, require_supported_period
-from financial_charts.template.models import Market, Period
+from investigraph.sources.base import Capability, UnsupportedPeriod
+from investigraph.sources.validation import check_request, require_supported_period
+from investigraph.template.models import Market, Period
 
 
 def _capability(**overrides) -> Capability:

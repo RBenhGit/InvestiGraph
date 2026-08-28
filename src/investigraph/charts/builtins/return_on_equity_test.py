@@ -6,12 +6,12 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
-from financial_charts.charts.builtins.return_on_equity import ReturnOnEquityChart
-from financial_charts.template.models import (
+from investigraph.charts.builtins.return_on_equity import ReturnOnEquityChart
+from investigraph.template.models import (
     Currency,
     MetricSeries,
     Money,

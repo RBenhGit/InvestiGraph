@@ -1,5 +1,5 @@
-from financial_charts.sources.base import Capability
-from financial_charts.template.models import Market, Period
+from investigraph.sources.base import Capability
+from investigraph.template.models import Market, Period
 
 # Twelve Data (paid tier): full US + TASE coverage with 10y history, metered by API credits.
 CAPABILITY = Capability(

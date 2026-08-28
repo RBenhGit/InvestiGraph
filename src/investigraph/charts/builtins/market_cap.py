@@ -1,8 +1,8 @@
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import currency_symbol, draw_no_data
-from financial_charts.template.models import CompanyFundamentals
-from financial_charts.template.trailing import MARKET_CAP, resolve_trailing
+from investigraph.charts.base import currency_symbol, draw_no_data
+from investigraph.template.models import CompanyFundamentals
+from investigraph.template.trailing import MARKET_CAP, resolve_trailing
 
 
 class MarketCapChart:

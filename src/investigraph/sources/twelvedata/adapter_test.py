@@ -5,14 +5,14 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from financial_charts.sources.base import (
+from investigraph.sources.base import (
     MissingCredentials,
     SourceUnavailable,
     TickerNotFound,
 )
-from financial_charts.sources.ranges import RANGES
-from financial_charts.sources.twelvedata.adapter import TwelveDataAdapter, _price_params
-from financial_charts.template.models import Currency, Market, Period
+from investigraph.sources.ranges import RANGES
+from investigraph.sources.twelvedata.adapter import TwelveDataAdapter, _price_params
+from investigraph.template.models import Currency, Market, Period
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -37,7 +37,7 @@ def _fetch_with_fixture(
 
     with (
         patch(
-            "financial_charts.sources.twelvedata.adapter.TwelveDataAdapter._get",
+            "investigraph.sources.twelvedata.adapter.TwelveDataAdapter._get",
             fake_get,
         ),
         patch.dict("os.environ", {"TWELVEDATA_API_KEY": "test-key"}),
@@ -121,7 +121,7 @@ def test_unknown_ticker_raises_ticker_not_found():
 
     with (
         patch(
-            "financial_charts.sources.twelvedata.adapter.TwelveDataAdapter._get",
+            "investigraph.sources.twelvedata.adapter.TwelveDataAdapter._get",
             fake_get,
         ),
         patch.dict("os.environ", {"TWELVEDATA_API_KEY": "test-key"}),
@@ -132,7 +132,7 @@ def test_unknown_ticker_raises_ticker_not_found():
 
 def test_missing_api_key_raises_missing_credentials():
     with (
-        patch("financial_charts.sources.twelvedata.adapter.load_dotenv"),
+        patch("investigraph.sources.twelvedata.adapter.load_dotenv"),
         patch.dict("os.environ", {}, clear=True),
     ):
         with pytest.raises(MissingCredentials):
@@ -150,7 +150,7 @@ def test_declares_capability():
 def test_transport_failure_raises_source_unavailable():
     with (
         patch(
-            "financial_charts.sources.twelvedata.adapter.requests.get",
+            "investigraph.sources.twelvedata.adapter.requests.get",
             side_effect=requests.ConnectionError("network is down"),
         ),
         patch.dict("os.environ", {"TWELVEDATA_API_KEY": "test-key"}),
@@ -181,7 +181,7 @@ def test_income_row_missing_fiscal_date_is_skipped_not_a_crash():
 
     with (
         patch(
-            "financial_charts.sources.twelvedata.adapter.TwelveDataAdapter._get",
+            "investigraph.sources.twelvedata.adapter.TwelveDataAdapter._get",
             fake_get,
         ),
         patch.dict("os.environ", {"TWELVEDATA_API_KEY": "test-key"}),
@@ -228,7 +228,7 @@ def test_price_params_reach_the_time_series_request():
 
     with (
         patch(
-            "financial_charts.sources.twelvedata.adapter.TwelveDataAdapter._get",
+            "investigraph.sources.twelvedata.adapter.TwelveDataAdapter._get",
             fake_get,
         ),
         patch.dict("os.environ", {"TWELVEDATA_API_KEY": "test-key"}),

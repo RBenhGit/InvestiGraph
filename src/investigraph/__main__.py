@@ -4,38 +4,38 @@ from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
-from financial_charts import chart_support, config
-from financial_charts.cache.store import TemplateCache
-from financial_charts.charts.catalog import get_chart
-from financial_charts.charts.registry import (
+from investigraph import chart_support, config
+from investigraph.cache.store import TemplateCache
+from investigraph.charts.catalog import get_chart
+from investigraph.charts.registry import (
     CUSTOM_CHART_SET_PREFIX,
     get_chart_set,
     register_chart_set,
 )
-from financial_charts.dashboard.render import write_output
-from financial_charts.sources.base import (
+from investigraph.dashboard.render import write_output
+from investigraph.sources.base import (
     Capability,
     MissingCredentials,
     SourceUnavailable,
     TickerNotFound,
     UnsupportedPeriod,
 )
-from financial_charts.sources.commission import (
+from investigraph.sources.commission import (
     capability_module_path,
     commission,
     is_degenerate,
     write_capability_module,
 )
-from financial_charts.sources.market import is_valid_ticker, market_of, normalize_ticker
-from financial_charts.sources.ranges import RANGES
-from financial_charts.sources.registry import (
+from investigraph.sources.market import is_valid_ticker, market_of, normalize_ticker
+from investigraph.sources.ranges import RANGES
+from investigraph.sources.registry import (
     get_capability,
     get_source,
     registered_sources,
 )
-from financial_charts.sources.validation import check_request, require_supported_period
-from financial_charts.sources.verify import reconcile
-from financial_charts.template.models import CompanyFundamentals, Market, Period
+from investigraph.sources.validation import check_request, require_supported_period
+from investigraph.sources.verify import reconcile
+from investigraph.template.models import CompanyFundamentals, Market, Period
 
 
 def _add_render_arguments(parser: argparse.ArgumentParser) -> None:
@@ -397,7 +397,7 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], int]] = {
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="financial_charts")
+    parser = argparse.ArgumentParser(prog="investigraph")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     render_parser = subparsers.add_parser(
@@ -415,14 +415,14 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
 
-    # `render` is the implicit default command, so `financial_charts AAPL ...`
+    # `render` is the implicit default command, so `investigraph AAPL ...`
     # keeps working without typing `render` explicitly; `-h`/`--help` and the
     # three other command names are left alone so top-level `--help` still
     # lists every command. This can't fully disambiguate a mistyped subcommand
-    # from an unusual ticker string (e.g. `financial_charts capabilites` is
+    # from an unusual ticker string (e.g. `investigraph capabilites` is
     # parsed as ticker "capabilites", not an error) — fully closing that would
     # require a mandatory verb, breaking the documented
-    # `financial_charts <TICKER> ...` CLI. What this does fix: one real
+    # `investigraph <TICKER> ...` CLI. What this does fix: one real
     # argparse parser (consistent errors, full --help) instead of three
     # hand-rolled throwaway ones.
     first = argv[0] if argv else None

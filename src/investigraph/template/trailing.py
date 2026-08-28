@@ -19,8 +19,8 @@ from functools import reduce
 from operator import add
 from typing import Callable
 
-from financial_charts.template.derived import ratio
-from financial_charts.template.models import (
+from investigraph.template.derived import ratio
+from investigraph.template.models import (
     CompanyFundamentals,
     Money,
     MetricSeries,

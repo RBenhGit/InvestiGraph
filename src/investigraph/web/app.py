@@ -2,29 +2,29 @@ from dataclasses import dataclass
 
 from flask import Flask, Response, jsonify, render_template, request
 
-from financial_charts import chart_support, config
-from financial_charts.charts.catalog import available_charts, get_chart
-from financial_charts.charts.registry import (
+from investigraph import chart_support, config
+from investigraph.charts.catalog import available_charts, get_chart
+from investigraph.charts.registry import (
     CUSTOM_CHART_SET_PREFIX,
     get_chart_set,
     register_chart_set,
     registered_chart_sets,
 )
-from financial_charts.dashboard.render import render_html
-from financial_charts.sources.base import (
+from investigraph.dashboard.render import render_html
+from investigraph.sources.base import (
     MissingCredentials,
     SourceUnavailable,
     TickerNotFound,
     UnsupportedPeriod,
 )
-from financial_charts.sources.market import is_valid_ticker, normalize_ticker
-from financial_charts.sources.ranges import RANGES
-from financial_charts.sources.registry import get_source, registered_sources
-from financial_charts.sources.validation import require_supported_period
-from financial_charts.template.models import CompanyFundamentals, Period
-from financial_charts.web.chart_data import ChartDataResponse, build_chart_specs
-from financial_charts.web.chart_set_store import ChartSetStore
-from financial_charts.web.service import load_fundamentals
+from investigraph.sources.market import is_valid_ticker, normalize_ticker
+from investigraph.sources.ranges import RANGES
+from investigraph.sources.registry import get_source, registered_sources
+from investigraph.sources.validation import require_supported_period
+from investigraph.template.models import CompanyFundamentals, Period
+from investigraph.web.chart_data import ChartDataResponse, build_chart_specs
+from investigraph.web.chart_set_store import ChartSetStore
+from investigraph.web.service import load_fundamentals
 
 # Submitted values are still validated by the real get_source/get_chart_set inside the
 # render path, so an unsupported value produces a proper error, not a blank.

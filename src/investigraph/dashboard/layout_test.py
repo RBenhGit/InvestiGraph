@@ -4,11 +4,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
-from financial_charts.dashboard.layout import render_chart_cards, render_grid_figure
+from investigraph.dashboard.layout import render_chart_cards, render_grid_figure
 
 
 def _fundamentals():

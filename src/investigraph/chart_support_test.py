@@ -1,11 +1,11 @@
-from financial_charts.chart_support import (
+from investigraph.chart_support import (
     capability_limits,
     chart_support,
     supported_by,
 )
-from financial_charts.charts.catalog import available_charts
-from financial_charts.sources.base import Capability
-from financial_charts.template.models import Market, Period
+from investigraph.charts.catalog import available_charts
+from investigraph.sources.base import Capability
+from investigraph.template.models import Market, Period
 
 
 class _StubChart:

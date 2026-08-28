@@ -4,11 +4,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
-from financial_charts.charts.builtins.net_income import NetIncomeChart
+from investigraph.charts.builtins.net_income import NetIncomeChart
 
 
 def test_declares_net_income_as_required():

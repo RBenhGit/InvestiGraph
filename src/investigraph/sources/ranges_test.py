@@ -1,7 +1,7 @@
 import pytest
 
-from financial_charts.sources.ranges import RANGES, approx_years, range_years
-from financial_charts.template.models import Period
+from investigraph.sources.ranges import RANGES, approx_years, range_years
+from investigraph.template.models import Period
 
 
 def test_range_years_covers_every_declared_range():

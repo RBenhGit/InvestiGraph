@@ -9,9 +9,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
-from financial_charts.charts.base import render_or_no_data
-from financial_charts.charts.registry import get_chart_set
-from financial_charts.template.models import CompanyFundamentals
+from investigraph.charts.base import render_or_no_data
+from investigraph.charts.registry import get_chart_set
+from investigraph.template.models import CompanyFundamentals
 
 _GRID_COLUMNS = 2
 _CARD_FIGSIZE = (5, 3.2)

@@ -2,15 +2,15 @@ from unittest.mock import patch
 
 import pytest
 
-from financial_charts.sources.base import MissingCredentials
-from financial_charts.sources.registry import (
+from investigraph.sources.base import MissingCredentials
+from investigraph.sources.registry import (
     get_capability,
     get_source,
     registered_sources,
 )
-from financial_charts.sources.twelvedata.adapter import TwelveDataAdapter
-from financial_charts.sources.yfinance.adapter import YFinanceAdapter
-from financial_charts.template.models import Period
+from investigraph.sources.twelvedata.adapter import TwelveDataAdapter
+from investigraph.sources.yfinance.adapter import YFinanceAdapter
+from investigraph.template.models import Period
 
 
 def test_resolves_yfinance():
@@ -24,7 +24,7 @@ def test_resolves_twelvedata_with_credentials():
 
 def test_twelvedata_without_credentials_raises_missing_credentials():
     with (
-        patch("financial_charts.sources.twelvedata.adapter.load_dotenv"),
+        patch("investigraph.sources.twelvedata.adapter.load_dotenv"),
         patch.dict("os.environ", {}, clear=True),
     ):
         with pytest.raises(MissingCredentials):

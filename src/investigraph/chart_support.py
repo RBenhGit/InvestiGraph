@@ -3,10 +3,10 @@ neither package has to import the other — `charts/` stays display-only and
 `sources/` stays data-only, matching the one-way pipeline in CLAUDE.md.
 """
 
-from financial_charts.charts.base import Chart
-from financial_charts.charts.catalog import available_charts
-from financial_charts.sources.base import Capability
-from financial_charts.sources.registry import get_capability, registered_sources
+from investigraph.charts.base import Chart
+from investigraph.charts.catalog import available_charts
+from investigraph.sources.base import Capability
+from investigraph.sources.registry import get_capability, registered_sources
 
 
 def supported_by(chart: Chart) -> frozenset[str]:

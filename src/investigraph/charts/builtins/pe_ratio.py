@@ -1,8 +1,8 @@
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import draw_no_data, render_ratio_line
-from financial_charts.template.models import CompanyFundamentals
-from financial_charts.template.trailing import PE_RATIO_TTM, resolve_trailing
+from investigraph.charts.base import draw_no_data, render_ratio_line
+from investigraph.template.models import CompanyFundamentals
+from investigraph.template.trailing import PE_RATIO_TTM, resolve_trailing
 
 
 class PERatioChart:

@@ -1,8 +1,8 @@
 from matplotlib.axes import Axes
 
-from financial_charts.charts.base import draw_no_data, render_percentage_line
-from financial_charts.template.derived import ROCE, ROIC, resolve
-from financial_charts.template.models import CompanyFundamentals
+from investigraph.charts.base import draw_no_data, render_percentage_line
+from investigraph.template.derived import ROCE, ROIC, resolve
+from investigraph.template.models import CompanyFundamentals
 
 
 class ReturnOnCapitalChart:

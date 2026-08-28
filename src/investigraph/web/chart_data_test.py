@@ -1,9 +1,9 @@
 import json
 from datetime import date, timedelta
 
-from financial_charts.charts.catalog import available_charts, get_chart
-from financial_charts.charts.registry import register_chart_set
-from financial_charts.template.models import (
+from investigraph.charts.catalog import available_charts, get_chart
+from investigraph.charts.registry import register_chart_set
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,
@@ -13,7 +13,7 @@ from financial_charts.template.models import (
     Point,
     Unit,
 )
-from financial_charts.web.chart_data import ChartDataResponse, build_chart_specs
+from investigraph.web.chart_data import ChartDataResponse, build_chart_specs
 
 # Local, independent fixture helpers (not charts/builtins/_test_helpers.py, which
 # is private to that package) — matches this module's own no-shared-internals design.

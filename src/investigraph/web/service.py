@@ -8,12 +8,12 @@ private code, by design.
 
 from datetime import date
 
-from financial_charts.cache.store import TemplateCache
-from financial_charts.sources.base import SourceUnavailable
-from financial_charts.sources.market import market_of
-from financial_charts.sources.registry import get_source
-from financial_charts.sources.validation import check_request
-from financial_charts.template.models import CompanyFundamentals, Period
+from investigraph.cache.store import TemplateCache
+from investigraph.sources.base import SourceUnavailable
+from investigraph.sources.market import market_of
+from investigraph.sources.registry import get_source
+from investigraph.sources.validation import check_request
+from investigraph.template.models import CompanyFundamentals, Period
 
 
 def load_fundamentals(

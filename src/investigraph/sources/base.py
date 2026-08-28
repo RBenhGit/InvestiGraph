@@ -2,7 +2,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from financial_charts.template.models import CompanyFundamentals, Market, Period
+from investigraph.template.models import CompanyFundamentals, Market, Period
 
 
 class Capability(BaseModel):

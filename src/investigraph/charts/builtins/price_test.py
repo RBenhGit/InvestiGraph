@@ -4,12 +4,12 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
-from financial_charts.charts.builtins.price import PriceChart
-from financial_charts.template.models import Currency
+from investigraph.charts.builtins.price import PriceChart
+from investigraph.template.models import Currency
 
 
 def test_declares_price_as_required():

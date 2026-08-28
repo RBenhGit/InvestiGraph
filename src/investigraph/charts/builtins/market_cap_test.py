@@ -4,13 +4,13 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
     ratio_series,
     unavailable_series,
 )
-from financial_charts.charts.builtins.market_cap import MarketCapChart
+from investigraph.charts.builtins.market_cap import MarketCapChart
 
 
 def test_declares_price_and_shares_outstanding_as_required():

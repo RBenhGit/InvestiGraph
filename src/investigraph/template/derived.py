@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Callable
 
-from financial_charts.template.models import (
+from investigraph.template.models import (
     CompanyFundamentals,
     Money,
     MetricSeries,

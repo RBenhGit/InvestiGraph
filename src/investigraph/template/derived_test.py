@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from financial_charts.template.derived import (
+from investigraph.template.derived import (
     BOOK_VALUE_PER_SHARE,
     CURRENT_RATIO,
     DEBT_TO_EQUITY,
@@ -13,7 +13,7 @@ from financial_charts.template.derived import (
     ratio,
     resolve,
 )
-from financial_charts.template.models import (
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,

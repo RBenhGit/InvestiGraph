@@ -3,15 +3,15 @@ import os
 import requests
 from dotenv import load_dotenv
 
-from financial_charts.sources.base import (
+from investigraph.sources.base import (
     Capability,
     MissingCredentials,
     SourceUnavailable,
     TickerNotFound,
 )
-from financial_charts.sources.currency import AGOROT_CODE, map_currency
-from financial_charts.sources.twelvedata.capability import CAPABILITY
-from financial_charts.template.models import (
+from investigraph.sources.currency import AGOROT_CODE, map_currency
+from investigraph.sources.twelvedata.capability import CAPABILITY
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,

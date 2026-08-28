@@ -2,9 +2,9 @@ import os
 from datetime import date
 from pathlib import Path
 
-from financial_charts.template.models import CompanyFundamentals, Period
+from investigraph.template.models import CompanyFundamentals, Period
 
-_DEFAULT_CACHE_DIR = Path(".cache") / "financial_charts"
+_DEFAULT_CACHE_DIR = Path(".cache") / "investigraph"
 
 
 def _key(ticker: str, source: str, period: Period, range: str, as_of: date) -> str:

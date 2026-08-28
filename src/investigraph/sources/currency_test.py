@@ -1,5 +1,5 @@
-from financial_charts.sources.currency import AGOROT_CODE, map_currency
-from financial_charts.template.models import Currency
+from investigraph.sources.currency import AGOROT_CODE, map_currency
+from investigraph.template.models import Currency
 
 
 def test_agorot_maps_to_ils():

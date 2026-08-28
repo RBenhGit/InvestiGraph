@@ -4,11 +4,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from financial_charts.charts.builtins._test_helpers import (
+from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
-from financial_charts.charts.builtins.dividends import DividendsChart
+from investigraph.charts.builtins.dividends import DividendsChart
 
 
 def test_declares_dividends_paid_as_required():

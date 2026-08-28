@@ -1,5 +1,5 @@
-from financial_charts.sources.base import Capability
-from financial_charts.template.models import Market, Period
+from investigraph.sources.base import Capability
+from investigraph.template.models import Market, Period
 
 # yfinance (free tier): strong US coverage, TASE prices work but fundamentals are
 # sparse/inconsistent per-ticker (see CLAUDE.md "TASE unit trap" and gotchas). The

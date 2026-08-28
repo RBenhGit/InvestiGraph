@@ -1,6 +1,6 @@
 import pytest
 
-from financial_charts.charts.registry import (
+from investigraph.charts.registry import (
     CUSTOM_CHART_SET_PREFIX,
     get_chart_set,
     register_chart_set,

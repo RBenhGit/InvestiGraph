@@ -1,5 +1,5 @@
-from financial_charts.sources.market import is_valid_ticker, market_of, normalize_ticker
-from financial_charts.template.models import Market
+from investigraph.sources.market import is_valid_ticker, market_of, normalize_ticker
+from investigraph.template.models import Market
 
 
 def test_ta_suffix_routes_to_tase():

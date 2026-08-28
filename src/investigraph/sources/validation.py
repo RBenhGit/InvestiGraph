@@ -1,6 +1,6 @@
-from financial_charts.sources.base import Capability, UnsupportedPeriod
-from financial_charts.sources.ranges import range_years
-from financial_charts.template.models import Market, Period
+from investigraph.sources.base import Capability, UnsupportedPeriod
+from investigraph.sources.ranges import range_years
+from investigraph.template.models import Market, Period
 
 
 def require_supported_period(capability: Capability, period: Period) -> None:

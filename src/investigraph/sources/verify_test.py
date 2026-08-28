@@ -1,8 +1,8 @@
 from datetime import date
 
-from financial_charts.sources.base import Capability
-from financial_charts.sources.verify import reconcile
-from financial_charts.template.models import (
+from investigraph.sources.base import Capability
+from investigraph.sources.verify import reconcile
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,

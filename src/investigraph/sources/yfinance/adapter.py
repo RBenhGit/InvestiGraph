@@ -1,10 +1,10 @@
 import pandas as pd
 import yfinance as yf
 
-from financial_charts.sources.base import Capability, SourceUnavailable, TickerNotFound
-from financial_charts.sources.currency import AGOROT_CODE, map_currency
-from financial_charts.sources.yfinance.capability import CAPABILITY
-from financial_charts.template.models import (
+from investigraph.sources.base import Capability, SourceUnavailable, TickerNotFound
+from investigraph.sources.currency import AGOROT_CODE, map_currency
+from investigraph.sources.yfinance.capability import CAPABILITY
+from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
     Market,
