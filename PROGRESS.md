@@ -81,8 +81,72 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
       saved 3 records, got 2 back). Fixed by switching to nanosecond resolution
       (`time.time_ns()`) — confirmed the id is never parsed, only compared for equality or
       URL-encoded, so nothing depends on its exact format.
+- [x] **Convergence review (before Phase 7).** `code-reviewer` reviewed the combined
+      Phase 4–6 diff (`2835e70..HEAD` at review time) for cross-slice consistency — the thing
+      individual per-phase reviews can't catch. Verdict: no scope creep, no logic errors in any
+      one slice, "needs a decision, not a rewrite." One Critical bug found and fixed, two
+      Warnings fixed, two more Warnings are Phase 7 integration decisions (documented below,
+      not code bugs in the merged slices). Full findings + fixes:
+      - **Critical, fixed (`6514285`):** `valuation/resolve_eps.py` unwrapped `eps`'s
+        `Money` via `as_base_units()`, discarding its currency tag. `eps` can legitimately be
+        tagged with a different currency than `fundamentals.currency` (a dual-listed company
+        reporting financials in a currency other than the one its shares trade in — e.g. a USD
+        income statement for a TASE ticker whose price is ILS; see `template/models.py`'s
+        `CompanyFundamentals` docstring, which already anticipated this). Silently combining a
+        USD `eps_ttm` with an ILS price would produce a plausible-looking wrong fair value/
+        upside% — the same defect class the codebase's own `Money.require_same_currency` guard
+        exists to prevent everywhere else `Money` values are combined. Fixed: `resolve_eps()`
+        now refuses (`None`) when `eps`'s currency doesn't match `fundamentals.currency` — no
+        FX conversion is a stated architectural constraint, so there's no "convert and proceed"
+        option. `ResolvedEps` gained a `currency` field so a future caller has what it needs
+        without re-deriving it. Regression test added (`test_returns_none_when_eps_currency_does_not_match_fundamentals_currency`).
+      - **Warning, fixed:** `valuation/rule_one/calculate.py`'s parameter validation was
+        stricter than the storage types that will feed it in Phase 7 —
+        `history/models.py`'s `SavedValuation`/`ScenarioValuation` model `exit_pe_multiple`/
+        `required_return_percent`/`mos_percent`/`years` as `float | None`, but
+        `calculate_rule_one_value` raised `TypeError` on `None` (confirmed: `None > 0`,
+        `math.isnan(None)`) and rejected a whole-number `float` like `10.0` for `years`
+        (`isinstance(years, int)` is `False` for a float, even though Pydantic coerces
+        `years=10` to `10.0` on save, and the original TS's `Number.isInteger(10.0)` already
+        accepted it). Fixed: `None` now returns the appropriate typed `INVALID_*` error (or,
+        for `mos_percent`, is treated as "no MoS," matching the original's JS `undefined`-
+        default-parameter behavior) instead of raising; `years` accepts an `int` or a
+        whole-number `float`. 6 regression tests added.
+      - **Warning, fixed (cheap, docstring-only):** `sources/yahoo_consensus/models.py`'s
+        `next_year_eps_growth_percent` and `valuation/growth.py`'s `analyst_estimate_5y_percent`
+        slot have similar names (both "analyst growth estimate") but are strictly different —
+        different horizon (+1y vs. 5y) and, in the original, strictly separate (the chain used
+        Twelve Data's `growth_estimates`; Yahoo's was display-only). Wiring the Yahoo field into
+        the chain would silently change every fair value in a way the CLI/web parity check
+        can't catch, since both would drift together. Both files now say so explicitly.
+      - **Warning, NOT a code fix — Phase 7 must fetch `Period.ANNUAL` for the valuation panel,
+        independent of the chart grid's period.** `growth.py`'s `historical_1y`/`historical_3y`
+        functions only return non-`None` for `Period.ANNUAL` fundamentals (correct, defensive
+        behavior — not a bug); since `analyst_estimate_5y_percent` is permanently `None` in this
+        merge, a quarterly or TTM chart-grid fetch would collapse the entire growth chain to
+        `None` → `MISSING_GROWTH_RATE` for all three scenarios. The period picker exposes every
+        `Period` value (`web/app.py`), and the default is `annual`, so a defaults-only test of
+        the end-to-end acceptance check won't catch this — Phase 7 needs its own annual fetch
+        for the valuation panel, not a reuse of whatever period the chart grid happened to
+        request.
+      - **Note for Phase 7, not a bug:** `history/store.py`'s `read_history_file` can raise
+        bare `json.JSONDecodeError`/`OSError` (documented in its own docstring) that aren't in
+        the typed-exception set (`InvalidHistoryInput`, `ValuationNotFound`) Phase 7's route
+        error-mapping is expected to catch. A corrupt `history.json` would become an unhandled
+        Flask 500 instead of the typed JSON error shape `valuations.js` expects to parse. Phase
+        7's exception handling for the history routes needs a catch-all, not just the two typed
+        exceptions.
+      - **9 candidate findings reviewed and dropped** as non-issues (verified, not just
+        asserted) — including a claimed camelCase/snake_case data-loss risk reading
+        `history.json` (no such file exists in this environment to lose), a claimed cache-path
+        collision in `yahoo_consensus/cache.py` (the glob it was compared against is
+        non-recursive; no collision), and `calculate_ttm_eps_growth_percent` having no caller
+        (it has a real consumer in the original, so it isn't speculative code).
+      Full suite after all fixes: 430 passed (422 + 8 new regression tests).
 - [ ] **Phase 7 — Converge and build the merged web app.** Starts only after 4–6 merge to
-      trunk and pass a combined `code-reviewer` pass.
+      trunk and pass a combined `code-reviewer` pass. Convergence review done (above) — ready
+      to start. Must incorporate the two "not a code fix" items above as design constraints,
+      not discover them mid-implementation.
 - [ ] **Phase 8 — Front-end tests.** Wire vitest as a dev dependency; `scripts/test.sh` runs
       both suites, invoking Node 22 explicitly (see the resolved Node-version item below).
 - [ ] **Phase 9 — Harness, docs, cleanup.** Merge `.claude/`, prune `CLAUDE.md`, retire the
