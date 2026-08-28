@@ -1,46 +1,62 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Financial Charts</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>InvestiGraph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
+/>
+<link rel="stylesheet" href="/static/style.css" />
 <style>
-  :root {
-    color-scheme: light dark;
-    --surface: #fcfcfb;
-    --page: #f9f9f7;
-    --ink: #0b0b0b;
-    --ink-secondary: #52514e;
-    --ink-muted: #898781;
-    --border: rgba(11, 11, 11, 0.10);
-    --error: #a33;
+  /* Chart-grid styles, scoped under #chart-section. FC's original page defined
+     :root custom properties (--surface/--ink/--border/--page/--error) and
+     classes (.card, .field) that collide by name with Fair Value Ledger's
+     verbatim style.css -- prefixed --chart-* here and every selector scoped
+     under #chart-section so the two design systems stay fully independent
+     regardless of which stylesheet loads first in the cascade. */
+  #chart-section {
+    --chart-surface: #fcfcfb;
+    --chart-page: #f9f9f7;
+    --chart-ink: #0b0b0b;
+    --chart-ink-secondary: #52514e;
+    --chart-ink-muted: #898781;
+    --chart-border: rgba(11, 11, 11, 0.10);
+    --chart-error: #a33;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --surface: #1a1a19;
-      --page: #0d0d0d;
-      --ink: #ffffff;
-      --ink-secondary: #c3c2b7;
-      --border: rgba(255, 255, 255, 0.10);
-      --error: #e66767;
+    #chart-section {
+      --chart-surface: #1a1a19;
+      --chart-page: #0d0d0d;
+      --chart-ink: #ffffff;
+      --chart-ink-secondary: #c3c2b7;
+      --chart-border: rgba(255, 255, 255, 0.10);
+      --chart-error: #e66767;
     }
   }
-  body { font-family: system-ui, sans-serif; margin: 0; background: var(--page); color: var(--ink); }
-  header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); }
-  h1 { margin: 0 0 0.75rem; font-size: 1.25rem; }
-  form { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
-  .field { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
-  input, select, button { padding: 0.4rem 0.5rem; font-size: 0.9rem; }
-  button { cursor: pointer; }
-  /* Closed by default (just the <summary> line, same height as the other
-     fields) so it doesn't dominate the form's height; opens as a floating,
-     scrollable panel that overlays rather than pushing sibling fields down. */
+  #chart-section {
+    background: var(--chart-page);
+    color: var(--chart-ink);
+    font-family: system-ui, sans-serif;
+    border-radius: 8px;
+    margin: 1.5rem 0;
+  }
+  #dashboard-form { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
+
+  /* Chart picker <details> lives in the shared hero form, outside
+     #chart-section -- uses the Fair Value Ledger's own --surface/--line/--bad
+     variables (already defined at :root by style.css) rather than the
+     --chart-* ones above, which are only in scope inside #chart-section. */
   details.chart-picker {
     position: relative;
-    border: 1px solid var(--border);
+    border: 1px solid var(--line);
     border-radius: 4px;
     padding: 0.4rem 0.6rem;
     font-size: 0.85rem;
+    font-family: system-ui, sans-serif;
   }
   details.chart-picker summary { cursor: pointer; white-space: nowrap; }
   .chart-picker-panel {
@@ -52,7 +68,7 @@
     flex-direction: column;
     gap: 0.5rem;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--line);
     border-radius: 4px;
     padding: 0.5rem 0.75rem;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -66,73 +82,311 @@
   }
   .chart-picker-checkboxes label { display: flex; align-items: center; gap: 0.3rem; padding: 0; font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chart-picker-checkboxes input[type="checkbox"] { padding: 0; flex-shrink: 0; }
-  .chart-picker-save { display: flex; align-items: center; gap: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--border); }
+  .chart-picker-save { display: flex; align-items: center; gap: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--line); }
   .chart-picker-save input[type="text"] { flex: 1; min-width: 0; }
   .chart-picker-save button { white-space: nowrap; }
   .chart-picker-save-message { font-size: 0.8rem; min-height: 1em; }
-  .chart-picker-save-message.error { color: var(--error); }
-  .chart-picker-save-message.success { color: var(--ink-secondary); }
+  .chart-picker-save-message.error { color: var(--bad); }
+  .chart-picker-save-message.success { color: var(--ink-soft); }
 
   #results { padding: 1.5rem; transition: opacity 0.15s ease; }
   #results.loading { opacity: 0.5; }
-  .hint { color: var(--ink-muted); }
-  .results-header { margin: 0 0 1rem; font-size: 1.1rem; }
-  .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
-  .card { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; background: var(--surface); }
-  .card h3 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--ink-secondary); }
-  .card .plot { width: 100%; height: 260px; }
-  .no-data { display: flex; align-items: center; justify-content: center; height: 260px; color: var(--ink-muted); }
-  .limits { margin-top: 1.5rem; color: var(--error); }
-  .error-banner { color: var(--error); font-size: 1rem; padding: 0.75rem 0; }
+  #chart-section .hint { color: var(--chart-ink-muted); }
+  #chart-section .results-header { margin: 0 0 1rem; font-size: 1.1rem; padding: 0 1.5rem; }
+  #chart-section .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; padding: 0 1.5rem 1.5rem; }
+  #chart-section .card { border: 1px solid var(--chart-border); border-radius: 8px; padding: 1rem; background: var(--chart-surface); }
+  #chart-section .card h3 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--chart-ink-secondary); }
+  #chart-section .card .plot { width: 100%; height: 260px; }
+  #chart-section .no-data { display: flex; align-items: center; justify-content: center; height: 260px; color: var(--chart-ink-muted); }
+  #chart-section .limits { margin-top: 1.5rem; color: var(--chart-error); padding: 0 1.5rem 1.5rem; }
+  #chart-section .error-banner { color: var(--chart-error); font-size: 1rem; padding: 0.75rem 1.5rem; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Financial Charts</h1>
-  <form id="dashboard-form">
-    <label class="field">Ticker
-      <input name="ticker" placeholder="AAPL or TEVA.TA" required autofocus>
-    </label>
-    <label class="field">Source
-      <select name="source">
-        {% for s in sources %}<option value="{{ s }}" {{ 'selected' if s == defaults.source }}>{{ s }}</option>{% endfor %}
-      </select>
-    </label>
-    <label class="field">Period
-      <select name="period">
-        {% for p in periods %}<option value="{{ p }}" {{ 'selected' if p == defaults.period }}>{{ p }}</option>{% endfor %}
-      </select>
-    </label>
-    <label class="field">Range
-      <select name="range">
-        {% for r in ranges %}<option value="{{ r }}" {{ 'selected' if r == defaults.range }}>{{ r }}</option>{% endfor %}
-      </select>
-    </label>
-    <label class="field">Chart set
-      <select name="chart_set">
-        {% for c in chart_sets %}<option value="{{ c }}" {{ 'selected' if c == defaults.chart_set }}>{{ c }}</option>{% endfor %}
-      </select>
-    </label>
-    <details class="chart-picker">
-      <summary>Charts (optional — overrides Chart set)</summary>
-      <div class="chart-picker-panel">
-        <div class="chart-picker-checkboxes">
-          {% for c in charts %}
-          <label title="Supported by: {{ chart_support[c.name] | join(', ') }}"><input type="checkbox" name="charts" value="{{ c.name }}" {{ 'checked' if c.name in default_chart_names }}> {{ c.title }}</label>
-          {% endfor %}
-        </div>
-        <div class="chart-picker-save">
-          <input type="text" id="new-set-name" placeholder="New set name">
-          <button type="button" id="save-set-button">Save as new set</button>
-        </div>
-        <div id="save-set-message" class="chart-picker-save-message"></div>
+<div class="masthead-bar"></div>
+<div class="masthead">
+  <div class="wrap masthead-inner">
+    <div class="wordmark">
+      InvestiGraph <small>FUNDAMENTALS &amp; FAIR VALUE</small>
+    </div>
+    <div class="method-key">
+      <a href="/static/valuations.html" class="about-link" style="margin-right: 15px;">All Valuations</a>
+      <span class="method-key-chip a"><span class="dot"></span>Rule #1</span>
+      <span class="method-key-chip b"><span class="dot"></span>Peter Lynch</span>
+      <a href="/static/about.html" class="about-link">About</a>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="hero">
+    <p class="lede">
+      Enter a ticker to render its fundamentals dashboard and compare two EPS-growth &times;
+      multiple fair value estimates side by side.
+    </p>
+
+    <div class="querybar">
+      <div class="querybar-left">
+        <form id="dashboard-form" class="ticker-form">
+          <div class="field">
+            <label class="label" for="ticker-input">Ticker</label>
+            <input
+              id="ticker-input"
+              name="ticker"
+              class="ticker-input"
+              type="text"
+              placeholder="AAPL or TEVA.TA"
+              autocomplete="off"
+              required
+              autofocus
+            />
+          </div>
+          <div class="field">
+            <label class="label" for="source-select">Source</label>
+            <select id="source-select" name="source" class="assumption-input assumption-select">
+              {% for s in sources %}<option value="{{ s }}" {{ 'selected' if s == defaults.source }}>{{ s }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label class="label" for="period-select">Period</label>
+            <select id="period-select" name="period" class="assumption-input assumption-select">
+              {% for p in periods %}<option value="{{ p }}" {{ 'selected' if p == defaults.period }}>{{ p }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label class="label" for="range-select">Range</label>
+            <select id="range-select" name="range" class="assumption-input assumption-select">
+              {% for r in ranges %}<option value="{{ r }}" {{ 'selected' if r == defaults.range }}>{{ r }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label class="label" for="chart-set-select">Chart set</label>
+            <select id="chart-set-select" name="chart_set" class="assumption-input assumption-select">
+              {% for c in chart_sets %}<option value="{{ c }}" {{ 'selected' if c == defaults.chart_set }}>{{ c }}</option>{% endfor %}
+            </select>
+          </div>
+          <details class="chart-picker">
+            <summary>Charts (optional &mdash; overrides Chart set)</summary>
+            <div class="chart-picker-panel">
+              <div class="chart-picker-checkboxes">
+                {% for c in charts %}
+                <label title="Supported by: {{ chart_support[c.name] | join(', ') }}"><input type="checkbox" name="charts" value="{{ c.name }}" {{ 'checked' if c.name in default_chart_names }}> {{ c.title }}</label>
+                {% endfor %}
+              </div>
+              <div class="chart-picker-save">
+                <input type="text" id="new-set-name" placeholder="New set name">
+                <button type="button" id="save-set-button">Save as new set</button>
+              </div>
+              <div id="save-set-message" class="chart-picker-save-message"></div>
+            </div>
+          </details>
+          <button id="go-btn" class="go-btn" type="submit">Go</button>
+        </form>
+        <button id="refresh-btn" class="refresh-btn" type="button" title="Fetch fresh live data from market">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+          Refresh live data
+        </button>
       </div>
-    </details>
-    <button type="submit">Render</button>
-  </form>
-</header>
-<script type="application/json" id="chart-set-members">{{ chart_set_members | tojson }}</script>
-<div id="results"><p class="hint">Enter a ticker to render its dashboard.</p></div>
+    </div>
+
+    <div class="assumptions-line">
+      <span class="assumption-item" title="TTM GAAP EPS from API — not editable">
+        EPS
+        <input id="eps-input" class="assumption-input" type="number" step="0.01" placeholder="Auto" readonly disabled />
+      </span>
+      <span class="assumption-item">
+        Years
+        <input id="years-input" class="assumption-input" type="number" step="1" value="10" />
+      </span>
+      <span class="assumption-item">
+        MoS
+        <select id="mos-select" class="assumption-input assumption-select">
+          <option value="0">0%</option>
+          <option value="10">10%</option>
+          <option value="25" selected>25%</option>
+          <option value="50">50%</option>
+        </select>
+      </span>
+      <span class="assumptions-spacer"></span>
+      <span class="growth-label">GROWTH &mdash;</span>
+      <div id="growth-chips" class="chips"></div>
+    </div>
+
+    <div class="scenario-assumptions" id="scenario-assumptions">
+      <div class="scenario-assumptions-row scenario-assumptions-head">
+        <span></span>
+        <span class="label">Growth</span>
+        <span class="label">Exit P/E</span>
+        <span class="label">Req. return</span>
+      </div>
+      <div class="scenario-assumptions-row">
+        <span class="scenario-assumptions-name bear-col">Bear</span>
+        <span class="pct-input"><input id="bear-growth-input" class="assumption-input" type="number" step="0.01" />%</span>
+        <input id="bear-exit-pe-input" class="assumption-input" type="number" step="0.1" value="10" />
+        <span class="pct-input"><input id="bear-required-return-input" class="assumption-input" type="number" step="0.1" value="15" />%</span>
+      </div>
+      <div class="scenario-assumptions-row">
+        <span class="scenario-assumptions-name base-col">Base</span>
+        <span class="pct-input"><input id="growth-input" class="assumption-input" type="number" step="0.01" />%</span>
+        <input id="exit-pe-input" class="assumption-input" type="number" step="0.1" value="15" />
+        <span class="pct-input"><input id="required-return-input" class="assumption-input" type="number" step="0.1" value="15" />%</span>
+      </div>
+      <div class="scenario-assumptions-row">
+        <span class="scenario-assumptions-name bull-col">Bull</span>
+        <span class="pct-input"><input id="bull-growth-input" class="assumption-input" type="number" step="0.01" />%</span>
+        <input id="bull-exit-pe-input" class="assumption-input" type="number" step="0.1" value="20" />
+        <span class="pct-input"><input id="bull-required-return-input" class="assumption-input" type="number" step="0.1" value="12" />%</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="error-card" class="card" hidden></div>
+
+  <div id="chart-section">
+    <script type="application/json" id="chart-set-members">{{ chart_set_members | tojson }}</script>
+    <h2 class="results-header hint" id="chart-results-heading">Fundamentals dashboard</h2>
+    <div id="results"><p class="hint">Enter a ticker to render its dashboard.</p></div>
+  </div>
+
+  <div id="result" hidden>
+    <div class="panel-heading">Reference data — not used in either valuation method</div>
+    <div class="panels">
+      <div class="panel panel-a">
+        <div class="panel-title">EPS growth rate — sources</div>
+        <div id="growth-table" class="mini-table"></div>
+      </div>
+      <div class="panel panel-neutral">
+        <div class="panel-title">
+          Valuation multiples <span class="panel-note">reference only</span>
+        </div>
+        <div id="multiples-table" class="mini-table"></div>
+      </div>
+      <div class="panel panel-b">
+        <div class="panel-title">
+          Analyst consensus &amp; health <span class="panel-note">via Yahoo Finance</span>
+        </div>
+        <div id="analyst-table" class="mini-table"></div>
+      </div>
+    </div>
+
+    <div class="price-banner" id="price-banner">
+      <div class="price-banner-main">
+        <div class="stat-label">Current price</div>
+        <div id="price-value" class="price-value">—</div>
+        <div id="price-meta" class="price-meta"></div>
+      </div>
+      <div class="price-banner-deltas" id="price-deltas"></div>
+    </div>
+
+    <div id="cards" class="cards">
+      <div class="card a">
+        <div class="card-eyebrow">Method A</div>
+        <h2>Rule #1</h2>
+        <p class="method-desc">
+          Project EPS forward, apply an exit P/E, discount back at the required return.
+        </p>
+        <div class="scenarios-grid">
+          <div class="scenario-col bear-col">
+            <div class="scenario-name">Bear</div>
+            <div id="rule-one-bear-fv" class="fair-value">—</div>
+            <div id="rule-one-bear-verdict" class="verdict"></div>
+            <div id="rule-one-bear-inputs" class="inputs-used"></div>
+          </div>
+          <div class="scenario-col base-col">
+            <div class="scenario-name">Base</div>
+            <div id="rule-one-base-fv" class="fair-value">—</div>
+            <div id="rule-one-base-verdict" class="verdict"></div>
+            <div id="rule-one-base-inputs" class="inputs-used"></div>
+          </div>
+          <div class="scenario-col bull-col">
+            <div class="scenario-name">Bull</div>
+            <div id="rule-one-bull-fv" class="fair-value">—</div>
+            <div id="rule-one-bull-verdict" class="verdict"></div>
+            <div id="rule-one-bull-inputs" class="inputs-used"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card b">
+        <div class="card-eyebrow">Method B</div>
+        <h2>Peter Lynch</h2>
+        <p class="method-desc">FairValue = EPS(ttm) × growth rate. No discounting.</p>
+        <div class="scenarios-grid">
+          <div class="scenario-col bear-col">
+            <div class="scenario-name">Bear</div>
+            <div id="lynch-bear-fv" class="fair-value">—</div>
+            <div id="lynch-bear-verdict" class="verdict"></div>
+            <div id="lynch-bear-inputs" class="inputs-used"></div>
+          </div>
+          <div class="scenario-col base-col">
+            <div class="scenario-name">Base</div>
+            <div id="lynch-base-fv" class="fair-value">—</div>
+            <div id="lynch-base-verdict" class="verdict"></div>
+            <div id="lynch-base-inputs" class="inputs-used"></div>
+          </div>
+          <div class="scenario-col bull-col">
+            <div class="scenario-name">Bull</div>
+            <div id="lynch-bull-fv" class="fair-value">—</div>
+            <div id="lynch-bull-verdict" class="verdict"></div>
+            <div id="lynch-bull-inputs" class="inputs-used"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="save-row">
+      <input
+        id="notes-input"
+        class="assumption-input notes-input"
+        type="text"
+        placeholder="Investment thesis / notes..."
+      />
+      <select id="evaluator-select" class="assumption-input assumption-select" style="margin-left: 0.9rem;">
+        <!-- Populated by JS -->
+      </select>
+      <button id="add-evaluator-btn" type="button" class="btn-action-load" style="margin-left: 0.2rem; padding: 0.2rem 0.5rem;" title="Add Evaluator">+</button>
+      <button id="del-evaluator-btn" type="button" class="btn-action-del" style="margin-left: 0.2rem; padding: 0.2rem 0.5rem;" title="Remove Evaluator">-</button>
+      <button id="save-btn" class="save-btn" type="button" style="margin-left: 0.9rem;">Save this valuation</button>
+      <span id="save-status" class="save-status" style="margin-left: 0.9rem;"></span>
+    </div>
+  </div>
+
+  <div class="history-section" id="history-section">
+    <div class="history-header">
+      <div>
+        <h2>Saved Valuations</h2>
+        <p class="history-subtitle">Track valuation history and parameter changes over time.</p>
+      </div>
+      <div class="history-actions">
+        <input id="history-filter" class="assumption-input" type="text" placeholder="Filter ticker..." />
+        <button id="history-refresh-btn" class="refresh-link" type="button">Refresh</button>
+      </div>
+    </div>
+    <div id="history-empty" class="history-empty">No saved valuations yet. Value a stock and click "Save this valuation".</div>
+    <div id="history-table-container" class="history-table-container" hidden>
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Ticker</th>
+            <th>Evaluator</th>
+            <th>Price</th>
+            <th class="th-a">Rule #1 FV</th>
+            <th class="th-b">Lynch FV</th>
+            <th>Growth</th>
+            <th>Assumptions</th>
+            <th>Notes</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="history-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    Reference figures are informational only and are never fed into either valuation method.
+  </footer>
+</div>
 
 <script src="https://cdn.plot.ly/plotly-basic-3.7.0.min.js" charset="utf-8"></script>
 <script>
@@ -280,10 +534,8 @@
     lastResponse = data;
     results.innerHTML = '';
 
-    var header = document.createElement('h2');
-    header.className = 'results-header';
+    var header = document.getElementById('chart-results-heading');
     header.textContent = data.ticker + ' (' + data.market + ') — ' + data.currency;
-    results.appendChild(header);
 
     var grid = document.createElement('div');
     grid.className = 'results-grid';
@@ -355,6 +607,19 @@
     if (lastResponse) renderDashboard(lastResponse);
   });
 })();
+</script>
+<script src="/static/app.js"></script>
+<script>
+  // Glue: the shared #dashboard-form's submit also runs the Fair Value
+  // Ledger's own handleSubmit (from app.js), which reads the same
+  // #ticker-input both scripts already share -- one submit action renders
+  // the chart grid (the listener above) and the valuation panel (this one)
+  // from a single ticker entry. app.js's own submit wiring
+  // (`if (valuateForm) ...`) is a no-op here since this merged page has no
+  // separate #valuate-form.
+  document.getElementById('dashboard-form').addEventListener('submit', function (event) {
+    handleSubmit(event, false);
+  });
 </script>
 </body>
 </html>
