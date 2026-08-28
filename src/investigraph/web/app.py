@@ -24,6 +24,13 @@ from investigraph.sources.validation import require_supported_period
 from investigraph.template.models import CompanyFundamentals, Period
 from investigraph.web.chart_data import ChartDataResponse, build_chart_specs
 from investigraph.web.chart_set_store import ChartSetStore
+from investigraph.web.history_service import (
+    HistoryError,
+    create_valuation,
+    list_all_latest_valuations,
+    list_history,
+    remove_valuation,
+)
 from investigraph.web.service import load_fundamentals
 from investigraph.web.valuate_service import ValuateError, handle_valuate
 
@@ -271,5 +278,49 @@ def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
         # through an explicit math.isfinite guard at its source before reaching
         # this dict, so none of them can be NaN in the first place.
         return jsonify(body)
+
+    @app.get("/api/history")
+    def get_history_route():
+        ticker = request.args.get("ticker")
+        evaluator = request.args.get("evaluator")
+        try:
+            records = list_history(ticker, evaluator)
+        except HistoryError as exc:
+            return jsonify(ok=False, error=exc.error), exc.status
+        return jsonify(ok=True, data=records)
+
+    @app.post("/api/history")
+    def post_history_route():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify(
+                ok=False,
+                error={
+                    "type": "INVALID_INPUT",
+                    "reason": "request body must be a JSON object",
+                },
+            ), 400
+        try:
+            record = create_valuation(payload)
+        except HistoryError as exc:
+            return jsonify(ok=False, error=exc.error), exc.status
+        return jsonify(ok=True, data=record), 201
+
+    @app.delete("/api/history/<id_>")
+    def delete_history_route(id_: str):
+        evaluator = request.args.get("evaluator")
+        try:
+            record = remove_valuation(id_, evaluator)
+        except HistoryError as exc:
+            return jsonify(ok=False, error=exc.error), exc.status
+        return jsonify(ok=True, data=record)
+
+    @app.get("/api/valuations")
+    def valuations_route():
+        try:
+            records = list_all_latest_valuations()
+        except HistoryError as exc:
+            return jsonify(ok=False, error=exc.error), exc.status
+        return jsonify(ok=True, data=records)
 
     return app
