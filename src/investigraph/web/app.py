@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import yfinance as yf
 from flask import Flask, Response, jsonify, render_template, request
 
 from investigraph import chart_support, config
@@ -322,5 +323,28 @@ def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
         except HistoryError as exc:
             return jsonify(ok=False, error=exc.error), exc.status
         return jsonify(ok=True, data=records)
+
+    @app.get("/api/live-prices")
+    def live_prices_route():
+        raw_tickers = request.args.get("tickers")
+        if not raw_tickers:
+            return jsonify(ok=False, error="Tickers parameter is required"), 400
+        ticker_list = [t.strip().upper() for t in raw_tickers.split(",") if t.strip()]
+        if not ticker_list:
+            return jsonify(ok=False, error="No valid tickers provided"), 400
+
+        prices: dict[str, float] = {}
+        for ticker in ticker_list:
+            # One ticker's failure (delisted, network hiccup) must not take down
+            # the rest of the batch -- matches the original's per-quote
+            # "if q && q.symbol && q.regularMarketPrice" tolerance, which
+            # silently omits a bad quote rather than erroring the whole request.
+            try:
+                last_price = yf.Ticker(ticker).fast_info.get("lastPrice")
+            except Exception:
+                continue
+            if isinstance(last_price, (int, float)):
+                prices[ticker] = last_price
+        return jsonify(ok=True, prices=prices)
 
     return app
