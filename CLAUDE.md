@@ -77,13 +77,25 @@ type-only import, not a dependency on the module's implementation, so it doesn't
 sole-entry-point principle the way importing `client.ts` would. Internally uses
 `yahoo-finance2` to fetch analyst consensus (next-year EPS growth, price targets, recommendations)
 plus three "financial health" reference fields: `beta` and `priceToSales` are read straight from
-Yahoo's `summaryDetail` module (no local math); `ruleOf40 = (revenueGrowth + ebitdaMargins) * 100`
-is computed locally — both `revenueGrowth` and `ebitdaMargins` arrive from Yahoo as fractions
-(e.g. `0.852`, not `85.2`), so the single `* 100` is correct, not a double-conversion (hand-
-verified live against NVDA: `0.852 + 0.65294 = 1.50494 → 150.494`, a genuinely high but real
-score for that company's growth/margin profile at the time — don't "fix" a high Rule of 40
-result without re-checking the raw Yahoo fields first; it looked like a units bug on first
-glance and wasn't one). All three fields are `number | null`, never
+Yahoo's `summaryDetail` module (no local math); `ruleOf40 = (annualRevenueGrowth + ebitdaMargins)
+* 100` is computed locally. Both terms arrive as fractions (e.g. `0.65294`, not `65.294`), so the
+single `* 100` is correct, not a double-conversion. **The growth term is deliberately NOT
+`financialData.revenueGrowth`** — that field is Yahoo's *quarterly* YoY figure while
+`ebitdaMargins` is *TTM*, and mixing the two periods systematically inflated the score for
+accelerating companies (live-confirmed: NVDA 85.2% quarterly vs. 65.47% true annual). Growth now
+comes from `deriveAnnualRevenueGrowth` (`src/data/yahoo/index.ts`), computed from the two most
+recent points of a separate `fetchAnnualRevenueSeries` call (`client.ts`,
+`fundamentalsTimeSeries`, `type: 'annual'`), and is `null` when fewer than 2 annual points exist
+— with **no fallback to the quarterly figure**, since that is the exact bug being prevented.
+Hand-verified live against NVDA post-fix: `0.65474 + 0.65294 = 1.30768 → 130.768` (it read
+`150.494` under the old quarterly numerator). A second guard, `ebitdaMarginIsTrustworthy`, nulls
+`ruleOf40` when `ebitdaMargins` is a literal `0` that Yahoo also reports for companies with no
+EBITDA concept at all (banks: MS/JPM/BAC all return `ebitda: undefined, ebitdaMargins: 0`) or a
+negative one (IONQ: `ebitda: -793,051,008` on ~246M revenue, still reported as margin `0`) — a
+margin of exactly `0` is only trusted when the raw `ebitda` field is present and non-negative.
+Don't "fix" a surprising Rule of 40 without re-checking the raw Yahoo fields first; it has
+looked like a units bug twice now and wasn't one either time. All three fields are
+`number | null`, never
 `undefined` — UI code checking for their presence must test `!== null`, not `!== undefined`
 (`app.js`'s "Financial Health" section header had exactly this bug: `!== undefined` is always
 true for a typed-`null` field, so the header rendered even when both were `null`).
@@ -124,6 +136,36 @@ Lets a user save a computed valuation and retrieve/filter/delete it later. Wired
 `POST/GET /api/history` and `DELETE /api/history/:id` on the web side, and `-s/--save`,
 `-H/--history [ticker]` on the CLI.
 
+**Per-evaluator storage.** `saveValuation`/`getHistory`/`deleteValuation` all take an optional
+trailing `evaluator?: string`. When one is given (and no explicit `filePath` is), records are
+read and written to `data/evaluators/<sanitized-name>.json` instead of `history.json` — the name
+is trimmed, lower-cased, and stripped to `[a-z0-9_-]` to form the filename
+(`resolveHistoryFilePath`, `store.ts`), while the record itself keeps the original
+`SavedValuation.evaluator` string verbatim. Deleting a name from the UI's picker therefore never
+orphans past valuations. Two merge behaviors sit on top: `getHistory(ticker, undefined, evaluator)`
+also folds in any legacy `history.json` records that are either unowned or owned by that same
+evaluator (so pre-evaluator history isn't stranded), and `getHistory` with **no** evaluator merges
+every file under `data/evaluators/` plus `history.json`. `deleteValuation` likewise checks the
+legacy file as well as the evaluator's own. **Gotcha:** `HISTORY_FILE_PATH` is checked *before*
+the evaluator in `resolveHistoryFilePath`, so setting that env var collapses per-evaluator storage
+back into a single shared file — that precedence is asserted by a test, but it does mean the two
+features are mutually exclusive. `data/` is gitignored (per-evaluator local state, like
+`history.json`).
+
+`getAllLatestValuations()` powers the "All Valuations" dashboard: it reads `history.json` plus
+every file under `data/evaluators/` and returns **one record per `(ticker, evaluator)` pair** —
+the newest by `evaluatedAt` within each pair. It is keyed on the pair, not on ticker alone, so
+two people valuing the same company both keep a row (keying on ticker alone silently hid the
+older one and made the dashboard's evaluator filter meaningless — fixed with a regression test).
+
+The **evaluator name list itself is web-only and client-side**: `app.js`'s `renderEvaluators`
+keeps it in `localStorage` under `evaluatorsList` (defaulting to `['Aviv', 'Ran']`), so it is
+per-browser and never reaches the server. Only the chosen *name* is persisted server-side, on the
+record. Note this is deliberately narrower than the design sketched in
+`PLAN_2026-08-27_feature-tasks.md` (a `src/evaluators/` module + `evaluators.json` +
+`EVALUATORS_FILE_PATH` + `/api/evaluators` endpoints) — **none of that was built**; don't go
+looking for it.
+
 `SavedValuation` (`src/history/types.ts`) has two coexisting shapes, both optional, for backward
 compatibility: **legacy flat fields** (`growthRatePercent`, `exitPeMultiple`,
 `requiredReturnPercent`, `mosPercent`, `lynchFairValue`, `ruleOneFairValue`) written by the
@@ -134,9 +176,15 @@ that reads a saved valuation's fair-value/assumption fields must resolve `record
 first, then read from that — `src/cli/index.ts`'s `formatHistoryOutput` does this so the
 `-H/--history` table renders correctly for records saved by either adapter/era.
 
-**`src/valuation/`** — pure functions, no I/O. `shared/clampGrowthRate.ts` clamps every growth
-rate to `[-5%, 25%]` before either method uses it (both `lynch` and `ruleOne` call it
-internally — callers pass the raw, unclamped rate). Both `calculateLynchValue` and
+**`src/valuation/`** — pure functions, no I/O. `shared/clampGrowthRate.ts` applies a **floor of
+`-5%`** to every growth rate before either method uses it (both `lynch` and `ruleOne` call it
+internally — callers pass the raw, unclamped rate). **There is no upper cap.** The band was
+`[-5%, 25%]` until 2026-08-27, when the `25%` ceiling was deliberately removed at the user's
+request; `GROWTH_RATE_FLOOR_PERCENT` is now the only constant in that file and
+`GROWTH_RATE_CAP_PERCENT` no longer exists. This bites the two methods very differently: Rule #1
+compounds the rate over `years`, so an uncapped high historical CAGR now produces a dramatically
+higher sticker price than it used to — that is the intended consequence of the change, not a
+regression. `clampGrowthRate.test.ts` asserts the no-ceiling behavior explicitly. Both `calculateLynchValue` and
 `calculateRuleOneValue` accept `epsTtm`/`growthRatePercent` as `number | null | undefined`
 (they flow in directly from `StockData`'s independently-nullable growth fields) and return a
 `ValuationResult`: `{ ok: true, fairValue, inputs, intermediate? }` or `{ ok: false, error }`
@@ -199,13 +247,53 @@ defaults"). The CLI has no equivalent — it only ever computes the single base 
 `-n/--notes <text>` (thesis attached to a saved valuation), `-s/--save` (save the result to
 history), `-H/--history [ticker]` (print saved valuations, optionally filtered by ticker).
 
+**The CLI is deliberately evaluator-unaware** — there is no `--evaluator`/`--by` flag, `--save`
+attaches no evaluator, and `-H/--history` neither filters by one nor shows a column for it. A
+CLI save lands in the legacy `history.json`, which the web UI still surfaces via the merge
+described under `src/history/` above, so nothing is lost — it just shows as unowned. This is the
+same resolution already chosen for the Yahoo-analyst-data CLI/web gap: the CLI is the thin
+single-user path, and the evaluator concept only earns its keep in the shared web UI. Note this
+narrows an earlier stated intent in `CURRENT_WORK.md` that the feature work from both adapters;
+if the CLI ever does grow evaluator support, it must reuse `src/history/`'s existing
+`evaluator` parameter rather than forking its own resolution logic (see the growth-fallback-chain
+incident above for what adapter divergence costs here).
+
 **Web REST surface** (`src/web/server.ts`): `POST /api/valuate` body —
 `ticker` (required), `epsOverride?`, `growthRatePercent?`, `exitPeMultiple`,
 `requiredReturnPercent`, `years`, `mosPercent?` (shared by all three scenarios),
 `bearGrowthRatePercent?`, `bearExitPeMultiple?`, `bearRequiredReturnPercent?`,
 `bullGrowthRatePercent?`, `bullExitPeMultiple?`, `bullRequiredReturnPercent?`,
-`forceRefresh?` — see "Bear/Base/Bull scenarios" above. Also `GET /api/history?ticker=`,
-`POST /api/history`, `DELETE /api/history/:id`.
+`forceRefresh?` — see "Bear/Base/Bull scenarios" above. Also:
+
+- `GET /api/history?ticker=&evaluator=` — both query params optional; `evaluator` selects which
+  per-evaluator file to read (and triggers the legacy merge described under `src/history/`).
+- `POST /api/history` — body is `SaveValuationInput & { evaluator?: string }`.
+- `DELETE /api/history/:id?evaluator=` — `evaluator` picks the file; the legacy file is checked too.
+- `GET /api/valuations` — `getAllLatestValuations()`, one record per `(ticker, evaluator)` pair.
+  Feeds the dashboard page below.
+- `GET /api/live-prices?tickers=A,B,C` — comma-separated list, returns `{ ok, prices }` keyed by
+  upper-cased ticker. Calls `yahoo-finance2`'s `quote()` **directly**, bypassing
+  `fetchAnalystConsensus` and therefore the 24h disk cache, because the whole point is a live
+  price; a failure here returns a 500 and the dashboard just keeps the saved prices.
+
+**Web pages** (`src/web/public/`, served statically by `@fastify/static`): `index.html`/`app.js`
+is the main valuation form, and `valuations.html`/`valuations.js` is the **"All Valuations"
+dashboard** (linked from the masthead of the main page) — a sortable table of the latest
+valuation per `(ticker, evaluator)` showing the **base scenario only**, a ticker text filter and
+an evaluator dropdown filter, a "refresh live prices" pass over `GET /api/live-prices`, and a
+Chart.js bar chart of Rule #1 upside % for records from the last 6 months. Both pages handle the
+legacy-flat and nested-`base` record shapes via the same `record.base ?? record` convention.
+Covered by `valuations.test.js` (same `new Function` harness pattern as `app.test.js` — neither
+file is a module, so that is the only way to reach their internals). **Chart.js is a CDN
+dependency, not an npm one** — it is loaded from jsDelivr in `valuations.html` with an exact
+pinned version and an SRI `integrity` hash, and does not appear in `package.json`; if you bump
+the version you must recompute the hash or the page silently loses its chart.
+
+**Verdict band** (`src/web/public/app.js`): `renderVerdict` labels a fair value `FAIR VALUE`
+(neutral) when it lands within `FAIR_VALUE_TOLERANCE_PERCENT` of the current price, and only
+calls it `Undervalued`/`Overvalued` outside that band. The constant is **10%** (raised from an
+initial 5% on 2026-08-27) and lives at the top of `app.js`; it applies to both methods and all
+three scenarios, since every card renders through the same function.
 
 ## Principles
 
@@ -302,6 +390,10 @@ span many sessions.
   breakeven EPS) must not be treated as missing.
 - Ports 3000/3001/3100 are already used by other local projects on this machine; the web
   server's default is 3210 for that reason — don't "fix" it back to 3000.
+- The server binds to **`127.0.0.1` only**, not `0.0.0.0` (`src/web/server.ts`). Remote access is
+  meant to go through Tailscale Serve, which supplies the authenticated HTTPS entry point — the
+  app itself has no auth of any kind, so re-widening the bind would expose it unauthenticated on
+  the LAN. Don't "fix" it back to `0.0.0.0` to make remote access work; fix the Tailscale side.
 - `CACHE_DIR_PATH` and `HISTORY_FILE_PATH` (`src/data/cache.ts`, `src/history/store.ts`) are
   optional env vars with safe defaults (`cache/` and `history.json` under the project root) —
   listed commented-out in `.env.example` the same way `PORT` is; almost nobody needs to set them.

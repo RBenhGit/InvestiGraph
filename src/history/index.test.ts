@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { saveValuation, getHistory, deleteValuation } from './index';
+import { saveValuation, getHistory, deleteValuation, getAllLatestValuations } from './index';
+import type { SaveValuationInput } from './types';
+import { resolveHistoryFilePath, PROJECT_ROOT } from './store';
 
 const TEST_FILE = path.resolve(process.cwd(), 'history-test.json');
 
@@ -288,5 +290,249 @@ describe('readHistoryFile resilience to a hand-edited file', () => {
     } finally {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Evaluator-scoped storage (data/evaluators/<name>.json)
+//
+// These exercise the real on-disk paths rather than an injected filePath, because the
+// evaluator branch of resolveHistoryFilePath is only reachable when NO explicit path is
+// passed -- an explicit filePath short-circuits it (and also disables the legacy-merge
+// branches in getHistory), so a path-injecting test can never reach this code at all.
+// Everything here is namespaced under vitest-only evaluator names and tickers so it can
+// never collide with (or assert against) a real user's saved valuations.
+// ---------------------------------------------------------------------------
+describe('evaluator-scoped history storage', () => {
+  const EVALUATOR_A = 'VitestEvalA';
+  const EVALUATOR_B = 'VitestEvalB';
+  const EVAL_A_FILE = path.resolve(PROJECT_ROOT, 'data', 'evaluators', 'vitestevala.json');
+  const EVAL_B_FILE = path.resolve(PROJECT_ROOT, 'data', 'evaluators', 'vitestevalb.json');
+  const LEGACY_FILE = path.resolve(PROJECT_ROOT, 'history.json');
+  const TICKER = 'ZZVITEST';
+
+  // resolveHistoryFilePath checks HISTORY_FILE_PATH *before* the evaluator, so a stray env var
+  // would silently route every read/write below back to a single shared file.
+  const savedEnv = process.env.HISTORY_FILE_PATH;
+  // history.json is a real user file on a real install. Never replace it -- capture its exact
+  // bytes, append to it, and put the original back afterwards (or remove it if we created it).
+  let legacyBackup: string | null = null;
+
+  beforeEach(async () => {
+    delete process.env.HISTORY_FILE_PATH;
+    try {
+      legacyBackup = await fs.readFile(LEGACY_FILE, 'utf8');
+    } catch {
+      legacyBackup = null;
+    }
+    await fs.rm(EVAL_A_FILE, { force: true });
+    await fs.rm(EVAL_B_FILE, { force: true });
+  });
+
+  afterEach(async () => {
+    if (savedEnv === undefined) {
+      delete process.env.HISTORY_FILE_PATH;
+    } else {
+      process.env.HISTORY_FILE_PATH = savedEnv;
+    }
+    await fs.rm(EVAL_A_FILE, { force: true });
+    await fs.rm(EVAL_B_FILE, { force: true });
+    if (legacyBackup !== null) {
+      await fs.writeFile(LEGACY_FILE, legacyBackup, 'utf8');
+    } else {
+      await fs.rm(LEGACY_FILE, { force: true });
+    }
+  });
+
+  function record(overrides: Partial<SaveValuationInput> = {}): SaveValuationInput {
+    return {
+      ticker: TICKER,
+      currentPrice: 100,
+      currency: 'USD',
+      epsTtm: 5,
+      years: 10,
+      base: {
+        growthRatePercent: 10,
+        exitPeMultiple: 15,
+        requiredReturnPercent: 15,
+        mosPercent: 0,
+        lynchFairValue: 75,
+        ruleOneFairValue: 60,
+      },
+      ...overrides,
+    };
+  }
+
+  it('routes a save with an evaluator to data/evaluators/<sanitized-name>.json, not history.json', async () => {
+    const saved = await saveValuation({ ...record(), evaluator: EVALUATOR_A });
+    expect(saved.ok).toBe(true);
+
+    // The name is lower-cased and stripped to [a-z0-9_-] before being used as a filename.
+    const onDisk = JSON.parse(await fs.readFile(EVAL_A_FILE, 'utf8'));
+    expect(onDisk).toHaveLength(1);
+    expect(onDisk[0].ticker).toBe(TICKER);
+    expect(onDisk[0].evaluator).toBe(EVALUATOR_A);
+  });
+
+  it('strips characters that are illegal in a filename from the evaluator name', async () => {
+    const saved = await saveValuation({ ...record(), evaluator: 'Vitest Eval A!' });
+    expect(saved.ok).toBe(true);
+    // 'Vitest Eval A!' -> 'vitestevala' (spaces and punctuation removed, lower-cased)
+    const onDisk = JSON.parse(await fs.readFile(EVAL_A_FILE, 'utf8'));
+    expect(onDisk[0].evaluator).toBe('Vitest Eval A!');
+  });
+
+  it('reads back only that evaluator’s own records, not another evaluator’s', async () => {
+    await saveValuation({ ...record({ id: 'a-1' }), evaluator: EVALUATOR_A });
+    await saveValuation({ ...record({ id: 'b-1' }), evaluator: EVALUATOR_B });
+
+    const a = await getHistory(TICKER, undefined, EVALUATOR_A);
+    expect(a.ok).toBe(true);
+    if (a.ok) {
+      expect(a.data.map((r) => r.id)).toEqual(['a-1']);
+    }
+  });
+
+  it('merges legacy history.json records with no evaluator into an evaluator’s history', async () => {
+    // A record saved before the evaluator feature existed: flat legacy shape, no evaluator.
+    const legacy = legacyBackup === null ? [] : JSON.parse(legacyBackup);
+    legacy.push({
+      id: 'legacy-1',
+      ticker: TICKER,
+      evaluatedAt: '2026-01-01T00:00:00.000Z',
+      currentPrice: 90,
+      currency: 'USD',
+      epsTtm: 5,
+      years: 10,
+      lynchFairValue: 70,
+      ruleOneFairValue: 55,
+    });
+    await fs.writeFile(LEGACY_FILE, JSON.stringify(legacy, null, 2), 'utf8');
+
+    await saveValuation({ ...record({ id: 'a-1' }), evaluator: EVALUATOR_A });
+
+    const result = await getHistory(TICKER, undefined, EVALUATOR_A);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Both the evaluator's own record and the un-owned legacy one are visible to this
+      // evaluator -- that is the whole point of the merge (old records aren't orphaned).
+      expect(result.data.map((r) => r.id).sort()).toEqual(['a-1', 'legacy-1']);
+    }
+  });
+
+  it('does NOT merge a legacy record that belongs to a different evaluator', async () => {
+    const legacy = legacyBackup === null ? [] : JSON.parse(legacyBackup);
+    legacy.push({
+      id: 'legacy-owned',
+      ticker: TICKER,
+      evaluatedAt: '2026-01-01T00:00:00.000Z',
+      currentPrice: 90,
+      currency: 'USD',
+      epsTtm: 5,
+      years: 10,
+      evaluator: EVALUATOR_B,
+    });
+    await fs.writeFile(LEGACY_FILE, JSON.stringify(legacy, null, 2), 'utf8');
+
+    await saveValuation({ ...record({ id: 'a-1' }), evaluator: EVALUATOR_A });
+
+    const result = await getHistory(TICKER, undefined, EVALUATOR_A);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.map((r) => r.id)).toEqual(['a-1']);
+    }
+  });
+
+  describe('getAllLatestValuations', () => {
+    it('keeps one row per (ticker, evaluator) pair — two evaluators on the same ticker both survive', async () => {
+      await saveValuation({
+        ...record({ id: 'a-1', evaluatedAt: '2026-02-01T00:00:00.000Z' }),
+        evaluator: EVALUATOR_A,
+      });
+      await saveValuation({
+        ...record({ id: 'b-1', evaluatedAt: '2026-03-01T00:00:00.000Z' }),
+        evaluator: EVALUATOR_B,
+      });
+
+      const result = await getAllLatestValuations();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const mine = result.data.filter((r) => r.ticker === TICKER);
+        // Keyed on ticker alone (the previous behavior) this returned only 'b-1', silently
+        // hiding evaluator A's opinion and making the dashboard's evaluator filter pointless.
+        expect(mine.map((r) => r.id).sort()).toEqual(['a-1', 'b-1']);
+      }
+    });
+
+    it('still keeps only the most recent record within a single (ticker, evaluator) pair', async () => {
+      await saveValuation({
+        ...record({ id: 'a-old', evaluatedAt: '2026-01-01T00:00:00.000Z' }),
+        evaluator: EVALUATOR_A,
+      });
+      await saveValuation({
+        ...record({ id: 'a-new', evaluatedAt: '2026-06-01T00:00:00.000Z' }),
+        evaluator: EVALUATOR_A,
+      });
+
+      const result = await getAllLatestValuations();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const mine = result.data.filter((r) => r.ticker === TICKER);
+        expect(mine.map((r) => r.id)).toEqual(['a-new']);
+      }
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveHistoryFilePath's own branches. index.test.ts above always passes an explicit
+// filePath, so the env-var and default-path branches were never executed by any test.
+// ---------------------------------------------------------------------------
+describe('resolveHistoryFilePath', () => {
+  const savedEnv = process.env.HISTORY_FILE_PATH;
+
+  afterEach(() => {
+    if (savedEnv === undefined) {
+      delete process.env.HISTORY_FILE_PATH;
+    } else {
+      process.env.HISTORY_FILE_PATH = savedEnv;
+    }
+  });
+
+  it('prefers an explicit path over everything else', () => {
+    process.env.HISTORY_FILE_PATH = '/tmp/from-env.json';
+    expect(resolveHistoryFilePath('/tmp/explicit.json', 'Someone')).toBe('/tmp/explicit.json');
+  });
+
+  it('uses HISTORY_FILE_PATH when set, resolved to an absolute path', () => {
+    delete process.env.HISTORY_FILE_PATH;
+    process.env.HISTORY_FILE_PATH = './relative-history.json';
+    expect(resolveHistoryFilePath()).toBe(path.resolve('./relative-history.json'));
+  });
+
+  it('HISTORY_FILE_PATH takes precedence over the evaluator, collapsing per-evaluator storage into one file', () => {
+    process.env.HISTORY_FILE_PATH = '/tmp/from-env.json';
+    // Documented consequence, not an accident: setting this env var disables per-evaluator
+    // history entirely, because it is checked before the evaluator branch.
+    expect(resolveHistoryFilePath(undefined, 'Someone')).toBe('/tmp/from-env.json');
+  });
+
+  it('falls back to <project root>/history.json when nothing is set', () => {
+    delete process.env.HISTORY_FILE_PATH;
+    expect(resolveHistoryFilePath()).toBe(path.resolve(PROJECT_ROOT, 'history.json'));
+  });
+
+  it('routes to data/evaluators/<sanitized>.json for an evaluator, ignoring case and punctuation', () => {
+    delete process.env.HISTORY_FILE_PATH;
+    expect(resolveHistoryFilePath(undefined, '  Aviv Cohen!  ')).toBe(
+      path.resolve(PROJECT_ROOT, 'data', 'evaluators', 'avivcohen.json'),
+    );
+  });
+
+  it('treats a blank/whitespace-only evaluator as no evaluator at all', () => {
+    delete process.env.HISTORY_FILE_PATH;
+    expect(resolveHistoryFilePath(undefined, '   ')).toBe(
+      path.resolve(PROJECT_ROOT, 'history.json'),
+    );
   });
 });

@@ -65,11 +65,31 @@ npm run web
 ```
 The server will start on port `3210` by default (configurable via `PORT` in `.env`). Open `http://localhost:3210` in your browser.
 
+The server binds to `127.0.0.1` only, so it is not reachable from other machines on your network. The app has no authentication of its own; if you need remote access, put an authenticated proxy (e.g. Tailscale Serve) in front of it rather than widening the bind address.
+
+The web UI offers two things the CLI does not:
+
+- **Bear / Base / Bull scenarios** — every valuation computes all three at once, each with its own editable growth rate, exit P/E, and required return. Margin of Safety is a single value shared across all three.
+- **Evaluator** — a dropdown naming who performed the valuation, saved onto the record. The list of names is managed in the picker itself and is stored per-browser; the chosen name is saved with the valuation. The CLI has no equivalent, so CLI-saved valuations simply show as unowned.
+
+### All Valuations page
+
+The web UI also has an **All Valuations** dashboard, linked from the header (or open `http://localhost:3210/valuations.html` directly). It shows the most recent saved valuation per ticker **per evaluator**, using the base scenario only:
+
+- Sortable columns (date, ticker, current price, both fair values, both upside percentages, evaluator)
+- A ticker text filter and an evaluator dropdown filter
+- Live price refresh, so the upside percentages reflect the current market price rather than the price captured when the valuation was saved
+- A bar chart of Rule #1 upside % for valuations from the last six months
+
+This page renders its chart with [Chart.js](https://www.chartjs.org/), loaded from a CDN at a pinned version rather than installed via npm — so it needs network access on first load, and the chart (only) will be missing if you open the page offline.
+
 ## Development
 
 - **Build**: `npm run build`
 - **Test**: `npm test`
 - **Lint**: `npm run lint`
 - **Format**: `npm run format`
+
+Running the test suite requires **Node 20.12 or newer** (vitest's bundler needs `node:util`'s `styleText`), even though the app itself runs on Node 18.
 
 For more details on the architecture and codebase rules, refer to `CLAUDE.md`.

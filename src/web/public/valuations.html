@@ -9,7 +9,14 @@
       th { cursor: pointer; user-select: none; }
       th:hover { color: var(--ink); }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js pinned to an exact version with an integrity hash: the unpinned
+         "npm/chart.js" URL floats to whatever the latest release is, so a future breaking
+         change would alter this page with no commit on our side to point at. -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+      integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC"
+      crossorigin="anonymous"
+    ></script>
   </head>
   <body>
     <div class="wrap">

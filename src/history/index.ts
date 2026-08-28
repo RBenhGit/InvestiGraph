@@ -68,7 +68,7 @@ export async function getHistory(
   evaluator?: string,
 ): Promise<HistoryResult<SavedValuation[]>> {
   try {
-    let records = await readHistoryFile(filePath, evaluator);
+    const records = await readHistoryFile(filePath, evaluator);
     
     // Merge legacy history.json records that belong to this evaluator (or have no evaluator)
     if (evaluator && !filePath) {
@@ -83,8 +83,9 @@ export async function getHistory(
             records.push(leg);
           }
         }
-      } catch (err: any) {
-        // ignore if history.json doesn't exist
+      } catch {
+        // No legacy history.json (or it is unreadable) -- nothing to merge in, and that is the
+        // normal case for an install that only ever saved under an evaluator.
       }
     }
 
@@ -93,7 +94,11 @@ export async function getHistory(
       try {
         const evaluatorsDir = path.resolve(PROJECT_ROOT, 'data', 'evaluators');
         let files: string[] = [];
-        try { files = await fs.readdir(evaluatorsDir); } catch (e) {}
+        try {
+          files = await fs.readdir(evaluatorsDir);
+        } catch {
+          // No data/evaluators/ directory yet -- nobody has saved under an evaluator.
+        }
         
         for (const file of files) {
           if (file.endsWith('.json')) {
@@ -109,8 +114,9 @@ export async function getHistory(
             }
           }
         }
-      } catch (err: any) {
-        // ignore
+      } catch {
+        // Merging other evaluators' files is best-effort: a single unreadable file must not
+        // fail the caller's own history read.
       }
     }
 
@@ -197,8 +203,10 @@ export async function getAllLatestValuations(): Promise<HistoryResult<SavedValua
     let files: string[] = [];
     try {
       files = await fs.readdir(evaluatorsDir);
-    } catch (err: any) {
-      if (err.code !== 'ENOENT') throw err;
+    } catch (err: unknown) {
+      // A missing data/evaluators/ directory just means nobody has saved under an evaluator
+      // yet. Any other failure is real and must not be swallowed into an empty dashboard.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
 
     const allRecords: SavedValuation[] = [];
@@ -214,15 +222,26 @@ export async function getAllLatestValuations(): Promise<HistoryResult<SavedValua
       }
     }
 
-    const latestByTicker = new Map<string, SavedValuation>();
+    // One row per (ticker, evaluator) pair, NOT per ticker. Two people valuing the same
+    // ticker are two independent opinions: keying on ticker alone silently dropped whichever
+    // was saved earlier, and made the dashboard's own evaluator filter meaningless (only one
+    // evaluator's row could ever survive for a given ticker). Legacy records with no evaluator
+    // collapse into a single '' bucket per ticker, preserving the pre-evaluator behavior for
+    // them. Keyed on a NUL separator so a name containing the separator can't collide across
+    // buckets.
+    const latestByTickerAndEvaluator = new Map<string, SavedValuation>();
     for (const record of allRecords) {
-      const existing = latestByTicker.get(record.ticker);
-      if (!existing || new Date(record.evaluatedAt).getTime() > new Date(existing.evaluatedAt).getTime()) {
-        latestByTicker.set(record.ticker, record);
+      const key = `${record.ticker}\u0000${(record.evaluator ?? '').toLowerCase()}`;
+      const existing = latestByTickerAndEvaluator.get(key);
+      if (
+        !existing ||
+        new Date(record.evaluatedAt).getTime() > new Date(existing.evaluatedAt).getTime()
+      ) {
+        latestByTickerAndEvaluator.set(key, record);
       }
     }
 
-    return { ok: true, data: Array.from(latestByTicker.values()) };
+    return { ok: true, data: Array.from(latestByTickerAndEvaluator.values()) };
   } catch (err) {
     return {
       ok: false,

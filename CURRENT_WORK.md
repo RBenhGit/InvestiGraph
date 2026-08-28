@@ -1,6 +1,6 @@
 # Current Work — Eps_Evaluation
 
-**Updated:** 2026-08-27 (full-scope calculation audit)
+**Updated:** 2026-08-28 (documentation re-sync following the 2026-08-28 re-evaluation report)
 
 ## Where things stand
 
@@ -147,9 +147,17 @@ computed-style inspection).
 
 ## In flight
 
-Nothing in flight. Suite is 240/240 green (verified via SSH host 2026-08-27 as part of the
-full-scope calculation audit above); lint/build not re-run in that pass, last confirmed clean
-2026-08-27 alongside the Rule of 40 period-mismatch fix.
+Nothing in flight. Suite is **289/289 green across 18 files** (verified 2026-08-28 on the Linux
+workstation directly, not over SSH — see the Node-version note below); `tsc` build clean and
+`eslint src/` clean in the same pass.
+
+**Test-runner note (2026-08-28):** vitest's bundler (rolldown) needs `styleText` from
+`node:util`, which only exists in **Node 20.12+**. The workstation's system Node is 18.19.1, so
+`npm test` fails there at startup with a misleading `SyntaxError: ... does not provide an export
+named 'styleText'` — that is a Node-version problem, not a broken suite. The app itself still
+runs fine on Node 18; only the test runner needs the newer one. Note also that `node_modules`
+must be installed under the same Node major that runs the tests, or rolldown's native binding
+won't match (`Cannot find module '@rolldown/binding-wasm32-wasi'`).
 
 ## Known problems
 
@@ -325,9 +333,27 @@ changes and is faster when applicable.
 
 ## Next up
 
-### Requested features (2026-08-27, from user) — not started
+### Requested features (2026-08-27, from user) — ALL SHIPPED
 
-1. **Evaluator field ("מבצע הערכת השווי")** — add a field naming who performed the valuation.
+> **Status corrected 2026-08-28.** This section previously read "not started" while every item
+> below was in fact implemented and committed. It misled any session that followed CLAUDE.md's
+> instruction to read this file first. The per-item status is now recorded inline; the original
+> specs are kept below because they still explain the *intent* behind each feature, but **read
+> them as history, not as a to-do list.** Where the shipped implementation diverged from the
+> spec, that is called out on the item.
+
+1. **Evaluator field ("מבצע הערכת השווי")** — ✅ **SHIPPED**, but **not** as specified below.
+   What actually landed: `SavedValuation.evaluator` (a plain optional string on the record, as
+   specified) plus per-evaluator files at `data/evaluators/<sanitized-name>.json` handled
+   *inside* `src/history/` — **not** a separate `src/evaluators/` module, **no**
+   `evaluators.json`, **no** `EVALUATORS_FILE_PATH` env var, and **no**
+   `GET/POST/DELETE /api/evaluators` endpoints. The managed name list lives in the browser's
+   `localStorage` (`evaluatorsList`, default `['Aviv', 'Ran']`), not on disk, so it is
+   per-browser and **not** shared with the CLI. The CLI is deliberately evaluator-unaware
+   (decided 2026-08-28; see CLAUDE.md's "CLI flags" section) — which knowingly drops the
+   both-adapters requirement stated in the original spec below. `PLAN_2026-08-27_feature-tasks.md`
+   describes the abandoned design in detail and is superseded.
+   Original spec follows — add a field naming who performed the valuation.
    **Decided 2026-08-27 (user, refined):** a small managed name list, NOT derived from history
    and NOT a free-text/datalist-only field:
    - A dropdown of predefined names, with an "add new name" affordance right in the picker.
@@ -354,12 +380,20 @@ changes and is faster when applicable.
    against the same managed list). New endpoints needed: something like
    `GET/POST/DELETE /api/evaluators`.
    Task 5 depends on this — "latest valuation per user" is meaningless without it.
-2. **"FAIR VALUE" label when the estimate is close to the market price** — when the computed
+2. **"FAIR VALUE" label when the estimate is close to the market price** — ✅ **SHIPPED.**
+   `FAIR_VALUE_TOLERANCE_PERCENT` in `app.js`, applied in `renderVerdict` to both methods and
+   all three scenarios. The band was decided as **±10%**, not the ±5% floated below (it shipped
+   at 5% first and was raised to 10% the same day).
+   Original spec follows — when the computed
    fair value lands within some tolerance band of the current price, render an explicit
    `FAIR VALUE` marker instead of only over/under-valued. Decide the band (e.g. ±5%?) and
    whether it applies to Lynch, Rule #1, or both/each independently. UI lives in `app.js`
    next to the existing `renderPriceDelta` logic.
-3. **Remove the maximum-growth cap** — `src/valuation/shared/clampGrowthRate.ts` clamps every
+3. **Remove the maximum-growth cap** — ✅ **SHIPPED.** `GROWTH_RATE_CAP_PERCENT` is gone;
+   `clampGrowthRate` is now `Math.max(GROWTH_RATE_FLOOR_PERCENT, g)` and its test asserts a high
+   value passes through unchanged. CLAUDE.md and both affected wiki pages were re-synced on
+   2026-08-28 (they had all still claimed `[-5%, 25%]`).
+   Original spec follows — `src/valuation/shared/clampGrowthRate.ts` clamps every
    rate to `[-5%, 25%]` via `GROWTH_RATE_FLOOR_PERCENT`/`GROWTH_RATE_CAP_PERCENT`.
    **Decided 2026-08-27 (user):** drop the 25% cap; **keep the -5% floor.**
    Both `calculateLynchValue` and `calculateRuleOneValue` call `clampGrowthRate` internally, so
@@ -369,24 +403,45 @@ changes and is faster when applicable.
    consequence of this request, but eyeball a real high-growth ticker before closing the task.
    Update `src/valuation/shared/clampGrowthRate.test.ts` (asserts the 25% ceiling) and check no
    UI copy still promises a 25% cap.
-4. **Show percentage difference in the Bear/Base/Bull price boxes** — each scenario box should
+4. **Show percentage difference in the Bear/Base/Bull price boxes** — ✅ **SHIPPED**, including
+   follow-up fixes for diff stacking on recalculation and for contrast on the Rule #1 card.
+   Original spec follows — each scenario box should
    display the % gap between its fair value and the current market price (and/or vs. base).
    Pure UI change in `app.js`/`index.html`; reuse the existing zero-price guard from the
    `renderPriceDelta` fix so a `price === 0` doesn't divide by zero.
-5. **New page: valuations table** — a separate page listing saved valuations, showing the
+5. **New page: valuations table** — ✅ **SHIPPED** as `src/web/public/valuations.html` +
+   `valuations.js`, backed by `GET /api/valuations` (`getAllLatestValuations`) and
+   `GET /api/live-prices`. It also gained a live-price refresh and a Rule #1 upside bar chart
+   (Chart.js from a CDN) beyond the original spec. The "latest per (ticker, evaluator) pair"
+   requirement was initially implemented as latest-per-ticker only, silently hiding a second
+   evaluator's row; corrected 2026-08-28 with a regression test.
+   Original spec follows — a separate page listing saved valuations, showing the
    **base scenario only**, and only the **most recent** valuation per ticker; when more than
    one evaluator exists, the latest per (ticker, evaluator) pair. Reads `GET /api/history`;
    needs the dedup/"latest" selection to happen server-side or client-side (decide) and must
    handle both `SavedValuation` shapes (legacy flat vs. nested `base`) via the existing
    `record.base ?? record` convention. Depends on task 1.
-6. **Sorting and filtering on that table** — sortable columns (ticker, evaluator, date, fair
+6. **Sorting and filtering on that table** — ✅ **SHIPPED**, client-side over the fetched set.
+   Note the string columns (ticker, evaluator) never actually sorted until 2026-08-28: the
+   comparator's missing-value guard used `isNaN(value)`, which is `true` for any alphabetic
+   string, so every string pair compared equal. Fixed and covered by `valuations.test.js`.
+   Original spec follows — sortable columns (ticker, evaluator, date, fair
    value, upside %) and filters (by ticker, by evaluator, maybe by date range). `GET
    /api/history` already accepts `?ticker=`; decide whether the rest is client-side over the
    fetched set or new query params. Part of the same slice as task 5.
 
-Notes: tasks 1→5→6 are a dependency chain and are best done in that order; tasks 2, 3, 4 are
-independent and each small enough to stand alone. Task 3 is the only one that changes valuation
-math (and therefore existing test expectations) — the rest are additive.
+Notes (historical): tasks 1→5→6 were a dependency chain and were done in that order; tasks 2, 3,
+4 were independent. Task 3 was the only one that changed valuation math.
+
+### Open follow-ups from the 2026-08-28 re-evaluation
+
+Nothing blocking. Two long-standing test gaps were closed on 2026-08-28 (`env.ts`'s real
+throw-if-missing path, and `resolveHistoryFilePath`'s env-var/default/evaluator branches), as was
+the dashboard's total lack of coverage. One design wart is now documented rather than fixed:
+`HISTORY_FILE_PATH` is checked *before* the evaluator in `resolveHistoryFilePath`, so setting
+that env var silently collapses per-evaluator storage into a single shared file. The two features
+are mutually exclusive; there is a test pinning the current precedence, so changing it would be a
+deliberate, visible decision rather than a surprise.
 
 ### Standing status
 
@@ -858,3 +913,35 @@ undefined`, but both fields are typed `number | null` and never actually `undefi
   completed" above); 240/240 tests green via SSH, confirmed byte-identical to the audited files.
   No calculation defects found. Fixed one stale comment in `cli/index.ts` misnaming which file
   the growth-fallback-chain duplication is actually in (`server.ts`, not `app.js`).
+- 2026-08-28 — Ran a full-project re-evaluation (`docs/Project_ReEvaluation_2026-08-28.md`,
+  baseline `docs/Project_ReEvaluation_2026-08-22.md`), then fixed every recommendation it
+  produced. All 8 findings from the 2026-08-22 report were confirmed already resolved; the drift
+  this round was entirely in the ~30 commits that landed *after* that report's doc re-sync.
+  Doc fixes: the growth-rate cap (removed in code 2026-08-27) was still documented as `[-5%, 25%]`
+  in CLAUDE.md and both wiki pages; CLAUDE.md's `ruleOf40` paragraph still described the
+  pre-period-match formula and cited a now-wrong NVDA figure; the entire per-evaluator history
+  subsystem, the two new REST endpoints, the All Valuations dashboard, the Chart.js CDN
+  dependency, `FAIR_VALUE_TOLERANCE_PERCENT`, and the loopback-only bind were undocumented;
+  README gained the dashboard/evaluator/scenario sections; `CURRENT_WORK.md` itself still said
+  "not started" for six already-shipped features, and `PLAN_2026-08-27_feature-tasks.md` still
+  specified an `src/evaluators/` design that was never built (now banner-marked superseded).
+  Decisions taken with the user: the CLI stays deliberately evaluator-unaware (documented, not
+  implemented), and the dashboard's dedup was corrected to `(ticker, evaluator)`.
+  Code fixes: `getAllLatestValuations` now keys on `(ticker, evaluator)` — keying on ticker alone
+  silently hid a second evaluator's row (regression test written first, confirmed failing on the
+  old key); `valuations.js`'s sort comparator used `isNaN(value)` as its missing-value guard,
+  which is `true` for any alphabetic string, so **the Ticker and Evaluator columns never sorted
+  at all** — found by writing the coverage the report asked for; Chart.js pinned to an exact
+  version with an SRI hash (it was floating on `npm/chart.js`); chart labels now qualify a
+  repeated ticker with the evaluator name, since one ticker can now legitimately appear twice.
+  Third bug, found only because a new test file failed to show up in `git status`:
+  **`.gitignore`'s bare `data/` pattern also matched `src/data/`**, so every *new* file under the
+  data-layer tree was silently invisible to git (existing ones stayed visible only because they
+  were already tracked). Introduced by `4576c8f`. Anchored to `/data/`; verified the project-root
+  `data/evaluators/` is still ignored. Worth remembering — it is silent and only bites new files.
+  Also cleaned the 5 pre-existing eslint errors + 3 warnings in `src/history/index.ts` (`any`,
+  empty blocks, `prefer-const`) that made the lint baseline red.
+  Tests: 245 → 289 across 16 → 18 files. New `src/web/public/valuations.test.js` (28 tests, the
+  dashboard had none), new `src/data/twelvedata/env.test.ts` (3), and 13 added to
+  `src/history/index.test.ts` covering evaluator-scoped storage, the legacy-merge branches, the
+  `(ticker, evaluator)` dedup, and all of `resolveHistoryFilePath`'s branches.

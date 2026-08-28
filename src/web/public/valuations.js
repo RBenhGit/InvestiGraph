@@ -59,8 +59,15 @@ function renderTable() {
       default: valA = a.ticker; valB = b.ticker; break;
     }
 
-    const nullA = (valA === null || valA === undefined || valA === 'n/a' || isNaN(valA));
-    const nullB = (valB === null || valB === undefined || valB === 'n/a' || isNaN(valB));
+    // isNaN('AAPL') is true, so testing isNaN() on every value classed any alphabetic ticker
+    // or evaluator name as "missing" -- both sides came back missing, the comparator returned
+    // 0 for every pair, and the Ticker and Evaluator columns silently never sorted at all
+    // (the localeCompare branch below was unreachable for them). Only fall back to the numeric
+    // isNaN() test for values that aren't usable strings.
+    const isMissing = (v) =>
+      v === null || v === undefined || v === 'n/a' || (typeof v !== 'string' && isNaN(v));
+    const nullA = isMissing(valA);
+    const nullB = isMissing(valB);
     
     if (nullA && nullB) return 0;
     if (nullA) return 1;
@@ -163,11 +170,22 @@ function renderChart() {
     const rPct = parsePct(base.ruleOneFairValue, v.currentPrice);
     return {
       ticker: v.ticker,
+      evaluator: v.evaluator || 'Aviv',
       upside: rPct !== null ? rPct : 0
     };
   }).sort((a, b) => b.upside - a.upside); // Sorted by height (descending)
-  
-  const labels = chartData.map(d => d.ticker);
+
+  // /api/valuations returns one row per (ticker, evaluator) pair, so the same ticker legitimately
+  // appears more than once as soon as two people value it. Bare ticker labels would render those
+  // as duplicate, indistinguishable bars -- qualify with the evaluator name, but only for the
+  // tickers that actually repeat, so the common single-evaluator case stays uncluttered.
+  const tickerCounts = {};
+  for (const d of chartData) {
+    tickerCounts[d.ticker] = (tickerCounts[d.ticker] || 0) + 1;
+  }
+  const labels = chartData.map(d =>
+    tickerCounts[d.ticker] > 1 ? `${d.ticker} (${d.evaluator})` : d.ticker,
+  );
   const data = chartData.map(d => d.upside);
   const bgColors = data.map(d => d >= 0 ? 'rgba(74, 222, 128, 0.7)' : 'rgba(248, 113, 113, 0.7)');
   const borderColors = data.map(d => d >= 0 ? 'rgb(74, 222, 128)' : 'rgb(248, 113, 113)');
