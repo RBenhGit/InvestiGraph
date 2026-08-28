@@ -5,6 +5,7 @@ dist/
 .DS_Store
 history.json
 history-*.json
+data/
 cache/
 .cache/
 yahoo_test.json
