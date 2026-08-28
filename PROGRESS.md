@@ -55,6 +55,16 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
       result, matching this codebase's own convention (`sources.base`'s `TickerNotFound` etc.)
       — the brief didn't specify a convention for this slice (unlike `valuation/`'s, which
       explicitly required the return-based shape), so this was a reasonable judgment call.
+      **Post-merge fix (`8f95cc0`):** the Stop hook caught a real id-collision race in
+      `save_valuation` — ids were generated from millisecond-resolution `time.time()*1000`
+      (matching the original TS's `Date.now()`), so two same-ticker saves within one
+      millisecond got identical ids and the second silently overwrote the first. This bug
+      exists in the original TS design too, but its async fs I/O happens to keep saves >1ms
+      apart in practice; this port's synchronous I/O doesn't, so the latent bug reliably
+      reproduced (`test_filters_history_by_ticker_case_insensitively_and_sorts_newest_first`
+      saved 3 records, got 2 back). Fixed by switching to nanosecond resolution
+      (`time.time_ns()`) — confirmed the id is never parsed, only compared for equality or
+      URL-encoded, so nothing depends on its exact format.
 - [ ] **Phase 7 — Converge and build the merged web app.** Starts only after 4–6 merge to
       trunk and pass a combined `code-reviewer` pass.
 - [ ] **Phase 8 — Front-end tests.** Wire vitest as a dev dependency; `scripts/test.sh` runs
