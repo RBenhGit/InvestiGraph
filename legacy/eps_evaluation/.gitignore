@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+history.json
+history-*.json
+# Anchored to the repo root on purpose: a bare `data/` also matches `src/data/`, which made
+# every NEW file under the twelvedata/yahoo/cache module tree invisible to git (existing ones
+# stayed visible only because they were already tracked).
+/data/
+cache/
+.cache/
+yahoo_test.json

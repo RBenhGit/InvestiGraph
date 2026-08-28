@@ -1,0 +1,468 @@
+/* Fair Value Ledger — mature/editorial theme.
+   --accent-a / --accent-b are consumed directly by app.js (inline styles), and by convention
+   --accent-a = Peter Lynch, --accent-b = Rule #1 (see renderPriceBanner in app.js). Everything
+   else in this file follows that same mapping for consistency, even though Rule #1 is the
+   visually-primary (left-most, solid) method throughout the layout. */
+:root {
+  --bg: #F7F6F3; --surface: #FFFFFF; --surface-2: #EFEDE7;
+  --ink: #1A1B1E; --ink-soft: #5B5D63; --ink-faint: #9B9C9F; --line: #DEDBD3; --line-strong: #C7C3B8;
+  --border: var(--line);
+  --text-muted: var(--ink-soft);
+
+  --accent-a: #6B4226;      /* Peter Lynch — deep umber */
+  --accent-a-soft: #F0E8E1;
+  --accent-b: #1F3A5F;      /* Rule #1 — deep navy, primary */
+  --accent-b-soft: #E7ECF2;
+
+  --good: #2F6B4F; --good-soft: #E7EFE9;
+  --warning: #9A6A1C; --warning-soft: #F3ECDE;
+  --bad: #9A3B32; --bad-soft: #F5E9E7;
+  --ink-on-accent: #F7F6F3;
+  --shadow: 26, 24, 20;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17161A; --surface: #201F24; --surface-2: #29282E;
+    --ink: #EDEBE6; --ink-soft: #A6A3AE; --ink-faint: #737180; --line: #38363E; --line-strong: #4B4953;
+    --accent-a: #C89B78; --accent-a-soft: #33281F;
+    --accent-b: #7C9CC4; --accent-b-soft: #1E2A3A;
+    --good: #5FA97F; --good-soft: #1B3327;
+    --warning: #D2A24C; --warning-soft: #362A14;
+    --bad: #D9776C; --bad-soft: #3A211E;
+    --ink-on-accent: #17161A;
+    --shadow: 0, 0, 0;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17161A; --surface: #201F24; --surface-2: #29282E;
+  --ink: #EDEBE6; --ink-soft: #A6A3AE; --ink-faint: #737180; --line: #38363E; --line-strong: #4B4953;
+  --accent-a: #C89B78; --accent-a-soft: #33281F;
+  --accent-b: #7C9CC4; --accent-b-soft: #1E2A3A;
+  --good: #5FA97F; --good-soft: #1B3327;
+  --warning: #D2A24C; --warning-soft: #362A14;
+  --bad: #D9776C; --bad-soft: #3A211E;
+  --ink-on-accent: #17161A;
+  --shadow: 0, 0, 0;
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: light dark; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: "Source Serif 4", Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  -webkit-font-smoothing: antialiased;
+}
+.sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+a { color: var(--accent-b); }
+a:hover { color: var(--ink); }
+.wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.5rem 4rem; }
+
+/* ---------------- Masthead ---------------- */
+.masthead-bar {
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent-b) 0%, var(--accent-b) 50%, var(--accent-a) 50%, var(--accent-a) 100%);
+}
+.masthead { border-bottom: 2px solid var(--ink); }
+.masthead-inner {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  padding: 1.25rem 1.5rem 1rem;
+}
+.wordmark {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600; font-size: 1.35rem; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 0.7rem;
+}
+.wordmark small {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-weight: 500; font-size: 0.68rem; color: var(--ink-faint); letter-spacing: 0.04em;
+}
+.method-key { display: flex; gap: 0.6rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+.method-key-chip {
+  display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.72rem; font-weight: 700;
+  padding: 0.3rem 0.75rem;
+}
+.method-key-chip .dot { width: 8px; height: 8px; display: inline-block; }
+.method-key-chip.a { color: var(--accent-a); background: var(--accent-a-soft); }
+.method-key-chip.a .dot { background: var(--accent-a); }
+.method-key-chip.b { color: var(--accent-b); background: var(--accent-b-soft); }
+.method-key-chip.b .dot { background: var(--accent-b); }
+.about-link {
+  display: inline-flex; align-items: center; font-size: 0.72rem; font-weight: 700;
+  padding: 0.3rem 0.75rem; color: var(--ink-soft); text-decoration: none;
+}
+.about-link:hover { color: var(--ink); text-decoration: underline; }
+
+/* ---------------- Hero / query bar ---------------- */
+.hero { padding: 1.9rem 0 1.75rem; }
+.hero p.lede {
+  font-size: 0.95rem; color: var(--ink-soft); max-width: 38rem; margin: 0 0 1.75rem; line-height: 1.55;
+}
+
+.label {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em; color: var(--ink-faint);
+}
+
+.querybar {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem;
+  flex-wrap: wrap; margin-bottom: 1.75rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--line);
+}
+.querybar-left { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+.ticker-form { display: flex; align-items: flex-end; gap: 1rem; }
+.field { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.ticker-input {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-weight: 700; font-size: 1.25rem; letter-spacing: 0.02em; text-transform: uppercase;
+  background: var(--surface); border: 1.5px solid var(--accent-b); padding: 0.55rem 1.1rem;
+  color: var(--accent-b); width: 7rem; outline: none;
+  transition: box-shadow 0.15s ease;
+}
+.ticker-input::placeholder { color: var(--ink-faint); }
+.ticker-input:focus { box-shadow: 0 0 0 3px var(--accent-b-soft); }
+
+.go-btn {
+  font: inherit; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-weight: 700; font-size: 0.78rem; letter-spacing: 0.03em;
+  background: var(--accent-b); color: var(--ink-on-accent);
+  border: none; padding: 0.69rem 1.4rem; cursor: pointer;
+}
+.go-btn:hover { background: var(--ink); }
+.go-btn:disabled { opacity: 0.55; cursor: default; }
+
+.refresh-btn {
+  font: inherit; font-weight: 500; font-size: 0.75rem; color: var(--ink-soft);
+  background: transparent; border: none; border-bottom: 1px solid var(--line-strong);
+  padding: 0.69rem 0.1rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem;
+}
+.refresh-btn:hover { color: var(--ink); border-color: var(--ink); }
+.refresh-btn .icon { width: 13px; height: 13px; flex-shrink: 0; }
+
+.scenario-toggle { display: flex; border: 1px solid var(--line-strong); }
+.scenario-btn {
+  font: inherit; font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  background: transparent; border: none; color: var(--ink-faint);
+  padding: 0.5rem 0.9rem; cursor: pointer; border-right: 1px solid var(--line-strong);
+}
+.scenario-btn:last-child { border-right: none; }
+.scenario-btn:hover { color: var(--ink); }
+.scenario-btn.active { background: var(--ink); color: var(--bg); font-weight: 700; }
+
+/* ---------------- Assumptions + growth chips line ---------------- */
+.assumptions-line {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 1.4rem;
+  padding: 0.75rem 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  font-size: 0.8rem; color: var(--ink-faint);
+}
+.assumption-item { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
+.assumption-input {
+  font: inherit; font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-weight: 600; font-size: 0.95rem; text-transform: none;
+  background: var(--surface-2); border: 1.5px solid var(--line); color: var(--ink);
+  padding: 0.3rem 0.55rem; width: 5.6rem; outline: none;
+  transition: border-color 0.15s ease;
+}
+.assumption-input:focus { border-color: var(--accent-b); }
+.assumption-input:disabled { color: var(--ink-faint); cursor: default; border-style: dashed; }
+.assumption-select { width: auto; padding-right: 0.3rem; }
+.assumptions-spacer { flex: 1 1 auto; min-width: 1.25rem; }
+.growth-label { font-family: ui-monospace, monospace; font-size: 0.68rem; color: var(--ink-faint); }
+
+/* ---------------- Scenario assumptions (Bear/Base/Bull rows) ---------------- */
+.scenario-assumptions {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  display: grid; grid-template-columns: 4.5rem repeat(3, minmax(0, 1fr)); gap: 0.4rem 1rem;
+  align-items: center;
+  padding: 0.75rem 0 0.9rem;
+}
+.scenario-assumptions-row { display: contents; }
+.scenario-assumptions-head .label { font-size: 0.62rem; }
+.scenario-assumptions-name {
+  font-family: ui-monospace, monospace; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ink-soft);
+}
+.scenario-assumptions-name.bear-col { color: var(--bad); }
+.scenario-assumptions-name.base-col { color: var(--ink); }
+.scenario-assumptions-name.bull-col { color: var(--good); }
+.scenario-assumptions .assumption-input { width: 100%; }
+.pct-input { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--ink-faint); font-size: 0.8rem; }
+.pct-input .assumption-input { width: 100%; }
+
+.chips { display: inline-flex; gap: 0.5rem; flex-wrap: wrap; }
+.chip {
+  font: inherit; font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-size: 0.75rem; font-weight: 600; letter-spacing: 0.01em;
+  background: transparent; border: none; color: var(--ink-soft); padding: 0; cursor: pointer;
+}
+.chip:hover { color: var(--ink); text-decoration: underline; }
+.chip:first-child { font-weight: 700; color: var(--good); }
+.chip + .chip::before { content: "· "; color: var(--line-strong); }
+
+/* ---------------- Error card ---------------- */
+#error-card { background: var(--bad-soft); border: 1px solid var(--bad); color: var(--bad); font-weight: 600; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+
+/* ---------------- Reference panels ---------------- */
+.panel-heading {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--ink-soft); margin-bottom: 0.75rem;
+}
+.panels {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--line); margin-bottom: 2rem;
+}
+@media (max-width: 56rem) { .panels { grid-template-columns: 1fr; } }
+.panel {
+  padding: 1.1rem 1.25rem; border-right: 1px solid var(--line); border-top: 3px solid var(--line-strong);
+}
+.panel:last-child { border-right: none; }
+.panel.panel-a { border-top-color: var(--accent-a); }
+.panel.panel-b { border-top-color: var(--accent-b); }
+.panel-title {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--ink-faint); margin-bottom: 0.25rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem;
+}
+.panel-note { font-family: "Source Serif 4", Georgia, serif; font-size: 0.66rem; font-weight: 500; text-transform: none; letter-spacing: 0; opacity: 0.8; }
+
+.mini-table { display: flex; flex-direction: column; }
+.mini-row {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  position: relative; display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; padding: 0.62rem 0; border-bottom: 1px solid var(--line); overflow: hidden;
+}
+.mini-row:last-child { border-bottom: none; }
+.mini-label { font-size: 0.78rem; color: var(--ink-soft); position: relative; z-index: 1; }
+.mini-value {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.82rem; color: var(--ink);
+  position: relative; z-index: 1;
+}
+.mini-row-active { background: var(--surface-2); margin: 0 -0.4rem; padding-left: 0.4rem; padding-right: 0.4rem; }
+.mini-row-active .mini-label { color: var(--ink); font-weight: 600; }
+.mini-row-active .mini-value { font-weight: 700; color: var(--good); }
+
+.mini-row-bar::before {
+  content: ''; position: absolute; inset: 0; z-index: 0;
+  width: calc(var(--bar-fill, 0) * 100%); background: var(--surface-2);
+}
+.mini-row-bar.mini-row-active::before { background: var(--good-soft); }
+
+.health-badge {
+  display: inline-flex; align-items: center; padding: 0.1rem 0.5rem;
+  font-weight: 700; font-size: 0.82rem;
+}
+.health-badge.good { background: var(--good-soft); color: var(--good); }
+.health-badge.warning { background: var(--warning-soft); color: var(--warning); }
+.health-badge.bad { background: var(--bad-soft); color: var(--bad); }
+
+/* ---------------- Price banner + valuation strip ---------------- */
+.price-banner {
+  display: flex; align-items: stretch; justify-content: space-between; gap: 0;
+  border: 1px solid var(--ink); margin-bottom: 0.6rem;
+}
+.price-banner-main {
+  padding: 1.35rem 1.75rem; background: var(--ink); color: var(--ink-on-accent); flex: 0 0 auto;
+}
+.price-banner-main .stat-label {
+  font-family: ui-monospace, monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.09em;
+  color: rgba(247, 246, 243, 0.6); margin-bottom: 0.35rem;
+}
+.price-value {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-variant-numeric: tabular-nums; font-weight: 600; font-size: 2rem; line-height: 1;
+}
+.price-meta {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 0.7rem; color: rgba(247, 246, 243, 0.6); margin-top: 0.5rem;
+}
+.price-meta.stale-warning { color: var(--warning); font-weight: 600; }
+.price-meta.eps-fallback-note { color: var(--accent-a); }
+.price-banner-deltas { display: flex; flex: 1; flex-wrap: wrap; }
+.price-delta { flex: 1 1 8rem; padding: 1.35rem 1.5rem; border-left: 1px solid var(--line); }
+.price-delta:nth-of-type(1) { background: var(--accent-b-soft); }
+.price-delta:nth-of-type(2) { background: var(--accent-a-soft); }
+@media (max-width: 34rem) {
+  .price-banner { flex-direction: column; }
+  .price-delta { border-left: none; border-top: 1px solid var(--line); }
+}
+.price-delta-label {
+  font-family: ui-monospace, monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--ink-soft); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;
+}
+.price-delta-label .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.price-delta-value {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-variant-numeric: tabular-nums; font-size: 1.15rem; font-weight: 700; color: var(--ink);
+}
+.price-delta-value .good { color: var(--good); font-weight: 700; }
+.price-delta-value .bad { color: var(--bad); font-weight: 700; }
+
+/* ---------------- Valuation cards ---------------- */
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 2rem; border: 1px solid var(--ink); }
+@media (max-width: 42rem) { .cards { grid-template-columns: 1fr; } }
+.card {
+  padding: 1.75rem; border-right: 1px solid var(--line);
+}
+.card:last-child { border-right: none; }
+.card.a { background: var(--accent-b); color: var(--ink-on-accent); }
+.card.b { background: var(--surface); }
+.card-eyebrow {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 0.5rem;
+  color: var(--ink-faint);
+}
+.card.a .card-eyebrow { color: rgba(247, 246, 243, 0.7); }
+.card.b .card-eyebrow { color: var(--accent-a); }
+.card h2 {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 0.4rem;
+}
+.card .method-desc {
+  font-family: "Source Serif 4", Georgia, serif; font-size: 0.82rem; margin: 0 0 1.2rem; line-height: 1.5;
+  color: var(--ink-soft); max-width: 30ch;
+}
+.card.a .method-desc { color: rgba(247, 246, 243, 0.72); }
+.fair-value {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-weight: 700; letter-spacing: -0.01em; font-size: clamp(2rem, 4.5vw, 2.6rem); line-height: 1;
+  margin-bottom: 0.7rem; color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.card.a .fair-value { color: var(--ink-on-accent); }
+.card.b .fair-value { color: var(--accent-a); }
+.verdict {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 0.78rem; font-weight: 700; padding: 0.3rem 0.7rem; margin-bottom: 1.1rem;
+}
+.card.a .verdict.good { background: rgba(247, 246, 243, 0.16); color: var(--ink-on-accent); }
+.card.a .verdict.bad { background: rgba(247, 246, 243, 0.16); color: var(--ink-on-accent); }
+.card.a .verdict.neutral { background: rgba(247, 246, 243, 0.16); color: var(--ink-on-accent); }
+.card.b .verdict.good { background: var(--good-soft); color: var(--good); }
+.card.b .verdict.bad { background: var(--bad-soft); color: var(--bad); }
+.card.b .verdict.neutral { background: var(--surface-2); color: var(--ink-soft); }
+.inputs-used {
+  display: flex; gap: 1.1rem; flex-wrap: wrap; padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}
+.card.a .inputs-used { border-top-color: rgba(247, 246, 243, 0.22); }
+.io { font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace; font-size: 0.72rem; color: var(--ink-soft); }
+.card.a .io { color: rgba(247, 246, 243, 0.6); }
+.io b { color: var(--ink); font-weight: 700; }
+.card.a .io b { color: var(--ink-on-accent); }
+.io .clamped { color: var(--accent-b); }
+.card.b .io .clamped { color: var(--accent-a); }
+.io .raw { text-decoration: line-through; opacity: 0.55; margin-right: 0.3rem; }
+
+/* ---------------- Save row ---------------- */
+.save-row {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  display: flex; align-items: center; gap: 0.9rem; margin-bottom: 2.5rem;
+}
+.notes-input { width: 20rem; }
+.save-btn {
+  font: inherit; font-weight: 700; font-size: 0.78rem; letter-spacing: 0.02em;
+  background: var(--accent-b); color: var(--ink-on-accent);
+  border: none; padding: 0.62rem 1.25rem; cursor: pointer;
+}
+.save-btn:hover { background: var(--ink); }
+.save-status { font-size: 0.82rem; font-weight: 600; }
+.save-status.good { color: var(--good); }
+.save-status.bad { color: var(--bad); }
+
+/* ---------------- History ---------------- */
+.history-section {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  padding-top: 1.75rem; border-top: 2px solid var(--ink);
+}
+.history-header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.15rem; }
+.history-header h2 {
+  font-family: "Source Serif 4", Georgia, serif; font-size: 1.25rem; font-weight: 600; margin: 0;
+}
+.history-subtitle { font-size: 0.78rem; color: var(--ink-soft); margin: 0.3rem 0 0; }
+.history-actions { display: flex; align-items: center; gap: 0.6rem; }
+.history-actions .assumption-input { width: 8rem; }
+.refresh-link {
+  font: inherit; font-weight: 600; font-size: 0.72rem; color: var(--ink-soft);
+  background: transparent; border: none; border-bottom: 1px solid var(--line-strong);
+  padding: 0.5rem 0.1rem; cursor: pointer; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.refresh-link:hover { color: var(--ink); border-color: var(--ink); }
+.history-empty {
+  background: var(--surface-2); border: 1px dashed var(--line-strong);
+  padding: 2rem; text-align: center; font-size: 0.85rem; color: var(--ink-soft);
+}
+.history-table-container { border: 1px solid var(--line); overflow-x: auto; }
+.history-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.8rem; }
+.history-table th {
+  font-family: ui-monospace, monospace; background: var(--surface-2); color: var(--ink-faint);
+  font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 0.65rem 0.9rem; font-weight: 600; border-bottom: 1px solid var(--ink);
+}
+.history-table th.th-a { color: var(--accent-b); }
+.history-table th.th-b { color: var(--accent-a); }
+.history-table td { padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.history-table tr:last-child td { border-bottom: none; }
+.history-table tr:hover td { background: var(--surface-2); }
+.badge-ticker {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
+  font-weight: 700; font-size: 0.78rem; color: var(--ink-on-accent); background: var(--ink);
+  padding: 0.15rem 0.5rem;
+}
+.table-price { font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace; font-weight: 600; }
+.table-date { font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace; font-size: 0.72rem; color: var(--ink-soft); }
+.table-val { font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace; font-weight: 600; }
+.table-val b { font-weight: 700; }
+.table-val .good { color: var(--good); font-weight: 700; font-size: 0.72rem; }
+.table-val .bad { color: var(--bad); font-weight: 700; font-size: 0.72rem; }
+.history-table td.table-val:nth-of-type(4) { background: var(--accent-b-soft); }
+.history-table td.table-val:nth-of-type(5) { background: var(--accent-a-soft); }
+.table-assumptions { font-size: 0.72rem; color: var(--ink-soft); }
+.table-notes { max-width: 13rem; font-size: 0.72rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-actions { display: flex; gap: 1rem; }
+.btn-action-load {
+  font: inherit; font-size: 0.72rem; font-weight: 600; background: transparent;
+  color: var(--ink); border: none; border-bottom: 1px solid var(--ink); padding: 0; cursor: pointer;
+}
+.btn-action-load:hover { color: var(--accent-b); border-color: var(--accent-b); }
+.btn-action-del {
+  font: inherit; font-size: 0.72rem; font-weight: 600; background: transparent;
+  color: var(--bad); border: none; padding: 0; cursor: pointer;
+}
+.btn-action-del:hover { text-decoration: underline; }
+
+/* ---------------- Footer ---------------- */
+footer {
+  margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--line);
+  font-size: 0.75rem; color: var(--ink-faint);
+  font-family: "Source Serif 4", Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  font-style: italic;
+}
+
+/* ---------------- Scenario Columns ---------------- */
+.scenarios-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+.scenario-col {
+  display: flex; flex-direction: column;
+}
+.scenario-col:not(:last-child) { border-right: 1px solid var(--line); padding-right: 1rem; }
+.card.a .scenario-col:not(:last-child) { border-right-color: rgba(247, 246, 243, 0.22); }
+.scenario-name { font-weight: 700; font-size: 0.75rem; margin-bottom: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); }
+.card.a .scenario-name { color: rgba(247, 246, 243, 0.7); }
+.card .inputs-used { border-top: none; padding-top: 0; margin-top: auto; flex-direction: column; gap: 0.4rem; }
+
+/* Table scenarios */
+.badge-scenario {
+  font-family: ui-monospace, monospace; font-size: 0.65rem; padding: 0.1rem 0.3rem; border-radius: 2px;
+  background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--line); margin-left: 0.4rem;
+}
+.scenario-bear { color: var(--bad); border-color: var(--bad-soft); background: var(--bad-soft); }
+.scenario-base { font-weight: bold; color: var(--ink); border-color: var(--line-strong); background: var(--surface); }
+.scenario-bull { color: var(--good); border-color: var(--good-soft); background: var(--good-soft); }
+.history-row-bear td { background: color-mix(in srgb, var(--bad) 4%, transparent); }
+.history-row-bull td { background: color-mix(in srgb, var(--good) 4%, transparent); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

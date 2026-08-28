@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Valuation Table</title>
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      th { cursor: pointer; user-select: none; }
+      th:hover { color: var(--ink); }
+    </style>
+    <!-- Chart.js pinned to an exact version with an integrity hash: the unpinned
+         "npm/chart.js" URL floats to whatever the latest release is, so a future breaking
+         change would alter this page with no commit on our side to point at. -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+      integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="masthead">
+        <div class="masthead-bar"></div>
+        <div class="masthead-inner">
+          <div class="wordmark">
+            Fair Value Ledger <small>Valuations</small>
+          </div>
+          <div>
+            <a href="/" class="about-link">Back to Calculator</a>
+          </div>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="hero">
+          <p class="lede">Latest Base Scenario valuations across all tickers.</p>
+          <div class="querybar" style="display: flex; gap: 1rem; align-items: center; justify-content: center; margin-bottom: 2rem;">
+            <input id="filter-input" class="assumption-input" type="text" placeholder="Filter ticker..." style="width: 15rem;" />
+            <select id="evaluator-filter" class="assumption-input assumption-select" style="width: 12rem;">
+              <option value="">All Evaluators</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="max-width: 1000px; margin: 0 auto 3rem auto; background: var(--bg-card); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border-light);">
+          <h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 1rem; color: var(--text-muted); text-align: center;">Rule #1 Upside (Last 6 Months)</h3>
+          <canvas id="upsideChart"></canvas>
+        </div>
+
+        <div class="history-table-container">
+          <table class="history-table" id="valuations-table">
+            <thead>
+              <tr>
+                <th data-sort="date" style="cursor: pointer;">Date ⇕</th>
+                <th data-sort="ticker" style="cursor: pointer;">Ticker ⇕</th>
+                <th data-sort="price" style="cursor: pointer;">Current Price ⇕</th>
+                <th class="th-b" data-sort="lynch" style="cursor: pointer;">Lynch Base FV ⇕</th>
+                <th class="th-b" data-sort="lynch-pct" style="cursor: pointer;">Lynch Diff % ⇕</th>
+                <th class="th-a" data-sort="rule1" style="cursor: pointer;">Rule #1 Base FV ⇕</th>
+                <th class="th-a" data-sort="rule1-pct" style="cursor: pointer;">Rule #1 Diff % ⇕</th>
+                <th data-sort="evaluator" style="cursor: pointer;">Evaluator ⇕</th>
+              </tr>
+            </thead>
+            <tbody id="valuations-tbody"></tbody>
+          </table>
+      </div>
+    </div>
+    <script src="/valuations.js"></script>
+  </body>
+</html>
