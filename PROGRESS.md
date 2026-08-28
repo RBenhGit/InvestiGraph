@@ -45,7 +45,16 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
       files at launch time, though a later system message confirmed all three *did* register
       partway through the session (worth using the named types directly next time).
 - [ ] **Phase 5 — Extend the data layer.** IN PROGRESS — same setup, `data-layer-porter` spec.
-- [ ] **Phase 6 — Port the history store.** IN PROGRESS — same setup, `history-porter` spec.
+- [x] **Phase 6 — Port the history store.** Done and merged (`bb66aa9`). 26 new tests, 375
+      passing total. Reviewed against the original TS `store.ts`/`types.ts`/`index.ts` in full
+      (including `deleteValuation`/`getAllLatestValuations`, not just the two functions read
+      during earlier exploration) — faithful, including a subtle asymmetry in exception
+      handling between `get_history` and `get_all_latest_valuations` that the original has too.
+      **Deviation from the brief, reviewed and endorsed:** errors are raised as typed exceptions
+      (`InvalidHistoryInput`, `ValuationNotFound`) rather than returned as a `{ok, error}`
+      result, matching this codebase's own convention (`sources.base`'s `TickerNotFound` etc.)
+      — the brief didn't specify a convention for this slice (unlike `valuation/`'s, which
+      explicitly required the return-based shape), so this was a reasonable judgment call.
 - [ ] **Phase 7 — Converge and build the merged web app.** Starts only after 4–6 merge to
       trunk and pass a combined `code-reviewer` pass.
 - [ ] **Phase 8 — Front-end tests.** Wire vitest as a dev dependency; `scripts/test.sh` runs
