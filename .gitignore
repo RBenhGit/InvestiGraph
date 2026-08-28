@@ -1,0 +1,3 @@
+# Personal, machine-local Claude Code files — never commit
+CLAUDE.local.md
+.claude/settings.local.json
