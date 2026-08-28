@@ -7,3 +7,4 @@
 - [Plotly.newPlot on detached DOM node](plotly-newplot-on-detached-dom-node.md) — index.html's chart cards were plotted before being attached to the document, so every chart would render 0x0/blank on load.
 - [ChartSetStore.load() shape not validated](chart-set-store-load-shape-not-validated.md) — malformed (non-list) entry in chart_sets.json crashes create_app() at startup with TypeError, not a graceful skip.
 - [Register-then-persist ordering hazard](register-then-persist-ordering-hazard.md) — POST /chart-sets registers live before persisting; a failed disk save leaves a phantom in-memory-only entry and an unhandled 500.
+- [Series positional indexing defect class](review_series_positional_indexing.md) — series builders drop points, so `points[-5]` is not "one year ago"; check dates, not just `len()`. Found and fixed during the InvestiGraph merge's Phase 5 (`valuation/growth.py`).
