@@ -4,6 +4,7 @@
 - [Custom chart-set prefix string duplicated](custom-chart-set-prefix-string-duplicated.md) — RESOLVED 2026-07: now a shared CUSTOM_CHART_SET_PREFIX constant in registry.py.
 - [Money currency guard bypassed via raw division](money-currency-guard-bypassed-via-raw-division.md) — RESOLVED 2026-08; keep the rule: any new two-Money combination must route through ratio() or an explicit require_same_currency.
 - [Skipped points interpolate across gaps](skipped-points-interpolate-across-gaps.md) — resolve_trailing now emits NaN (fixed); derived.resolve + ttm_series still drop points and the renderers connect across the hole.
+- [NaN gap marker breaks Money-typed series](nan-gap-marker-breaks-money-typed-series.md) — a bare float NaN in a Money series passes validation, then crashes every `p.value.value` renderer.
 - [Plotly.newPlot on detached DOM node](plotly-newplot-on-detached-dom-node.md) — index.html's chart cards were plotted before being attached to the document, so every chart would render 0x0/blank on load.
 - [ChartSetStore.load() shape not validated](chart-set-store-load-shape-not-validated.md) — malformed (non-list) entry in chart_sets.json crashes create_app() at startup with TypeError, not a graceful skip.
 - [Register-then-persist ordering hazard](register-then-persist-ordering-hazard.md) — POST /chart-sets registers live before persisting; a failed disk save leaves a phantom in-memory-only entry and an unhandled 500.

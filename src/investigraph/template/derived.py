@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date
 from typing import Callable
@@ -50,17 +51,31 @@ def resolve(fundamentals: CompanyFundamentals, derived: DerivedMetric) -> Metric
         try:
             value = derived.compute(*(values[d] for values in values_by_date))
         except (ZeroDivisionError, ValueError, AttributeError, TypeError):
-            # A single bad point (division by zero, a currency mismatch a
-            # `compute` fn didn't expect, an unexpected value shape) degrades to
-            # a skipped point, never a crash — if every point fails this way the
-            # series ends up empty and callers see `available=False`, same as
-            # any other gap.
+            # A single date where the metric is undefined (division by zero, a
+            # currency mismatch a `compute` fn didn't expect, an unexpected
+            # value shape) must break the plotted line here, not silently
+            # vanish — omitting the point instead would let the renderer draw
+            # a straight line connecting the surrounding valid points
+            # *through* the gap, fabricating a value for a date no number was
+            # actually computed for. Same NaN-gap-marker convention as
+            # `trailing.resolve_trailing`.
+            points.append(Point(date=d, value=float("nan")))
             continue
         points.append(Point(date=d, value=value))
+
+    if not any(_is_real(p.value) for p in points):
+        # Every date failed (or there were none) — an all-NaN series isn't
+        # "available data with gaps", it's no data.
+        points = []
 
     return MetricSeries(
         metric_id=derived.metric_id, points=points, available=bool(points)
     )
+
+
+def _is_real(value: Money | float) -> bool:
+    raw = value.value if isinstance(value, Money) else value
+    return not (isinstance(raw, float) and math.isnan(raw))
 
 
 def ratio(numerator: Money, denominator: Money) -> float:

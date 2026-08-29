@@ -1,3 +1,4 @@
+import math
 from datetime import date
 
 import pytest
@@ -126,7 +127,12 @@ def test_resolve_unavailable_when_an_input_metric_is_marked_unavailable():
     assert series.available is False
 
 
-def test_resolve_skips_a_point_with_zero_denominator_without_crashing():
+def test_resolve_marks_a_point_with_zero_denominator_as_nan_without_crashing():
+    # A per-point compute failure must not simply vanish — omitting it would
+    # let a line-chart renderer draw a straight segment connecting the
+    # surrounding valid points *through* the undefined date, fabricating a
+    # value nothing actually computed. It surfaces as NaN instead, so the
+    # series stays available with a break at that date.
     fundamentals = _fundamentals(
         {
             "free_cash_flow": _money_series(
@@ -142,7 +148,10 @@ def test_resolve_skips_a_point_with_zero_denominator_without_crashing():
 
     series = resolve(fundamentals, FCF_MARGIN)
 
-    assert [p.date for p in series.points] == [date(2021, 1, 1)]
+    assert series.available is True
+    assert [p.date for p in series.points] == [date(2020, 1, 1), date(2021, 1, 1)]
+    assert math.isnan(series.points[0].value)
+    assert series.points[1].value == pytest.approx(0.1)
 
 
 def test_custom_derived_metric_with_arbitrary_compute():
@@ -175,10 +184,10 @@ def test_resolve_unavailable_for_a_derived_metric_with_no_inputs():
     assert series.points == []
 
 
-def test_resolve_skips_a_point_whose_compute_raises_value_error():
+def test_resolve_marks_a_point_whose_compute_raises_value_error_as_nan():
     # A `compute` that surfaces a ValueError (e.g. ratio()'s currency-mismatch
-    # guard) must degrade that one point, not propagate and crash the caller —
-    # the same contract as the ZeroDivisionError case.
+    # guard) must degrade that one point to NaN, not propagate and crash the
+    # caller — the same contract as the ZeroDivisionError case.
     raises_on_first_date = DerivedMetric(
         metric_id="flaky",
         title="Flaky",
@@ -200,7 +209,10 @@ def test_resolve_skips_a_point_whose_compute_raises_value_error():
 
     series = resolve(fundamentals, raises_on_first_date)
 
-    assert [p.date for p in series.points] == [date(2021, 1, 1)]
+    assert series.available is True
+    assert [p.date for p in series.points] == [date(2020, 1, 1), date(2021, 1, 1)]
+    assert math.isnan(series.points[0].value)
+    assert series.points[1].value == 20
 
 
 def test_current_ratio_divides_current_assets_by_current_liabilities():
@@ -288,10 +300,10 @@ def test_roic_divides_net_income_by_invested_capital():
     assert series.points[0].value == pytest.approx(0.075)
 
 
-def test_resolve_skips_a_point_whose_compute_raises_attribute_or_type_error():
+def test_resolve_marks_a_point_whose_compute_raises_attribute_or_type_error_as_nan():
     # A `compute` that assumes every input is a Money (e.g. calls
-    # .as_base_units()) must degrade a bare-float point, not crash the whole
-    # dashboard render.
+    # .as_base_units()) must degrade a bare-float point to NaN, not crash the
+    # whole dashboard render.
     assumes_money = DerivedMetric(
         metric_id="flaky",
         title="Flaky",
@@ -315,4 +327,7 @@ def test_resolve_skips_a_point_whose_compute_raises_attribute_or_type_error():
 
     series = resolve(fundamentals, assumes_money)
 
-    assert [p.date for p in series.points] == [date(2021, 1, 1)]
+    assert series.available is True
+    assert [p.date for p in series.points] == [date(2020, 1, 1), date(2021, 1, 1)]
+    assert math.isnan(series.points[0].value)
+    assert series.points[1].value == 10.0

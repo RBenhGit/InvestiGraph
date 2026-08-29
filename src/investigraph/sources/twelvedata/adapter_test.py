@@ -144,7 +144,7 @@ def test_declares_capability():
         capability = TwelveDataAdapter().capability()
     assert Market.US in capability.markets
     assert Market.TASE in capability.markets
-    assert capability.max_history[Period.ANNUAL] == 10
+    assert capability.max_history[Period.ANNUAL] == 6
     # TTM is derived (template/trailing.py's derive_ttm_fundamentals), not native.
     assert Period.TTM in capability.periods
     assert (

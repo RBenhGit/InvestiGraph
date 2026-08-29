@@ -82,3 +82,13 @@ its "why."
   produced different fair values for the same ticker from the two interfaces. Never default a
   missing growth rate to `0`; that fabricates a fair value instead of surfacing
   `MISSING_GROWTH_RATE`.
+- **A NaN gap-marker must match its series' value type.** `template/derived.py` and
+  `template/trailing.py` mark a bad/missing point as NaN (instead of omitting it) so a chart line
+  visibly breaks at the gap rather than interpolating straight through it. Most series are
+  plain-`float`-valued, where `float("nan")` is correct — but flow metrics (revenue, net_income,
+  eps, fcf, ebitda, R&D, SG&A, dividends_paid, ebit) are `Money`-valued, and `MetricSeries`
+  validation only checks consistency *among* the `Money` points, so a bare float slips through
+  undetected and crashes every renderer at `.value.value`/`.value.as_base_units()` instead. Use
+  `trailing.py`'s `_nan_like(value)` (returns a `Money`-tagged NaN when `value` is `Money`) any
+  time this convention is applied to a new series — never construct the marker with a bare
+  `float("nan")` literal without first checking the series' value type.

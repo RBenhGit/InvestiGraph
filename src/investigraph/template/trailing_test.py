@@ -137,6 +137,35 @@ def test_ttm_series_skips_a_window_missing_a_quarter():
     assert dates[5] in [p.date for p in result.points]
 
 
+def test_ttm_series_mark_gaps_emits_nan_instead_of_skipping():
+    # With mark_gaps=True (the chart-rendering path via derive_ttm_fundamentals),
+    # a window missing a quarter must surface as a NaN point at that date, not
+    # vanish -- an omitted point would let a line-chart renderer draw a straight
+    # segment connecting the surrounding valid points *through* the gap,
+    # fabricating a value nothing actually computed.
+    dates = [
+        date(2022, 3, 31),
+        date(2022, 6, 30),
+        date(2023, 3, 31),  # gap: a missing Q3/Q4
+        date(2023, 6, 30),
+        date(2023, 9, 30),
+        date(2023, 12, 31),
+    ]
+    series = _money_series("eps", [(d, 1.0) for d in dates])
+
+    result = ttm_series(series, Period.QUARTERLY, mark_gaps=True)
+
+    result_dates = [p.date for p in result.points]
+    assert dates[3] in result_dates
+    gap_value = result.points[result_dates.index(dates[3])].value
+    assert isinstance(gap_value, Money)
+    assert math.isnan(gap_value.value)
+    assert gap_value.currency == Currency.USD
+    assert gap_value.scale == Unit.ONES
+    assert dates[5] in result_dates
+    assert result.available is True
+
+
 def test_ttm_series_unavailable_when_input_unavailable():
     series = MetricSeries(metric_id="eps", points=[], available=False)
 
@@ -561,6 +590,55 @@ def test_derive_ttm_fundamentals_recomputes_net_margin_from_ttm_flows():
     assert result.series["net_margin"].points[0].value == pytest.approx(0.25)
 
 
+_Q_WITH_GAP = [
+    date(2022, 3, 31),
+    date(2022, 6, 30),
+    date(2023, 3, 31),  # gap: a missing Q3/Q4
+    date(2023, 6, 30),
+    date(2023, 9, 30),
+    date(2023, 12, 31),
+]
+
+
+def test_derive_ttm_fundamentals_marks_flow_metric_gap_as_nan():
+    fundamentals = _fundamentals(
+        {"revenue": _money_series("revenue", [(d, 10.0) for d in _Q_WITH_GAP])},
+        period=Period.QUARTERLY,
+    )
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    revenue_points = result.series["revenue"].points
+    gap_point = next(p for p in revenue_points if p.date == _Q_WITH_GAP[3])
+    # Flow metrics are Money-valued -- the gap marker must be too, not a bare
+    # float, or every renderer expecting `.value` to be `Money` uniformly
+    # crashes on this point.
+    assert isinstance(gap_point.value, Money)
+    assert math.isnan(gap_point.value.value)
+    # A later, healthy window still emits a real value.
+    healthy_point = next(p for p in revenue_points if p.date == _Q_WITH_GAP[5])
+    assert healthy_point.value.value == pytest.approx(40.0)
+
+
+def test_derive_ttm_fundamentals_net_margin_breaks_at_a_flow_metric_gap():
+    fundamentals = _fundamentals(
+        {
+            "net_income": _money_series("net_income", [(d, 5.0) for d in _Q_WITH_GAP]),
+            "revenue": _money_series("revenue", [(d, 20.0) for d in _Q_WITH_GAP]),
+            "net_margin": _float_series("net_margin", [(d, 0.9) for d in _Q_WITH_GAP]),
+        },
+        period=Period.QUARTERLY,
+    )
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    net_margin_points = result.series["net_margin"].points
+    gap_point = next(p for p in net_margin_points if p.date == _Q_WITH_GAP[3])
+    assert math.isnan(gap_point.value)
+    healthy_point = next(p for p in net_margin_points if p.date == _Q_WITH_GAP[5])
+    assert healthy_point.value == pytest.approx(0.25)
+
+
 def test_derive_ttm_fundamentals_omits_net_margin_when_absent():
     fundamentals = _fundamentals(
         {"revenue": _money_series("revenue", [(d, 20.0) for d in _Q])},
@@ -570,6 +648,31 @@ def test_derive_ttm_fundamentals_omits_net_margin_when_absent():
     result = derive_ttm_fundamentals(fundamentals)
 
     assert "net_margin" not in result.series
+
+
+def test_derive_ttm_fundamentals_gap_point_renders_without_crashing():
+    # Regression test for the producer-renderer seam: a gapped flow-metric
+    # series out of derive_ttm_fundamentals must be renderable by a real
+    # chart, not just internally NaN-consistent. `render_money_bar` reads
+    # `p.value.value`, which raises AttributeError if the gap marker were a
+    # bare float instead of a Money tagged like every other point.
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from investigraph.charts.base import render_money_bar
+
+    fundamentals = _fundamentals(
+        {"revenue": _money_series("revenue", [(d, 10.0) for d in _Q_WITH_GAP])},
+        period=Period.QUARTERLY,
+    )
+
+    result = derive_ttm_fundamentals(fundamentals)
+
+    fig, ax = plt.subplots()
+    render_money_bar(ax, result, "revenue")
+    plt.close(fig)
 
 
 def test_derive_ttm_fundamentals_approximates_gross_margin_and_notes_it():

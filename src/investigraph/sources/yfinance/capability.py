@@ -8,9 +8,14 @@ from investigraph.template.models import Market, Period
 CAPABILITY = Capability(
     markets={Market.US, Market.TASE},
     periods={Period.ANNUAL, Period.QUARTERLY, Period.TTM},
-    # TTM is derived from the trailing four quarters (template/trailing.py's
-    # derive_ttm_fundamentals), so it needs the same history depth as QUARTERLY.
-    max_history={Period.ANNUAL: 4, Period.QUARTERLY: 4, Period.TTM: 4},
+    # QUARTERLY verified live 2026-08-29 (commission-source, AAPL/JPM/OXM/POLI.TA/
+    # TEVA.TA/ORL.TA): yfinance's quarterly_income_stmt/quarterly_cashflow/
+    # quarterly_balance_sheet return only ~5 columns (~1y), not the 4y this
+    # previously claimed — that number predates this measurement and was never
+    # actually checked against live data before now. TTM is derived from the
+    # trailing four quarters (template/trailing.py's derive_ttm_fundamentals), so
+    # it needs the same history depth as QUARTERLY.
+    max_history={Period.ANNUAL: 4, Period.QUARTERLY: 1, Period.TTM: 1},
     metrics={
         "price",
         "revenue",

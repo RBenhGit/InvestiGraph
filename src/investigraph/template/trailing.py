@@ -12,14 +12,13 @@ joined as-is.
 from __future__ import annotations
 
 import bisect
-import math
 from dataclasses import dataclass
 from datetime import date
 from functools import reduce
 from operator import add
 from typing import Callable
 
-from investigraph.template.derived import DerivedMetric, ratio, resolve
+from investigraph.template.derived import DerivedMetric, _is_real, ratio, resolve
 from investigraph.template.models import (
     CompanyFundamentals,
     Money,
@@ -36,15 +35,45 @@ from investigraph.template.models import (
 _MAX_QUARTER_WINDOW_DAYS = 330
 
 
-def ttm_series(series: MetricSeries, period: Period) -> MetricSeries:
+def _nan_like(value: Money | float) -> Money | float:
+    """A NaN gap marker in the same shape as `value` — `Money`-tagged with its
+    currency/scale if `value` is `Money`, a bare float otherwise.
+
+    Flow-metric series are `Money`-valued; a bare `float("nan")` mixed into
+    one passes `MetricSeries`'s validation (which only checks consistency
+    *among* the `Money` points) and then crashes every renderer downstream,
+    which expects `.value` to be `Money` uniformly.
+    """
+    if isinstance(value, Money):
+        return Money(value=float("nan"), currency=value.currency, scale=value.scale)
+    return float("nan")
+
+
+def ttm_series(
+    series: MetricSeries, period: Period, *, mark_gaps: bool = False
+) -> MetricSeries:
     """Trailing-twelve-month view of a flow metric (EPS, net income, dividends paid).
 
     Under `Period.ANNUAL` each point already represents a trailing year as of
     its fiscal date, so this is the identity. Under `Period.QUARTERLY`, sums
-    each rolling window of 4 consecutive quarters — a window whose span
-    indicates a missing quarter is skipped rather than silently understating
-    the total, the same "degrade one point, not the whole series" contract as
-    `derived.resolve`.
+    each rolling window of 4 consecutive quarters.
+
+    By default (`mark_gaps=False`) a window whose span indicates a missing
+    quarter is skipped rather than silently understating the total — the
+    contract `valuation/growth.py` and `valuation/resolve_eps.py` rely on to
+    find "the nearest real point a year back" and "the latest real TTM point"
+    by date, which a NaN-valued point would corrupt. Chart-rendering callers
+    (`derive_ttm_fundamentals`) instead want a plotted line to visibly break at
+    a gap rather than silently connect across it — the same "degrade one
+    point, not the whole series" contract as `derived.resolve` — so they pass
+    `mark_gaps=True` to get a NaN-valued point at the gap date instead of an
+    omitted one. Flow metrics are `Money`-valued, so the marker is a
+    `Money(value=float("nan"), ...)` tagged with the window's own
+    currency/scale (via `_nan_like`), not a bare float — a bare float mixed
+    into an otherwise-`Money` series passes `MetricSeries`'s validation
+    (which only checks consistency *among* the `Money` points) and then
+    crashes every renderer downstream, which expects `.value` to be `Money`
+    uniformly.
     """
     if period != Period.QUARTERLY:
         return series
@@ -56,12 +85,23 @@ def ttm_series(series: MetricSeries, period: Period) -> MetricSeries:
     for i in range(3, len(points)):
         window = points[i - 3 : i + 1]
         if (window[-1].date - window[0].date).days > _MAX_QUARTER_WINDOW_DAYS:
+            if mark_gaps:
+                ttm_points.append(
+                    Point(date=window[-1].date, value=_nan_like(window[0].value))
+                )
             continue
         try:
             total = reduce(add, (p.value for p in window))
         except (TypeError, ValueError):
+            if mark_gaps:
+                ttm_points.append(
+                    Point(date=window[-1].date, value=_nan_like(window[0].value))
+                )
             continue
         ttm_points.append(Point(date=window[-1].date, value=total))
+
+    if mark_gaps and not any(_is_real(p.value) for p in ttm_points):
+        ttm_points = []
 
     return MetricSeries(
         metric_id=series.metric_id, points=ttm_points, available=bool(ttm_points)
@@ -131,7 +171,7 @@ def derive_ttm_fundamentals(quarterly: CompanyFundamentals) -> CompanyFundamenta
     new_series: dict[str, MetricSeries] = {}
     for metric_id, series in quarterly.series.items():
         if metric_id in _FLOW_METRIC_IDS:
-            new_series[metric_id] = ttm_series(series, Period.QUARTERLY)
+            new_series[metric_id] = ttm_series(series, Period.QUARTERLY, mark_gaps=True)
         elif metric_id != "net_margin":
             new_series[metric_id] = series
 
@@ -281,11 +321,6 @@ def resolve_trailing(
     return MetricSeries(
         metric_id=metric.metric_id, points=points, available=bool(points)
     )
-
-
-def _is_real(value: Money | float) -> bool:
-    raw = value.value if isinstance(value, Money) else value
-    return not (isinstance(raw, float) and math.isnan(raw))
 
 
 def _pe(price: Money, eps_ttm: Money) -> float:

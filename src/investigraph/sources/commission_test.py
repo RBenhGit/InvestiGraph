@@ -195,19 +195,35 @@ def test_commission_treats_source_unavailable_like_ticker_not_found():
 
 
 def test_commission_derives_conservative_max_history():
+    # price is excluded from the depth calculation (RANGE_BOUNDED_METRICS) --
+    # daily cadence, not a fair comparison against approx_years' annual/quarterly
+    # assumption -- so revenue is the depth signal here, matching what the real
+    # source adapters' statement metrics look like.
     sample_tickers = {Market.US: {"large_cap": "BIG", "small_cap": "SMALL"}}
     by_key = {
         ("BIG", Period.ANNUAL): _fundamentals(
-            "BIG", Market.US, Period.ANNUAL, {"price": _series("price", points=10)}
+            "BIG",
+            Market.US,
+            Period.ANNUAL,
+            {"price": _series("price"), "revenue": _series("revenue", points=10)},
         ),
         ("BIG", Period.QUARTERLY): _fundamentals(
-            "BIG", Market.US, Period.QUARTERLY, {"price": _series("price", points=40)}
+            "BIG",
+            Market.US,
+            Period.QUARTERLY,
+            {"price": _series("price"), "revenue": _series("revenue", points=40)},
         ),
         ("SMALL", Period.ANNUAL): _fundamentals(
-            "SMALL", Market.US, Period.ANNUAL, {"price": _series("price", points=3)}
+            "SMALL",
+            Market.US,
+            Period.ANNUAL,
+            {"price": _series("price"), "revenue": _series("revenue", points=3)},
         ),
         ("SMALL", Period.QUARTERLY): _fundamentals(
-            "SMALL", Market.US, Period.QUARTERLY, {"price": _series("price", points=8)}
+            "SMALL",
+            Market.US,
+            Period.QUARTERLY,
+            {"price": _series("price"), "revenue": _series("revenue", points=8)},
         ),
     }
     adapter = _StubAdapter(by_key)
@@ -216,6 +232,94 @@ def test_commission_derives_conservative_max_history():
 
     assert certificate.capability.max_history[Period.ANNUAL] == 3  # min(10, 3)
     assert certificate.capability.max_history[Period.QUARTERLY] == 2  # min(10, 2)
+
+
+def test_commission_max_history_uses_best_metric_per_sample_not_worst():
+    # A single naturally sparse metric on one ticker (e.g. a small-cap that
+    # skipped a dividend one quarter) must not drag the whole declaration's
+    # depth down when that same ticker's other metrics prove the source
+    # returns more -- this was the bug behind a real yfinance commission-source
+    # run declaring 0 years of quarterly history off one thin dividends_paid
+    # series, despite every other metric having ample depth.
+    sample_tickers = {Market.US: {"large_cap": "BIG"}}
+    by_key = {
+        ("BIG", Period.ANNUAL): _fundamentals(
+            "BIG",
+            Market.US,
+            Period.ANNUAL,
+            {"price": _series("price"), "revenue": _series("revenue", points=10)},
+        ),
+        ("BIG", Period.QUARTERLY): _fundamentals(
+            "BIG",
+            Market.US,
+            Period.QUARTERLY,
+            {
+                "price": _series("price"),
+                "revenue": _series("revenue", points=20),
+                "dividends_paid": _series("dividends_paid", points=3),
+            },
+        ),
+    }
+    adapter = _StubAdapter(by_key)
+
+    certificate = commission(adapter, "teststub", sample_tickers=sample_tickers)
+
+    # 20 revenue points -> 5y, not 3 dividends_paid points -> 0y.
+    assert certificate.capability.max_history[Period.QUARTERLY] == 5
+
+
+def test_commission_adds_ttm_at_quarterly_depth_when_quarterly_is_supported():
+    # No adapter fetches Period.TTM natively -- template/trailing.py's
+    # derive_ttm_fundamentals derives it from QUARTERLY in every adapter
+    # unconditionally -- so commission() must never probe TTM directly, and
+    # must instead add it after the fact at QUARTERLY's own depth once
+    # QUARTERLY itself qualifies.
+    sample_tickers = {Market.US: {"large_cap": "BIG"}}
+    by_key = {
+        ("BIG", Period.ANNUAL): _fundamentals(
+            "BIG",
+            Market.US,
+            Period.ANNUAL,
+            {"price": _series("price"), "revenue": _series("revenue", points=10)},
+        ),
+        ("BIG", Period.QUARTERLY): _fundamentals(
+            "BIG",
+            Market.US,
+            Period.QUARTERLY,
+            {"price": _series("price"), "revenue": _series("revenue", points=20)},
+        ),
+    }
+    adapter = _StubAdapter(by_key)
+
+    certificate = commission(adapter, "teststub", sample_tickers=sample_tickers)
+
+    assert Period.TTM in certificate.capability.periods
+    assert (
+        certificate.capability.max_history[Period.TTM]
+        == certificate.capability.max_history[Period.QUARTERLY]
+    )
+    # TTM was never actually probed -- no sample in the certificate names it.
+    assert all(sample.period != Period.TTM for sample in certificate.samples)
+
+
+def test_commission_omits_ttm_when_quarterly_was_never_probed():
+    sample_tickers = {Market.US: {"large_cap": "BIG"}}
+    by_key = {
+        ("BIG", Period.ANNUAL): _fundamentals(
+            "BIG",
+            Market.US,
+            Period.ANNUAL,
+            {"price": _series("price"), "revenue": _series("revenue")},
+        ),
+    }
+    adapter = _StubAdapter(by_key)
+
+    certificate = commission(
+        adapter, "teststub", sample_tickers=sample_tickers, periods=(Period.ANNUAL,)
+    )
+
+    assert Period.TTM not in certificate.capability.periods
+    assert Period.TTM not in certificate.capability.max_history
 
 
 def test_is_degenerate_true_when_samples_exist_but_no_market_qualified():

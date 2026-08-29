@@ -7,6 +7,13 @@ from investigraph.template.models import Period
 
 RANGES: tuple[str, ...] = ("6m", "1y", "3y", "5y", "10y", "max")
 
+# `price`'s point count reflects the requested --range at daily cadence, not
+# a source's true statement-cadence depth — `approx_years` assumes 1 (annual)
+# or 4 (quarterly) points per year, which `price` never satisfies. Shared by
+# `verify.py` and `commission.py`, both of which compare declared/derived
+# history depth against a live fetch and must skip `price` to do it fairly.
+RANGE_BOUNDED_METRICS = {"price"}
+
 _RANGE_YEARS: dict[str, int] = {
     "6m": 1,
     "1y": 1,

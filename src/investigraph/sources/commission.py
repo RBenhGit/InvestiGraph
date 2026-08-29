@@ -15,7 +15,7 @@ from investigraph.sources.base import (
     SourceUnavailable,
     TickerNotFound,
 )
-from investigraph.sources.ranges import approx_years
+from investigraph.sources.ranges import RANGE_BOUNDED_METRICS, approx_years
 from investigraph.template.models import Market, Period
 
 # Illustrative sample tickers spanning company types per market, chosen so a
@@ -111,6 +111,22 @@ def commission(
     `price` series — the one bare-minimum guarantee a market needs to be
     usable at all.
 
+    `max_history` per sample is the *best* depth across that sample's own
+    available metrics, not the worst: one naturally sparse metric on one
+    ticker (e.g. a small-cap that skipped a dividend one quarter, so
+    `dividends_paid` has fewer points than every other statement line for
+    that same ticker) must not drag the whole declaration's depth down when
+    that ticker's other metrics prove the source really does return more.
+    The conservative `min` still applies *across* samples — a ticker/period
+    that is genuinely shallow across the board still caps the declaration.
+
+    `Period.TTM` is never probed directly — no adapter fetches it natively,
+    `template/trailing.py`'s `derive_ttm_fundamentals` derives it from
+    `Period.QUARTERLY` in every adapter unconditionally, so a live probe of
+    TTM would just re-measure QUARTERLY under a different name. Instead, a
+    market that ends up with QUARTERLY support also gets TTM added at the
+    same declared depth, after the main probing loop.
+
     Only the two protocol-documented failure modes (`TickerNotFound`,
     `SourceUnavailable`) are handled; anything else propagates, since an
     unexpected exception here is a bug to investigate, not a declared gap.
@@ -156,10 +172,21 @@ def commission(
                 if "price" not in available:
                     market_ok = False
 
-                for metric_id in available:
-                    years = approx_years(
-                        period, len(fundamentals.series[metric_id].points)
-                    )
+                # Best depth among this sample's own statement-cadence metrics
+                # (price excluded — daily cadence, not a fair comparison; see
+                # RANGE_BOUNDED_METRICS), not the worst: one metric that's
+                # naturally sparser for this particular ticker (e.g. a
+                # skipped dividend quarter) shouldn't understate what the
+                # source actually returns for everything else. The `min`
+                # against other samples below still applies, so a ticker
+                # that's genuinely shallow across every metric still caps it.
+                sample_years = [
+                    approx_years(period, len(fundamentals.series[metric_id].points))
+                    for metric_id in available
+                    if metric_id not in RANGE_BOUNDED_METRICS
+                ]
+                if sample_years:
+                    years = max(sample_years)
                     max_history[period] = (
                         years
                         if period not in max_history
@@ -180,9 +207,19 @@ def commission(
         if market_ok:
             markets.add(market)
 
+    declared_periods = set(periods)
+    if Period.QUARTERLY in declared_periods and Period.QUARTERLY in max_history:
+        # TTM is derived from QUARTERLY (template/trailing.py's
+        # derive_ttm_fundamentals), never fetched natively by any adapter —
+        # see this function's docstring. Declaring it here at QUARTERLY's own
+        # depth is what both hand-written capability.py files already did
+        # before this was automated.
+        declared_periods.add(Period.TTM)
+        max_history[Period.TTM] = max_history[Period.QUARTERLY]
+
     capability = Capability(
         markets=markets,
-        periods=set(periods),
+        periods=declared_periods,
         max_history=max_history,
         metrics=metrics or set(),
     )

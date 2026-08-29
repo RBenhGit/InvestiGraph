@@ -70,7 +70,10 @@ series unchanged, since summing snapshot values would be meaningless. `gross_mar
 exception: it can't be correctly recomputed for TTM (its numerator isn't tracked as its own
 series), so its whole quarterly series passes through as a labeled approximation instead — every
 point is that quarter's own margin, not a trailing figure — flagged in the page's source-limits
-panel; `net_margin` *is* correctly recomputed (both its inputs are available as flow series). The
+panel; `net_margin` *is* correctly recomputed (both its inputs are available as flow series). A
+TTM window missing a quarter (a gap in the underlying quarterly data) breaks the plotted line at
+that point rather than silently interpolating across it — the same convention every other
+computed metric in `template/` uses for a bad or missing point. The
 default `fundamentals` chart set renders 6 charts; the catalog holds 21 — use `--charts`
 (comma-separated ids) or the web UI's checkbox picker for any other combination. Tickers are
 matched by `^[A-Za-z0-9.\-]+$` — no exchange-qualified form like `AAPL:NASDAQ`; use the bare

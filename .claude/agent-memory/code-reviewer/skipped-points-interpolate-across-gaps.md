@@ -1,16 +1,51 @@
 ---
 name: skipped-points-interpolate-across-gaps
-description: template/ computations degrade a bad point by dropping it from the list, and the renderers then connect straight across the hole — a dropped run reads as real interpolated data. resolve_trailing is FIXED (NaN); derived.resolve and ttm_series still drop.
+description: template/ computations degrade a bad point by dropping it from the list, and the renderers then connect straight across the hole — a dropped run reads as real interpolated data. All three computation paths (resolve_trailing, derived.resolve, ttm_series) now mark gaps as NaN instead of dropping them. FIXED as of 2026-08-29; watch for the Money-vs-float typing trap this hit on the first attempt (see below) when reviewing similar NaN-marker code elsewhere.
 metadata:
   type: project
 ---
 
-**Status (re-checked 2026-08-28):** `trailing.resolve_trailing()` now appends `float('nan')` for a
-failed point instead of omitting it — that half is fixed. Still dropping silently:
-`derived.resolve()` (its `except` block `continue`s) and `trailing.ttm_series()` (a window whose
-span exceeds `_MAX_QUARTER_WINDOW_DAYS = 330`, i.e. a missing quarter, is `continue`d). The web
-renderer is `mode: 'lines+markers'` unless a spec sets `markers: false` (daily-density series), so
-a single surviving point is at least visible — but a *gap* still reads as an interpolated segment.
+**Status (fixed 2026-08-29):** All three computation paths now mark a failed/gapped point as
+`float('nan')` instead of omitting it:
+- `trailing.resolve_trailing()` — fixed earlier (2026-08-28).
+- `derived.resolve()` — its `except` block now appends `Point(date=d, value=float("nan"))` instead
+  of `continue`; collapses to `available=False` only if every point is NaN. Shared `_is_real()`
+  helper lives in `derived.py` and is imported by `trailing.py` (no duplicate).
+- `trailing.ttm_series()` gained a `mark_gaps: bool = False` keyword. Default (`False`) preserves
+  the original skip-the-gap behavior, because `valuation/growth.py`
+  (`calculate_ttm_eps_growth_percent`) and `valuation/resolve_eps.py` (`_template_ttm_eps`) both
+  depend on gapped windows being *absent*, not NaN-valued — they search by date among present
+  points (`_find_year_ago_point`) or take `max(points, key=date)` expecting the latest point to be
+  real. `derive_ttm_fundamentals()` (the chart-rendering path) is the only caller that now passes
+  `mark_gaps=True`, so its flow-metric series and the `net_margin` it recomputes via
+  `derived.resolve()` both correctly break the line at a missing-quarter gap.
+
+**Follow-up bug found and fixed same day (2026-08-29, deep integration audit):** the first version
+of `ttm_series(mark_gaps=True)` emitted a bare `Point(date=..., value=float("nan"))` for every
+flow metric — but flow metrics (revenue, net_income, eps, fcf, ebitda, R&D, SG&A, dividends_paid,
+ebit) are `Money`-valued, not float. A bare float mixed into an otherwise-`Money` series passed
+`MetricSeries`'s validation (`_consistent_money_tagging` only checks consistency *among* the
+`Money` points) and then crashed every renderer that assumes `.value` is `Money` uniformly:
+`render_money_bar` (`p.value.value`), `render_money_line` (`p.value.as_base_units()`), and
+`web/chart_data.py`. Concretely, this turned "any ticker with one missing quarterly statement
+cell, viewed at `--period ttm`" from a silently-wrong chart into a hard 500 on the whole dashboard
+— worse than the bug this fix was meant to close. Fixed by a new `_nan_like(value)` helper in
+`trailing.py` that returns `Money(value=float("nan"), currency=value.currency, scale=value.scale)`
+when `value` is `Money`, a bare float otherwise; both `ttm_series` gap-emission sites now call it
+instead of constructing `float("nan")` directly. `derived.resolve()`'s own marker was never
+affected — every `DerivedMetric.compute` in `derived.py` (`ratio`, `_roce`, `_roic`,
+`_book_value_per_share`) returns a plain `float`, so its NaN marker was correctly typed from the
+start; the bug was specific to `ttm_series`, the one path applying the convention to a
+`Money`-valued series.
+
+Regression tests: `derived_test.py`'s three `test_resolve_*` tests were updated to assert NaN
+instead of a shortened list; `trailing_test.py` gained
+`test_ttm_series_mark_gaps_emits_nan_instead_of_skipping` (now asserts a `Money`-typed NaN, not a
+bare float), `test_derive_ttm_fundamentals_marks_flow_metric_gap_as_nan` (same),
+`test_derive_ttm_fundamentals_net_margin_breaks_at_a_flow_metric_gap`, and a new
+`test_derive_ttm_fundamentals_gap_point_renders_without_crashing` that feeds a gapped
+`derive_ttm_fundamentals` output into the real `render_money_bar` — the producer→renderer seam the
+earlier tests didn't cover, and the one that would have caught this bug before it shipped.
 
 The original finding: computations in `template/` implement "degrade one point, not the whole
 series": a `compute` that raises

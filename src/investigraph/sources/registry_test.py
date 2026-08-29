@@ -51,7 +51,7 @@ def test_every_registered_source_has_a_capability():
 def test_get_capability_twelvedata_requires_no_credentials():
     with patch.dict("os.environ", {}, clear=True):
         capability = get_capability("twelvedata")
-    assert capability.max_history[Period.ANNUAL] == 10
+    assert capability.max_history[Period.ANNUAL] == 6
 
 
 def test_get_capability_yfinance_matches_declared_metrics():

@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 from investigraph.sources.base import Capability, DataSource
-from investigraph.sources.ranges import approx_years, range_years
+from investigraph.sources.ranges import RANGE_BOUNDED_METRICS, approx_years, range_years
 from investigraph.template.models import (
     CompanyFundamentals,
     Currency,
@@ -18,12 +18,6 @@ _AGOROT_NOT_CONVERTED_THRESHOLD = 100_000
 # reports statement figures pre-scaled (thousands/millions) that never got multiplied
 # back up to raw shekels.
 _TASE_REVENUE_TOO_SMALL_THRESHOLD = 100_000
-
-# price's point count reflects the requested --range, not the source's true max
-# depth (see both adapters' `fetch()` comments on this) — statement endpoints
-# return whatever depth the API gives regardless of range, so only those are a
-# fair comparison against a declared `max_history`.
-_RANGE_BOUNDED_METRICS = {"price"}
 
 
 class ReconciliationReport(BaseModel):
@@ -100,7 +94,7 @@ def _history_warnings(
 
     warnings = []
     for metric_id, series in fundamentals.series.items():
-        if metric_id in _RANGE_BOUNDED_METRICS or not series.available:
+        if metric_id in RANGE_BOUNDED_METRICS or not series.available:
             continue
         actual_years = approx_years(period, len(series.points))
         if actual_years < declared_years:

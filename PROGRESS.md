@@ -315,6 +315,45 @@ next step for the user to trigger, not assumed here.
       actually exercises the generic capability-gate mechanism via a deliberately limited stub
       (renamed). 500 pytest + 105 vitest passing.
 
+- [x] **2026-08-29 — Deep integration & efficiency audit: NaN-gap-marker convention +
+      capability-depth corrections.** Two pieces of uncommitted work landed together and were
+      reviewed as one diff. (1) A shared "mark gaps as NaN instead of omitting them" convention
+      across `template/derived.py`'s `resolve()`, `trailing.py`'s `resolve_trailing()`, and (new)
+      `ttm_series()`, so a chart line visibly breaks at a bad/missing point instead of
+      interpolating straight through it (previously-omitted points let a renderer draw a
+      fabricated straight segment across the gap — see the code-reviewer memory entry
+      `skipped-points-interpolate-across-gaps.md`). `ttm_series` gained a `mark_gaps: bool =
+      False` keyword: default `False` preserves omit-semantics for `valuation/growth.py` and
+      `valuation/resolve_eps.py`, which search by date among *present* points and would be
+      corrupted by a NaN point; only `derive_ttm_fundamentals()` (the chart-rendering path) passes
+      `mark_gaps=True`. (2) `sources/commission.py`'s history-depth probing was corrected to take
+      the *max* depth across a sample's own metrics (excluding the new `RANGE_BOUNDED_METRICS`
+      constant, moved to `sources/ranges.py`) rather than an effective min that let one naturally
+      sparse metric understate a source's true depth, and to auto-declare `Period.TTM` at
+      `Period.QUARTERLY`'s depth (TTM is derived, never fetched natively). Re-verifying against
+      live data with the fixed probe corrected both sources' declared depths, which had never
+      actually been checked: yfinance QUARTERLY 4y → **1y** (TTM likewise), Twelve Data ANNUAL
+      10y → **6y**, QUARTERLY 10y → **1y**.
+      **code-reviewer verdict (2 stages): one Critical bug, reproduced and fixed.** The first cut
+      of the NaN marker used a bare `float("nan")` for every gap point, including in
+      `ttm_series`'s flow-metric series (revenue, net_income, eps, fcf, ebitda, R&D, SG&A,
+      dividends_paid, ebit) — all `Money`-valued, not float. A bare float mixed into an
+      otherwise-`Money` series passed `MetricSeries` validation (which only checks consistency
+      *among* the `Money` points) and crashed every renderer expecting `.value` to be `Money`
+      uniformly (`AttributeError: 'float' object has no attribute 'value'` in
+      `charts/base.py`'s `render_money_bar`/`render_money_line` and `web/chart_data.py`) —
+      reproducible on any ticker with one missing quarterly cell viewed at `--period ttm`. Turned
+      a silently-wrong chart into a hard 500 on the whole dashboard. Fixed with a new
+      `_nan_like(value)` helper in `trailing.py` that tags the marker `Money(value=float("nan"),
+      currency=..., scale=...)` when the series is `Money`-valued (`derived.resolve`'s own marker
+      was never affected — every `DerivedMetric.compute` there returns a plain `float`).
+      New regression test `test_derive_ttm_fundamentals_gap_point_renders_without_crashing`
+      feeds a gapped `derive_ttm_fundamentals` output into the real `render_money_bar` — the
+      producer→renderer seam no prior test covered, confirmed to fail against the pre-fix code
+      and pass against the fix. Everything else in the diff (the `commission.py` probing-loop
+      rewrite, the `RANGE_BOUNDED_METRICS` move, the corrected capability numbers) reviewed clean.
+      507 pytest passing, ruff clean.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the
