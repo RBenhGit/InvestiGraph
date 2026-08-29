@@ -355,6 +355,39 @@ preserved intact on `main`.
       rewrite, the `RANGE_BOUNDED_METRICS` move, the corrected capability numbers) reviewed clean.
       507 pytest passing, ruff clean.
 
+- [x] **2026-08-29 — Remove the Peter Lynch valuation method.** User request: drop Lynch
+      entirely, leaving Rule #1 as the sole valuation method, with no dead code left behind.
+      Deleted the `valuation/lynch/` slice and every consumer: the `lynch` key in
+      `/api/valuate`'s response body, the CLI's "Method A" output line and history-table column,
+      and the web UI's method card, price-delta, and history/valuations table columns.
+      `lynch_fair_value` is gone from both `ScenarioValuation` and `SavedValuation` — **existing
+      saved records still load**, because Pydantic's default `extra="ignore"` drops the
+      now-unknown key rather than rejecting the record (verified against the real GOOG record in
+      `data/evaluators/ran.json`, whose Rule #1 value and assumptions are unaffected); note the
+      key is stripped permanently on that record's next write, which is intended here but
+      one-way. Also removed what the deletion *made* dead rather than only what named Lynch:
+      the `NEGATIVE_GROWTH_RATE` error code (Lynch-only — Rule #1 accepts a negative growth
+      rate, since compounding a positive EPS never flips its sign), the `--accent-a-soft` CSS
+      variable and the `.card.b`/`.card-eyebrow`/`.method-key-chip.a`/`.th-b` rules, and the
+      now-meaningless "Method A"/"Method B" labelling in the CLI, the cards, and about.html's
+      two-method prose. `docs/MERGE_SPEC.md`, this file's own earlier entries, and the dated
+      re-evaluation reports deliberately keep their Lynch references — they are historical
+      records of what was true when written, and rewriting them would falsify the record.
+      **code-reviewer verdict (2 stages): no functional defects in surviving Rule #1 behavior;
+      5 dead-code/stale-prose Warnings, all fixed** — three dangling doc references (index.html's
+      "compare two ... estimates" lede, about.html's `see "Method B" above` cross-reference,
+      two orphaned `.card-eyebrow` rules), one unreachable ternary arm in `renderScenarioColumn`
+      (`prefix === 'rule-one' ? ... : ...`, whose false branch *was* the deleted light-background
+      Lynch card), and one **pre-existing bug the removal surfaced**: the history table's Rule #1
+      tint used `td.table-val:nth-of-type(4)`, but `renderHistoryTable` emits the Date/Evaluator/
+      Price cells with `rowSpan` on a scenario group's first row only, so the Rule #1 cell sits
+      at position 5 on the base row and 2 on the bear/bull rows — no single index can match both,
+      and the tint had never worked on the main page. Confirmed empirically by probing the real
+      rendered DOM (not by reading the selector), then fixed with an explicit
+      `.table-val-rule-one` class set in both `app.js` and `valuations.js`, so the highlight lands
+      correctly for the first time. Recorded as code-reviewer memory
+      `nth-of-type-vs-class-column-highlight.md`. 498 pytest + 105 vitest passing, ruff clean.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the
