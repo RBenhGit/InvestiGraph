@@ -1,16 +1,14 @@
 /* Fair Value Ledger — mature/editorial theme.
-   --accent-a / --accent-b are consumed directly by app.js (inline styles), and by convention
-   --accent-a = Peter Lynch, --accent-b = Rule #1 (see renderPriceBanner in app.js). Everything
-   else in this file follows that same mapping for consistency, even though Rule #1 is the
-   visually-primary (left-most, solid) method throughout the layout. */
+   --accent-b is consumed directly by app.js (inline styles) as Rule #1's colour (see
+   renderPriceBanner in app.js); --accent-a remains the secondary accent used for supporting
+   UI (the growth panel, the EPS-fallback note, the masthead rule). */
 :root {
   --bg: #F7F6F3; --surface: #FFFFFF; --surface-2: #EFEDE7;
   --ink: #1A1B1E; --ink-soft: #5B5D63; --ink-faint: #9B9C9F; --line: #DEDBD3; --line-strong: #C7C3B8;
   --border: var(--line);
   --text-muted: var(--ink-soft);
 
-  --accent-a: #6B4226;      /* Peter Lynch — deep umber */
-  --accent-a-soft: #F0E8E1;
+  --accent-a: #6B4226;      /* secondary — deep umber */
   --accent-b: #1F3A5F;      /* Rule #1 — deep navy, primary */
   --accent-b-soft: #E7ECF2;
 
@@ -25,7 +23,7 @@
   :root:not([data-theme="light"]) {
     --bg: #17161A; --surface: #201F24; --surface-2: #29282E;
     --ink: #EDEBE6; --ink-soft: #A6A3AE; --ink-faint: #737180; --line: #38363E; --line-strong: #4B4953;
-    --accent-a: #C89B78; --accent-a-soft: #33281F;
+    --accent-a: #C89B78;
     --accent-b: #7C9CC4; --accent-b-soft: #1E2A3A;
     --good: #5FA97F; --good-soft: #1B3327;
     --warning: #D2A24C; --warning-soft: #362A14;
@@ -37,7 +35,7 @@
 :root[data-theme="dark"] {
   --bg: #17161A; --surface: #201F24; --surface-2: #29282E;
   --ink: #EDEBE6; --ink-soft: #A6A3AE; --ink-faint: #737180; --line: #38363E; --line-strong: #4B4953;
-  --accent-a: #C89B78; --accent-a-soft: #33281F;
+  --accent-a: #C89B78;
   --accent-b: #7C9CC4; --accent-b-soft: #1E2A3A;
   --good: #5FA97F; --good-soft: #1B3327;
   --warning: #D2A24C; --warning-soft: #362A14;
@@ -82,8 +80,6 @@ a:hover { color: var(--ink); }
   padding: 0.3rem 0.75rem;
 }
 .method-key-chip .dot { width: 8px; height: 8px; display: inline-block; }
-.method-key-chip.a { color: var(--accent-a); background: var(--accent-a-soft); }
-.method-key-chip.a .dot { background: var(--accent-a); }
 .method-key-chip.b { color: var(--accent-b); background: var(--accent-b-soft); }
 .method-key-chip.b .dot { background: var(--accent-b); }
 .about-link {
@@ -284,7 +280,6 @@ a:hover { color: var(--ink); }
 .price-banner-deltas { display: flex; flex: 1; flex-wrap: wrap; }
 .price-delta { flex: 1 1 8rem; padding: 1.35rem 1.5rem; border-left: 1px solid var(--line); }
 .price-delta:nth-of-type(1) { background: var(--accent-b-soft); }
-.price-delta:nth-of-type(2) { background: var(--accent-a-soft); }
 @media (max-width: 34rem) {
   .price-banner { flex-direction: column; }
   .price-delta { border-left: none; border-top: 1px solid var(--line); }
@@ -302,21 +297,12 @@ a:hover { color: var(--ink); }
 .price-delta-value .bad { color: var(--bad); font-weight: 700; }
 
 /* ---------------- Valuation cards ---------------- */
-.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 2rem; border: 1px solid var(--ink); }
-@media (max-width: 42rem) { .cards { grid-template-columns: 1fr; } }
+.cards { display: grid; grid-template-columns: 1fr; gap: 0; margin-bottom: 2rem; border: 1px solid var(--ink); }
 .card {
   padding: 1.75rem; border-right: 1px solid var(--line);
 }
 .card:last-child { border-right: none; }
 .card.a { background: var(--accent-b); color: var(--ink-on-accent); }
-.card.b { background: var(--surface); }
-.card-eyebrow {
-  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
-  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 0.5rem;
-  color: var(--ink-faint);
-}
-.card.a .card-eyebrow { color: rgba(247, 246, 243, 0.7); }
-.card.b .card-eyebrow { color: var(--accent-a); }
 .card h2 {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 0.4rem;
@@ -332,7 +318,6 @@ a:hover { color: var(--ink); }
   margin-bottom: 0.7rem; color: var(--ink); font-variant-numeric: tabular-nums;
 }
 .card.a .fair-value { color: var(--ink-on-accent); }
-.card.b .fair-value { color: var(--accent-a); }
 .verdict {
   display: inline-flex; align-items: center; gap: 0.3rem;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
@@ -341,9 +326,6 @@ a:hover { color: var(--ink); }
 .card.a .verdict.good { background: rgba(247, 246, 243, 0.16); color: var(--ink-on-accent); }
 .card.a .verdict.bad { background: rgba(247, 246, 243, 0.16); color: var(--ink-on-accent); }
 .card.a .verdict.neutral { background: rgba(247, 246, 243, 0.16); color: var(--ink-on-accent); }
-.card.b .verdict.good { background: var(--good-soft); color: var(--good); }
-.card.b .verdict.bad { background: var(--bad-soft); color: var(--bad); }
-.card.b .verdict.neutral { background: var(--surface-2); color: var(--ink-soft); }
 .inputs-used {
   display: flex; gap: 1.1rem; flex-wrap: wrap; padding-top: 0.9rem;
   border-top: 1px solid var(--line);
@@ -355,7 +337,6 @@ a:hover { color: var(--ink); }
 .io b { color: var(--ink); font-weight: 700; }
 .card.a .io b { color: var(--ink-on-accent); }
 .io .clamped { color: var(--accent-b); }
-.card.b .io .clamped { color: var(--accent-a); }
 .io .raw { text-decoration: line-through; opacity: 0.55; margin-right: 0.3rem; }
 
 /* ---------------- Save row ---------------- */
@@ -404,7 +385,6 @@ a:hover { color: var(--ink); }
   padding: 0.65rem 0.9rem; font-weight: 600; border-bottom: 1px solid var(--ink);
 }
 .history-table th.th-a { color: var(--accent-b); }
-.history-table th.th-b { color: var(--accent-a); }
 .history-table td { padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .history-table tr:last-child td { border-bottom: none; }
 .history-table tr:hover td { background: var(--surface-2); }
@@ -419,8 +399,11 @@ a:hover { color: var(--ink); }
 .table-val b { font-weight: 700; }
 .table-val .good { color: var(--good); font-weight: 700; font-size: 0.72rem; }
 .table-val .bad { color: var(--bad); font-weight: 700; font-size: 0.72rem; }
-.history-table td.table-val:nth-of-type(4) { background: var(--accent-b-soft); }
-.history-table td.table-val:nth-of-type(5) { background: var(--accent-a-soft); }
+/* Tag the Rule #1 cell explicitly rather than by column index: the history table's
+   Date/Evaluator/Price cells use rowSpan and are emitted only on a scenario group's
+   first row, so the column index of this cell differs between the base row and the
+   bear/bull rows. */
+.history-table td.table-val-rule-one { background: var(--accent-b-soft); }
 .table-assumptions { font-size: 0.72rem; color: var(--ink-soft); }
 .table-notes { max-width: 13rem; font-size: 0.72rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-actions { display: flex; gap: 1rem; }

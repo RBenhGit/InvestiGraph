@@ -47,7 +47,6 @@ from investigraph.valuation.growth import (
     resolve_growth_rate_percent,
 )
 from investigraph.valuation.historical_pe import compute_historical_pe_averages
-from investigraph.valuation.lynch.calculate import calculate_lynch_value
 from investigraph.valuation.resolve_eps import ResolvedEps, resolve_eps
 from investigraph.valuation.rule_one.calculate import (
     RuleOneInputsUsed,
@@ -121,7 +120,6 @@ def handle_valuate(payload: dict[str, Any]) -> dict[str, Any]:
 
     mos_percent = payload.get("mosPercent") or 0
 
-    lynch_base = calculate_lynch_value(effective_eps, effective_growth)
     rule_one_base = calculate_rule_one_value(
         effective_eps,
         effective_growth,
@@ -134,7 +132,6 @@ def handle_valuate(payload: dict[str, Any]) -> dict[str, Any]:
     bear_growth = _scenario_growth(
         payload.get("bearGrowthRatePercent"), effective_growth, bear=True
     )
-    lynch_bear = calculate_lynch_value(effective_eps, bear_growth)
     rule_one_bear = calculate_rule_one_value(
         effective_eps,
         bear_growth,
@@ -147,7 +144,6 @@ def handle_valuate(payload: dict[str, Any]) -> dict[str, Any]:
     bull_growth = _scenario_growth(
         payload.get("bullGrowthRatePercent"), effective_growth, bear=False
     )
-    lynch_bull = calculate_lynch_value(effective_eps, bull_growth)
     rule_one_bull = calculate_rule_one_value(
         effective_eps,
         bull_growth,
@@ -166,11 +162,6 @@ def handle_valuate(payload: dict[str, Any]) -> dict[str, Any]:
         "effectiveGrowth": effective_growth,
         "bearGrowth": bear_growth,
         "bullGrowth": bull_growth,
-        "lynch": {
-            "base": _serialize_result(lynch_base),
-            "bear": _serialize_result(lynch_bear),
-            "bull": _serialize_result(lynch_bull),
-        },
         "ruleOne": {
             "base": _serialize_result(rule_one_base),
             "bear": _serialize_result(rule_one_bear),

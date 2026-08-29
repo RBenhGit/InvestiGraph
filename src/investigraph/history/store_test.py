@@ -41,7 +41,6 @@ def _valuation(**overrides) -> SavedValuation:
         exit_pe_multiple=25,
         required_return_percent=15,
         years=5,
-        lynch_fair_value=156,
         rule_one_fair_value=180.2,
     )
     fields.update(overrides)
@@ -177,7 +176,6 @@ def test_saves_and_reads_back_a_three_scenario_record_distinct_from_legacy_flat_
                 exit_pe_multiple=15,
                 required_return_percent=15,
                 mos_percent=25,
-                lynch_fair_value=250,
                 rule_one_fair_value=270,
             ),
             bear=ScenarioValuation(
@@ -185,7 +183,6 @@ def test_saves_and_reads_back_a_three_scenario_record_distinct_from_legacy_flat_
                 exit_pe_multiple=10,
                 required_return_percent=15,
                 mos_percent=50,
-                lynch_fair_value=187.5,
                 rule_one_fair_value=140,
             ),
             bull=ScenarioValuation(
@@ -193,7 +190,6 @@ def test_saves_and_reads_back_a_three_scenario_record_distinct_from_legacy_flat_
                 exit_pe_multiple=20,
                 required_return_percent=12,
                 mos_percent=10,
-                lynch_fair_value=312.5,
                 rule_one_fair_value=400,
             ),
             notes="scenario round-trip test",
@@ -204,7 +200,6 @@ def test_saves_and_reads_back_a_three_scenario_record_distinct_from_legacy_flat_
     assert saved.ticker == "NVDA"
     # The legacy flat fields must NOT be silently populated -- this record is
     # scenario-shaped only.
-    assert saved.lynch_fair_value is None
     assert saved.rule_one_fair_value is None
 
     history = get_history("NVDA", history_file)
@@ -216,7 +211,6 @@ def test_saves_and_reads_back_a_three_scenario_record_distinct_from_legacy_flat_
         exit_pe_multiple=15,
         required_return_percent=15,
         mos_percent=25,
-        lynch_fair_value=250,
         rule_one_fair_value=270,
     )
     assert record.bear.rule_one_fair_value == 140
@@ -327,7 +321,6 @@ def _evaluator_record(**overrides) -> SavedValuation:
             exit_pe_multiple=15,
             required_return_percent=15,
             mos_percent=0,
-            lynch_fair_value=75,
             rule_one_fair_value=60,
         ),
     )
@@ -378,7 +371,6 @@ def test_merges_legacy_history_records_with_no_evaluator_into_an_evaluators_hist
                     "currency": "USD",
                     "eps_ttm": 5,
                     "years": 10,
-                    "lynch_fair_value": 70,
                     "rule_one_fair_value": 55,
                 }
             ]

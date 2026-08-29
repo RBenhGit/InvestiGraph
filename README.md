@@ -1,7 +1,7 @@
 # InvestiGraph
 
 A Python tool for **US and Tel Aviv Stock Exchange (TASE)** tickers that renders a fixed grid of
-fundamentals charts *and* a Lynch / Rule #1 fair-value panel (Bear/Base/Bull scenarios) from a
+fundamentals charts *and* a Rule #1 fair-value panel (Bear/Base/Bull scenarios) from a
 single ticker lookup — one dashboard per company, chart grid and valuation side by side.
 
 Use it two ways: a **CLI** for a static export, or a **local web UI** where you type a ticker
@@ -123,8 +123,8 @@ data source directly.
 - **Canonical template** (`template/models.py`, Pydantic): every monetary series is a
   `Money`-style `(value, currency, scale)` value, so a TASE ticker's agorot-priced shares and
   shekel-millions financials can never be silently combined.
-- **Valuation** (`valuation/`): pure functions ported from Eps_Evaluation's TS — Lynch/PEG-style
-  and Rule #1-style fair value, a single shared growth-rate fallback chain
+- **Valuation** (`valuation/`): pure functions ported from Eps_Evaluation's TS — Rule #1-style
+  fair value, a single shared growth-rate fallback chain
   (`analyst_estimate_5y → historical_3y → historical_1y → None`) used by both the CLI and the
   web UI so they can't drift apart.
 - **History** (`history/`): disk-backed saved-valuation store, per-evaluator files, ported from

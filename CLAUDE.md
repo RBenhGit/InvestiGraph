@@ -24,7 +24,7 @@
 
 ### 2. Modularity
 - One concern per module. Structure: domain directories containing vertical slices
-  (e.g. `valuation/lynch/`, `sources/yahoo_consensus/` holding handler, validation, and its
+  (e.g. `valuation/rule_one/`, `sources/yahoo_consensus/` holding handler, validation, and its
   tests together).
 - Depend on published interfaces only — never reach into another module's internals.
 - A change should touch one slice and its tests. If it can't, say so before implementing.

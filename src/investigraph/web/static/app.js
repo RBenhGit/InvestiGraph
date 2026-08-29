@@ -161,7 +161,7 @@ function renderPriceDelta(label, fairValue, currentPrice, dotColorVar) {
  * instead, and epsSource says which one actually won so the banner never silently shows a
  * Yahoo-sourced number as if it were Twelve Data's.
  */
-function renderPriceBanner(data, lynch, ruleOne, effectiveEps, epsSource, epsSourceDetail) {
+function renderPriceBanner(data, ruleOne, effectiveEps, epsSource, epsSourceDetail) {
   if (!priceValueEl || !priceMetaEl || !priceDeltasEl) return;
   priceValueEl.textContent = `${fmt(data.currentPrice)} ${data.currency}`;
   const epsToShow = typeof effectiveEps === 'number' ? effectiveEps : data.epsTtm;
@@ -183,12 +183,6 @@ function renderPriceBanner(data, lynch, ruleOne, effectiveEps, epsSource, epsSou
 
   priceDeltasEl.innerHTML = '';
   priceDeltasEl.append(
-    renderPriceDelta(
-      'Peter Lynch fair value',
-      lynch.ok ? lynch.fairValue : null,
-      data.currentPrice,
-      '--accent-a',
-    ),
     renderPriceDelta(
       'Rule #1 fair value',
       ruleOne.ok ? ruleOne.fairValue : null,
@@ -474,8 +468,8 @@ function renderScenarioColumn(prefix, scenario, result, currentPrice, extraField
     diffDiv.style.fontFamily = 'ui-monospace, monospace';
     diffDiv.style.marginTop = '-0.8rem';
     diffDiv.style.marginBottom = '1.1rem';
-    // Use lighter color for Rule #1 (dark bg), darker color for Lynch (light bg)
-    diffDiv.style.color = prefix === 'rule-one' ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)';
+    // Lighter color, since the Rule #1 card has a dark background.
+    diffDiv.style.color = 'rgba(255, 255, 255, 0.5)';
     diffDiv.textContent = `Diff: ${sign}${fmt(diffPercent)}%`;
     // Insert diffDiv after verdictEl
     verdictEl.parentNode.insertBefore(diffDiv, verdictEl.nextSibling);
@@ -570,7 +564,6 @@ function renderHistoryTable(records) {
               exitPeMultiple: item.exitPeMultiple,
               requiredReturnPercent: item.requiredReturnPercent,
               mosPercent: item.mosPercent,
-              lynchFairValue: item.lynchFairValue,
               ruleOneFairValue: item.ruleOneFairValue,
             },
           },
@@ -631,7 +624,7 @@ function renderHistoryTable(records) {
 
       // Rule #1 Fair Value
       const tdRuleOne = document.createElement('td');
-      tdRuleOne.className = 'table-val';
+      tdRuleOne.className = 'table-val table-val-rule-one';
       if (scenario.data.ruleOneFairValue !== null && scenario.data.ruleOneFairValue !== undefined) {
         const diff = (scenario.data.ruleOneFairValue / item.currentPrice - 1) * 100;
         const isGood = diff > 0;
@@ -640,18 +633,6 @@ function renderHistoryTable(records) {
         tdRuleOne.textContent = 'n/a';
       }
       tr.append(tdRuleOne);
-
-      // Lynch Fair Value
-      const tdLynch = document.createElement('td');
-      tdLynch.className = 'table-val';
-      if (scenario.data.lynchFairValue !== null && scenario.data.lynchFairValue !== undefined) {
-        const diff = (scenario.data.lynchFairValue / item.currentPrice - 1) * 100;
-        const isGood = diff > 0;
-        tdLynch.innerHTML = `<b>${fmt(scenario.data.lynchFairValue)}</b> <span class="${isGood ? 'good' : 'bad'}">(${isGood ? '+' : ''}${fmt(diff)}%)</span>`;
-      } else {
-        tdLynch.textContent = 'n/a';
-      }
-      tr.append(tdLynch);
 
       // Growth
       const tdGrowth = document.createElement('td');
@@ -888,12 +869,12 @@ async function handleSubmit(event, forceRefresh = false) {
       return;
     }
 
-    const { data, effectiveEps, lynch, ruleOne } = body;
+    const { data, effectiveEps, ruleOne } = body;
 
     // Server seeds growth from the same fallback chain as the CLI when the field was left
     // blank (analystEstimate5y ?? historical3y ?? historical1y, no extra cap); it returns
     // effectiveGrowth so the UI can show the exact value used, including null when no source
-    // was available at all (lynch/ruleOne will then report MISSING_GROWTH_RATE below).
+    // was available at all (ruleOne will then report MISSING_GROWTH_RATE below).
     let effectiveGrowth = body.effectiveGrowth ?? growthRatePercent;
     if (effectiveGrowth !== null && effectiveGrowth !== undefined) {
       effectiveGrowth = Number(Number(effectiveGrowth).toFixed(2));
@@ -920,11 +901,10 @@ async function handleSubmit(event, forceRefresh = false) {
     // derived value afterwards, same pattern as the base growth input above, so the user sees
     // exactly what was used rather than an empty box next to a real fair value. body.bearGrowth/
     // body.bullGrowth are the RAW (unclamped) values the server actually used, echoed back
-    // regardless of whether lynch/ruleOne succeeded for that scenario -- deriving this from
-    // ruleOne.bear.inputs/lynch.bear.inputs instead used to lose the value entirely when BOTH
-    // failed for unrelated reasons (e.g. ruleOne rejecting an emptied exit-P/E while lynch
-    // simultaneously rejected this same negative growth rate), since neither carries `inputs`
-    // on a failed ValuationResult.
+    // regardless of whether ruleOne succeeded for that scenario -- deriving this from
+    // ruleOne.bear.inputs instead used to lose the value entirely whenever that scenario failed
+    // (e.g. ruleOne rejecting an emptied exit-P/E), since a failed ValuationResult carries no
+    // `inputs`.
     const bearGrowthUsed = body.bearGrowth ?? null;
     if (bearGrowthInput && bearGrowthInput.value === '' && bearGrowthUsed !== null) {
       bearGrowthInput.value = Number(Number(bearGrowthUsed).toFixed(2));
@@ -953,7 +933,6 @@ async function handleSubmit(event, forceRefresh = false) {
         exitPeMultiple: exitPeMultiple,
         requiredReturnPercent: requiredReturnPercent,
         mosPercent: mosPercent,
-        lynchFairValue: lynch.base.ok ? lynch.base.fairValue : null,
         ruleOneFairValue: ruleOne.base.ok ? ruleOne.base.fairValue : null,
       },
       // exitPeMultiple/requiredReturnPercent below are read from what the user actually typed
@@ -969,7 +948,6 @@ async function handleSubmit(event, forceRefresh = false) {
         exitPeMultiple: bearExitPeMultiple,
         requiredReturnPercent: bearRequiredReturnPercent,
         mosPercent: mosPercent,
-        lynchFairValue: lynch.bear.ok ? lynch.bear.fairValue : null,
         ruleOneFairValue: ruleOne.bear.ok ? ruleOne.bear.fairValue : null,
       },
       bull: {
@@ -977,19 +955,16 @@ async function handleSubmit(event, forceRefresh = false) {
         exitPeMultiple: bullExitPeMultiple,
         requiredReturnPercent: bullRequiredReturnPercent,
         mosPercent: mosPercent,
-        lynchFairValue: lynch.bull.ok ? lynch.bull.fairValue : null,
         ruleOneFairValue: ruleOne.bull.ok ? ruleOne.bull.fairValue : null,
       },
       notes: notesInput ? notesInput.value.trim() : '',
     };
 
     renderGrowthChips(data.growth);
-    renderPriceBanner(data, lynch.base, ruleOne.base, effectiveEps, body.epsSource, body.epsSourceDetail);
+    renderPriceBanner(data, ruleOne.base, effectiveEps, body.epsSource, body.epsSourceDetail);
     renderGrowthTable(data.growth, effectiveGrowth);
     renderMultiplesTable(data, effectiveGrowth, effectiveEps, body.analystConsensus);
     renderAnalystTable(body.analystConsensus, data.currentPrice);
-
-    renderMethodCard('lynch', lynch, data.currentPrice);
 
     // exit P/E / req. return shown per scenario come from what the server actually used
     // (scenarioResult.inputs, which echoes the exact bear/bull row values sent in the request)

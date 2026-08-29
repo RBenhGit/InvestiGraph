@@ -117,8 +117,6 @@ def test_returns_200_with_fair_values_matching_direct_calls(client):
         assert response.status_code == 200
         body = response.get_json()
         assert body["ok"] is True
-        assert body["lynch"]["base"]["ok"] is True
-        assert body["lynch"]["base"]["fairValue"] == 10 * 10  # eps_ttm=10, growth=10
         assert body["ruleOne"]["base"]["ok"] is True
         assert body["analystConsensus"] is not None
     finally:
@@ -366,7 +364,6 @@ def test_returns_missing_growth_rate_not_a_fabricated_zero(client):
         assert body["ok"] is True
         assert body["effectiveGrowth"] is None
         missing = {"ok": False, "error": "MISSING_GROWTH_RATE"}
-        assert body["lynch"] == {"base": missing, "bear": missing, "bull": missing}
         assert body["ruleOne"] == {"base": missing, "bear": missing, "bull": missing}
     finally:
         _stop(patches)
@@ -441,7 +438,7 @@ def test_returns_typed_400_for_a_literal_null_body(client):
     assert body["ok"] is False
 
 
-def test_echoes_actual_bear_growth_even_when_both_methods_fail_for_that_scenario(
+def test_echoes_actual_bear_growth_even_when_the_scenario_fails(
     client,
 ):
     patches = _patched(consensus=_consensus())
@@ -453,7 +450,7 @@ def test_echoes_actual_bear_growth_even_when_both_methods_fail_for_that_scenario
                 "growthRatePercent": 10,
                 "exitPeMultiple": 15,
                 "bearExitPeMultiple": 0,  # trips ruleOne's INVALID_EXIT_PE
-                "bearGrowthRatePercent": -5,  # trips lynch's NEGATIVE_GROWTH_RATE
+                "bearGrowthRatePercent": -5,
                 "requiredReturnPercent": 15,
                 "years": 10,
             },
@@ -462,8 +459,6 @@ def test_echoes_actual_bear_growth_even_when_both_methods_fail_for_that_scenario
         assert body["ok"] is True
         assert body["ruleOne"]["bear"]["ok"] is False
         assert body["ruleOne"]["bear"]["error"] == "INVALID_EXIT_PE"
-        assert body["lynch"]["bear"]["ok"] is False
-        assert body["lynch"]["bear"]["error"] == "NEGATIVE_GROWTH_RATE"
         assert body["bearGrowth"] == -5
     finally:
         _stop(patches)

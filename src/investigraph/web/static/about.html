@@ -35,7 +35,6 @@
         border-left: 3px solid var(--accent-b); border-radius: 0.35rem; padding: 0.9rem 1.1rem;
         margin: 0 0 1rem; overflow-x: auto; white-space: pre; line-height: 1.55;
       }
-      .formula-block.method-a { border-left-color: var(--accent-a); }
       .note-box {
         background: var(--surface-2); border-radius: 0.5rem; padding: 0.9rem 1.1rem;
         margin: 0 0 1rem; font-size: 0.92rem; line-height: 1.55;
@@ -69,8 +68,7 @@
           Fair Value Ledger <small>EPS × MULTIPLE VALUATION</small>
         </div>
         <div class="method-key">
-          <span class="method-key-chip a"><span class="dot"></span>Rule #1</span>
-          <span class="method-key-chip b"><span class="dot"></span>Peter Lynch</span>
+          <span class="method-key-chip b"><span class="dot"></span>Rule #1</span>
         </div>
       </div>
     </div>
@@ -79,26 +77,26 @@
       <a class="back-link" href="/">&larr; Back to the app</a>
       <h1>About Fair Value Ledger</h1>
       <p class="lede">
-        A calculator that turns a company's trailing earnings and a growth rate into two
-        independent "fair value" estimates. This page explains exactly what the app fetches,
+        A calculator that turns a company's trailing earnings and a growth rate into a
+        "fair value" estimate. This page explains exactly what the app fetches,
         exactly how it calculates, and exactly what it doesn't do — including the caveats and
         known limitations, not just the marketing version.
       </p>
 
       <h2>What this app is — and isn't</h2>
       <p>
-        Fair Value Ledger computes two classic EPS-growth valuation heuristics side by side:
-        <strong>Peter Lynch's PEG-style rule</strong> and a <strong>Rule&nbsp;#1-style discounted
-        exit-multiple</strong> model. Both start from the same two inputs — a company's trailing
-        twelve-month earnings per share (EPS TTM) and an assumed growth rate — and produce a
-        single "fair value" price to compare against the current market price.
+        Fair Value Ledger computes a classic EPS-growth valuation heuristic: a
+        <strong>Rule&nbsp;#1-style discounted exit-multiple</strong> model. It starts from two
+        inputs — a company's trailing twelve-month earnings per share (EPS TTM) and an assumed
+        growth rate — and produces a single "fair value" price to compare against the current
+        market price.
       </p>
       <p>
         It is <strong>not</strong> a discounted cash-flow (DCF) model. Rule&nbsp;#1's method here
         projects <em>one single future EPS figure</em> and discounts it back once — it does not
         model a series of annual cash flows the way a real DCF does. It's also not a
         recommendation engine: no data source here can tell you what a stock is "really" worth,
-        only what these two specific, simple formulas produce for a given set of assumptions.
+        only what this one specific, simple formula produces for a given set of assumptions.
       </p>
 
       <h2>Where the numbers come from</h2>
@@ -210,21 +208,7 @@
         looks like YoY growth but isn't.
       </p>
 
-      <h2>Method A — Peter Lynch (PEG-style)</h2>
-      <div class="formula-block method-a">Fair Value  =  EPS (TTM)  ×  Growth Rate</div>
-      <p>
-        The simplest of the two methods, and the one Peter Lynch popularized as a quick
-        cheat: multiply trailing earnings per share directly by the growth rate percentage. There
-        is no discounting and no time horizon — it's a single multiplication.
-      </p>
-      <p>
-        This formula is only meaningful for a <em>growing</em> company. A zero or negative growth
-        rate would produce a zero or negative "fair value," which isn't a legitimately low
-        valuation — it's a sign the formula doesn't apply. The app detects this and reports
-        <code>NEGATIVE_GROWTH_RATE</code> instead of a misleading number.
-      </p>
-
-      <h2>Method B — Rule #1 (discounted exit multiple)</h2>
+      <h2>Rule #1 (discounted exit multiple)</h2>
       <div class="formula-block">EPS(future)    =  EPS (TTM)  ×  (1 + growth)^years
 Future Price   =  EPS(future)  ×  Exit P/E multiple
 Fair Value     =  Future Price  ÷  (1 + required return)^years</div>
@@ -248,14 +232,13 @@ Fair Value     =  Future Price  ÷  (1 + required return)^years</div>
       </table>
       <p>
         Because Rule&nbsp;#1 compounds a positive EPS at whatever rate it's given, a shrinking
-        company (negative growth) still produces a sane, smaller positive fair value — unlike the
-        Lynch method above, the two methods do <strong>not</strong> share an identical set of
-        failure conditions.
+        company (negative growth) still produces a sane, smaller positive fair value rather than
+        a meaningless one.
       </p>
 
       <h3>Growth rate clamp</h3>
       <p>
-        Whatever growth rate is used — auto-selected or manually entered — both methods clamp it
+        Whatever growth rate is used — auto-selected or manually entered — the method clamps it
         to a <strong>&minus;5% floor</strong> internally before calculating (no maximum cap). The app
         always shows you both the raw figure and the clamped one it actually used.
       </p>
@@ -293,7 +276,7 @@ Fair Value     =  Future Price  ÷  (1 + required return)^years</div>
 
       <h2>Known limitations, stated plainly</h2>
       <ul>
-        <li>Not a DCF — see "Method B" above.</li>
+        <li>Not a DCF — see "Rule #1" above.</li>
         <li>GAAP-only EPS — no non-GAAP/adjusted figure is computed or offered as an
           alternative anywhere in the app.</li>
         <li>"EPS TTM growth (YoY)" is <code>n/a</code> for essentially every ticker on this

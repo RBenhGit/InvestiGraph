@@ -403,7 +403,7 @@ _CLI_YEARS = 10
 
 def _add_valuate_parser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
-        "valuate", help="EPS x multiple fair-value estimate (Lynch / Rule #1 style)"
+        "valuate", help="EPS x multiple fair-value estimate (Rule #1 style)"
     )
     parser.add_argument(
         "ticker",
@@ -471,13 +471,8 @@ def _format_valuate_output(body: dict) -> str:
 
     lines.append("")
     lines.append(f"Growth rate used: {_fmt(body['effectiveGrowth'])}%")
-    base_lynch = body["lynch"]["base"]
     base_rule_one = body["ruleOne"]["base"]
-    inputs_used = None
-    if base_lynch["ok"]:
-        inputs_used = base_lynch["inputs"]
-    elif base_rule_one["ok"]:
-        inputs_used = base_rule_one["inputs"]
+    inputs_used = base_rule_one["inputs"] if base_rule_one["ok"] else None
     if inputs_used is not None:
         raw = inputs_used["growthRatePercentRaw"]
         clamped = inputs_used["growthRatePercentClamped"]
@@ -485,11 +480,6 @@ def _format_valuate_output(body: dict) -> str:
         lines.append(f"  raw: {_fmt(raw)}%  clamped: {_fmt(clamped)}%{clamp_note}")
 
     lines.append("")
-    if base_lynch["ok"]:
-        lines.append(f"Method A (Lynch) fair value: {_fmt(base_lynch['fairValue'])}")
-    else:
-        lines.append(f"Method A (Lynch) fair value: FAILED ({base_lynch['error']})")
-
     if base_rule_one["ok"]:
         mos_percent = base_rule_one["inputs"]["mosPercent"]
         if mos_percent and mos_percent > 0:
@@ -497,17 +487,13 @@ def _format_valuate_output(body: dict) -> str:
                 "stickerPrice", base_rule_one["fairValue"]
             )
             lines.append(
-                f"Method B (Rule #1, MoS {mos_percent:g}%) fair value: "
+                f"Rule #1 (MoS {mos_percent:g}%) fair value: "
                 f"{_fmt(base_rule_one['fairValue'])} (Sticker: {_fmt(sticker)})"
             )
         else:
-            lines.append(
-                f"Method B (Rule #1) fair value: {_fmt(base_rule_one['fairValue'])}"
-            )
+            lines.append(f"Rule #1 fair value: {_fmt(base_rule_one['fairValue'])}")
     else:
-        lines.append(
-            f"Method B (Rule #1) fair value: FAILED ({base_rule_one['error']})"
-        )
+        lines.append(f"Rule #1 fair value: FAILED ({base_rule_one['error']})")
 
     lines.append("")
     lines.append("Historical P/E averages:")
@@ -532,7 +518,7 @@ def _format_history_output(records: list[dict]) -> str:
     rule = "-" * 130
     lines = [
         rule,
-        "Date                 Ticker   Price        Lynch FV   Rule #1 FV  "
+        "Date                 Ticker   Price        Rule #1 FV  "
         "Growth %   Assumptions            Notes",
         rule,
     ]
@@ -551,7 +537,6 @@ def _format_history_output(records: list[dict]) -> str:
             if isinstance(current_price, (int, float))
             else "n/a"
         ).ljust(12)
-        lynch = _fmt(scenario.get("lynchFairValue")).ljust(10)
         rule_one = _fmt(scenario.get("ruleOneFairValue")).ljust(11)
         growth = f"{_fmt(scenario.get('growthRatePercent'))}%".ljust(10)
         mos_percent = scenario.get("mosPercent")
@@ -565,7 +550,7 @@ def _format_history_output(records: list[dict]) -> str:
         ).ljust(22)
         notes = record.get("notes") or ""
         lines.append(
-            f"{date_str.ljust(20)} {ticker} {price} {lynch} {rule_one} {growth} "
+            f"{date_str.ljust(20)} {ticker} {price} {rule_one} {growth} "
             f"{assump} {notes}"
         )
     lines.append(rule)
@@ -604,7 +589,6 @@ def _run_valuate(args: argparse.Namespace) -> int:
     print(_format_valuate_output(body))
 
     if args.save and body["effectiveGrowth"] is not None:
-        base_lynch = body["lynch"]["base"]
         base_rule_one = body["ruleOne"]["base"]
         save_payload = {
             "ticker": body["data"]["ticker"],
@@ -616,7 +600,6 @@ def _run_valuate(args: argparse.Namespace) -> int:
             "requiredReturnPercent": _CLI_REQUIRED_RETURN_PERCENT,
             "years": _CLI_YEARS,
             "mosPercent": args.mos,
-            "lynchFairValue": base_lynch["fairValue"] if base_lynch["ok"] else None,
             "ruleOneFairValue": (
                 base_rule_one["fairValue"] if base_rule_one["ok"] else None
             ),

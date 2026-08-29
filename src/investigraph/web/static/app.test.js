@@ -52,9 +52,6 @@ describe('app.js frontend', () => {
       <div id="rule-one-bear-fv"></div><div id="rule-one-bear-verdict"></div><div id="rule-one-bear-inputs"></div>
       <div id="rule-one-base-fv"></div><div id="rule-one-base-verdict"></div><div id="rule-one-base-inputs"></div>
       <div id="rule-one-bull-fv"></div><div id="rule-one-bull-verdict"></div><div id="rule-one-bull-inputs"></div>
-      <div id="lynch-bear-fv"></div><div id="lynch-bear-verdict"></div><div id="lynch-bear-inputs"></div>
-      <div id="lynch-base-fv"></div><div id="lynch-base-verdict"></div><div id="lynch-base-inputs"></div>
-      <div id="lynch-bull-fv"></div><div id="lynch-bull-verdict"></div><div id="lynch-bull-inputs"></div>
       <button class="scenario-btn" data-scenario="bear"></button>
       <button class="scenario-btn" data-scenario="base"></button>
       <button class="scenario-btn" data-scenario="bull"></button>
@@ -69,9 +66,6 @@ describe('app.js frontend', () => {
       <div id="multiples-table"></div>
       <div id="analyst-table"></div>
       
-      <div id="lynch-fair-value"></div>
-      <div id="lynch-verdict"></div>
-      <div id="lynch-inputs"></div>
       
       <div id="rule-one-fair-value"></div>
       <div id="rule-one-verdict"></div>
@@ -261,23 +255,6 @@ describe('app.js frontend', () => {
         bearGrowth: 30,
         bullGrowth: 50,
         analystConsensus: null,
-        lynch: {
-          bear: {
-            ok: true,
-            fairValue: 10,
-            inputs: { epsTtm: 6.5, growthRatePercentRaw: 30, growthRatePercentClamped: 25 },
-          },
-          base: {
-            ok: true,
-            fairValue: 20,
-            inputs: { epsTtm: 6.5, growthRatePercentRaw: 40, growthRatePercentClamped: 25 },
-          },
-          bull: {
-            ok: true,
-            fairValue: 30,
-            inputs: { epsTtm: 6.5, growthRatePercentRaw: 50, growthRatePercentClamped: 25 },
-          },
-        },
         ruleOne: {
           bear: {
             ok: true,
@@ -367,7 +344,6 @@ describe('app.js frontend', () => {
           growthRatePercent: 12,
           exitPeMultiple: 15,
           requiredReturnPercent: 15,
-          lynchFairValue: 78,
           ruleOneFairValue: 60,
         },
       ]);
@@ -428,22 +404,20 @@ describe('app.js frontend', () => {
       await handleSubmit({ preventDefault() {} });
 
       // response.bearGrowth is 30 in the mock -- the server always echoes the value it actually
-      // used, independent of whether ruleOne (or lynch) succeeded for that scenario.
+      // used, independent of whether ruleOne succeeded for that scenario.
       expect(document.getElementById('bear-growth-input').value).toBe('30');
       expect(getCurrentValuation().bear.growthRatePercent).toBe(30);
     });
 
-    it('backfills bear growth from body.bearGrowth even when BOTH lynch and ruleOne fail for unrelated reasons', async () => {
-      // Regression: the old logic derived bear/bull growth from ruleOne.bear.inputs, falling
-      // back to lynch.bear.inputs -- but neither exists on a failed ValuationResult. If ruleOne
-      // fails on an unrelated INVALID_EXIT_PE while lynch simultaneously fails on
-      // NEGATIVE_GROWTH_RATE (a real, known, just-negative growth value), the old code silently
-      // produced null even though a specific bearGrowth number was actually used server-side.
+    it('backfills bear growth from body.bearGrowth even when the scenario fails', async () => {
+      // Regression: the old logic derived bear/bull growth from ruleOne.bear.inputs -- which does
+      // not exist on a failed ValuationResult. When ruleOne fails on an unrelated
+      // INVALID_EXIT_PE, the old code silently produced null even though a specific bearGrowth
+      // number was actually used server-side.
       resetForm();
       const response = mockValuateResponse();
       response.bearGrowth = -5;
       response.ruleOne.bear = { ok: false, error: 'INVALID_EXIT_PE' };
-      response.lynch.bear = { ok: false, error: 'NEGATIVE_GROWTH_RATE' };
       global.fetch = () => Promise.resolve({ json: () => Promise.resolve(response) });
 
       await handleSubmit({ preventDefault() {} });
@@ -475,23 +449,6 @@ describe('app.js frontend', () => {
         effectiveEps: epsTtm,
         effectiveGrowth: 10,
         analystConsensus: null,
-        lynch: {
-          bear: {
-            ok: true,
-            fairValue,
-            inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 },
-          },
-          base: {
-            ok: true,
-            fairValue,
-            inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 },
-          },
-          bull: {
-            ok: true,
-            fairValue,
-            inputs: { epsTtm, growthRatePercentRaw: 10, growthRatePercentClamped: 10 },
-          },
-        },
         ruleOne: {
           bear: {
             ok: true,
@@ -647,7 +604,7 @@ describe('app.js frontend', () => {
     }
 
     it('renders n/a rather than Infinity% when the current price is zero', () => {
-      renderPriceBanner(bannerData(0), { ok: true, fairValue: 50 }, { ok: true, fairValue: 40 });
+      renderPriceBanner(bannerData(0), { ok: true, fairValue: 40 });
 
       const text = document.getElementById('price-deltas').textContent;
       expect(text).not.toMatch(/Infinity/);
@@ -674,12 +631,11 @@ describe('app.js frontend', () => {
     });
 
     it('still renders a real percentage for a normal price', () => {
-      renderPriceBanner(bannerData(100), { ok: true, fairValue: 150 }, { ok: true, fairValue: 50 });
+      renderPriceBanner(bannerData(100), { ok: true, fairValue: 150 });
 
       const text = document.getElementById('price-deltas').textContent;
       expect(text).not.toMatch(/Infinity|n\/a/);
       expect(text).toMatch(/\+50\.00%/);
-      expect(text).toMatch(/-50\.00%/);
     });
   });
 
@@ -702,7 +658,6 @@ describe('app.js frontend', () => {
     it('shows no source note and no warning class for a healthy (non-stale) figure', () => {
       renderPriceBanner(
         bannerData({ staleTtmWarning: false }),
-        { ok: true, fairValue: 50 },
         { ok: true, fairValue: 40 },
         3.08,
         'twelvedata',
@@ -719,7 +674,6 @@ describe('app.js frontend', () => {
     it('shows the Yahoo-fallback EPS value and note, not the stale Twelve Data figure', () => {
       renderPriceBanner(
         bannerData({ epsTtm: 3.08, staleTtmWarning: true }),
-        { ok: false, error: 'NEGATIVE_GROWTH_RATE' },
         { ok: true, fairValue: 9.48 },
         3.31,
         'yahoo-fallback',
@@ -738,7 +692,6 @@ describe('app.js frontend', () => {
     it('shows a warning (not the fallback note) when stale and the Yahoo fallback was unavailable', () => {
       renderPriceBanner(
         bannerData({ epsTtm: 3.08, staleTtmWarning: true }),
-        { ok: false, error: 'NEGATIVE_GROWTH_RATE' },
         { ok: true, fairValue: 8.82 },
         3.08,
         'twelvedata-stale-no-fallback',
@@ -960,37 +913,37 @@ describe('app.js frontend', () => {
     };
 
     it('shows the fair value and an Undervalued verdict when above the price', () => {
-      renderScenarioColumn('lynch', 'base', okResult, 100);
-      expect(document.getElementById('lynch-base-fv').textContent).toBe('150.00');
-      expect(document.getElementById('lynch-base-verdict').textContent).toBe('Undervalued');
-      expect(document.getElementById('lynch-base-verdict').className).toContain('good');
+      renderScenarioColumn('rule-one', 'base', okResult, 100);
+      expect(document.getElementById('rule-one-base-fv').textContent).toBe('150.00');
+      expect(document.getElementById('rule-one-base-verdict').textContent).toBe('Undervalued');
+      expect(document.getElementById('rule-one-base-verdict').className).toContain('good');
     });
 
     it('shows Overvalued when the fair value is below the price', () => {
-      renderScenarioColumn('lynch', 'base', okResult, 200);
-      expect(document.getElementById('lynch-base-verdict').textContent).toBe('Overvalued');
-      expect(document.getElementById('lynch-base-verdict').className).toContain('bad');
+      renderScenarioColumn('rule-one', 'base', okResult, 200);
+      expect(document.getElementById('rule-one-base-verdict').textContent).toBe('Overvalued');
+      expect(document.getElementById('rule-one-base-verdict').className).toContain('bad');
     });
 
     it('surfaces the error code and clears inputs on a failed scenario', () => {
-      renderScenarioColumn('lynch', 'bear', { ok: false, error: 'MISSING_GROWTH_RATE' }, 100);
-      expect(document.getElementById('lynch-bear-fv').textContent).toBe('n/a');
-      expect(document.getElementById('lynch-bear-verdict').textContent).toBe(
+      renderScenarioColumn('rule-one', 'bear', { ok: false, error: 'MISSING_GROWTH_RATE' }, 100);
+      expect(document.getElementById('rule-one-bear-fv').textContent).toBe('n/a');
+      expect(document.getElementById('rule-one-bear-verdict').textContent).toBe(
         'FAILED (MISSING_GROWTH_RATE)',
       );
-      expect(document.getElementById('lynch-bear-inputs').innerHTML).toBe('');
+      expect(document.getElementById('rule-one-bear-inputs').innerHTML).toBe('');
     });
 
     it('shows both raw and clamped growth when the clamp actually applied', () => {
-      renderScenarioColumn('lynch', 'base', okResult, 100);
-      const html = document.getElementById('lynch-base-inputs').innerHTML;
+      renderScenarioColumn('rule-one', 'base', okResult, 100);
+      const html = document.getElementById('rule-one-base-inputs').innerHTML;
       expect(html).toContain('40.00%');
       expect(html).toContain('25.00%');
     });
 
     it('shows a single growth figure when no clamping occurred', () => {
       renderScenarioColumn(
-        'lynch',
+        'rule-one',
         'base',
         {
           ok: true,
@@ -999,7 +952,7 @@ describe('app.js frontend', () => {
         },
         100,
       );
-      const html = document.getElementById('lynch-base-inputs').innerHTML;
+      const html = document.getElementById('rule-one-base-inputs').innerHTML;
       expect(html).toContain('growth:');
       expect(html).toContain('20.00%');
     });
@@ -1170,7 +1123,6 @@ describe('app.js frontend', () => {
         exitPeMultiple: 25,
         requiredReturnPercent: 15,
         mosPercent: 25,
-        lynchFairValue: 156,
         ruleOneFairValue: 180,
         notes: '',
         ...overrides,
@@ -1183,7 +1135,6 @@ describe('app.js frontend', () => {
         exitPeMultiple: 15,
         requiredReturnPercent: 15,
         mosPercent: 25,
-        lynchFairValue: 100,
         ruleOneFairValue: 110,
         ...overrides,
       };

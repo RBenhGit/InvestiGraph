@@ -13,7 +13,6 @@ class ScenarioValuation(BaseModel):
     exit_pe_multiple: float | None = None
     required_return_percent: float | None = None
     mos_percent: float | None = None
-    lynch_fair_value: float | None = None
     rule_one_fair_value: float | None = None
 
 
@@ -22,8 +21,8 @@ class SavedValuation(BaseModel):
 
     Ported from legacy/eps_evaluation/src/history/types.ts's `SavedValuation`. Carries
     both the legacy flat fields (`growth_rate_percent`, `exit_pe_multiple`,
-    `required_return_percent`, `mos_percent`, `lynch_fair_value`,
-    `rule_one_fair_value`) written by the original CLI's `--save`, and the newer
+    `required_return_percent`, `mos_percent`, `rule_one_fair_value`) written by
+    the original CLI's `--save`, and the newer
     nested `base`/`bear`/`bull` scenario fields written by the web UI's 3-scenario
     save. A single record only ever populates one shape or the other, never both --
     but both must round-trip through this one model rather than a discriminated
@@ -53,7 +52,6 @@ class SavedValuation(BaseModel):
     exit_pe_multiple: float | None = None
     required_return_percent: float | None = None
     mos_percent: float | None = None
-    lynch_fair_value: float | None = None
     rule_one_fair_value: float | None = None
 
     # Newer nested per-scenario fields.

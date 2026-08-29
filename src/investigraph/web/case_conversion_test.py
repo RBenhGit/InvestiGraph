@@ -35,7 +35,6 @@ def test_round_trips_every_savedvaluation_field_name():
         "exitPeMultiple",
         "requiredReturnPercent",
         "mosPercent",
-        "lynchFairValue",
         "ruleOneFairValue",
         "base",
         "bear",
@@ -51,7 +50,7 @@ def test_keys_to_snake_case_converts_nested_dicts_and_lists():
     payload = {
         "ticker": "AAPL",
         "growthRatePercent": 10,
-        "base": {"lynchFairValue": 156, "ruleOneFairValue": 180},
+        "base": {"exitPeMultiple": 15, "ruleOneFairValue": 180},
         "history": [{"currentPrice": 220}, {"currentPrice": 225}],
     }
 
@@ -60,7 +59,7 @@ def test_keys_to_snake_case_converts_nested_dicts_and_lists():
     assert result == {
         "ticker": "AAPL",
         "growth_rate_percent": 10,
-        "base": {"lynch_fair_value": 156, "rule_one_fair_value": 180},
+        "base": {"exit_pe_multiple": 15, "rule_one_fair_value": 180},
         "history": [{"current_price": 220}, {"current_price": 225}],
     }
 
@@ -69,7 +68,7 @@ def test_keys_to_camel_case_converts_nested_dicts_and_lists():
     payload = {
         "ticker": "AAPL",
         "growth_rate_percent": 10,
-        "base": {"lynch_fair_value": 156, "rule_one_fair_value": 180},
+        "base": {"exit_pe_multiple": 15, "rule_one_fair_value": 180},
         "history": [{"current_price": 220}, {"current_price": 225}],
     }
 
@@ -78,7 +77,7 @@ def test_keys_to_camel_case_converts_nested_dicts_and_lists():
     assert result == {
         "ticker": "AAPL",
         "growthRatePercent": 10,
-        "base": {"lynchFairValue": 156, "ruleOneFairValue": 180},
+        "base": {"exitPeMultiple": 15, "ruleOneFairValue": 180},
         "history": [{"currentPrice": 220}, {"currentPrice": 225}],
     }
 

@@ -12,4 +12,5 @@
 - [Valuation chain drops Money's currency tag](valuation-chain-drops-money-currency-tag.md) — resolve_eps/lynch/rule_one return untagged floats; statement currency vs market currency can silently mix.
 - [One-period fundamentals split the growth inputs](one-period-fundamentals-splits-growth-inputs.md) — historical CAGR needs ANNUAL, TTM growth needs QUARTERLY; one fetch can't feed both.
 - [yfinance has native TTM statements](yfinance-has-native-ttm-statements.md) — `ttm_income_stmt`/`ttm_cashflow` exist (verified on 1.5.1); docs claiming no source offers TTM are wrong.
+- [nth-of-type column highlights drift](nth-of-type-vs-class-column-highlight.md) — `td.table-val:nth-of-type(N)` counts all tds; index.html's rowspan rows shift indices, so that highlight is dead.
 - [Shell guard misses `>file` redirects](shell-guard-word-boundary-misses-redirects.md) — protect-bash.sh blocks `> .env` but not `>.env`; probe no-space/append variants of any shell guard.

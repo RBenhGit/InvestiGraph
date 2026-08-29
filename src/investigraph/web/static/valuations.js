@@ -51,8 +51,6 @@ function renderTable() {
       case 'date': valA = new Date(a.evaluatedAt || 0).getTime(); valB = new Date(b.evaluatedAt || 0).getTime(); break;
       case 'ticker': valA = a.ticker; valB = b.ticker; break;
       case 'price': valA = a.currentPrice; valB = b.currentPrice; break;
-      case 'lynch': valA = baseA.lynchFairValue; valB = baseB.lynchFairValue; break;
-      case 'lynch-pct': valA = parsePct(baseA.lynchFairValue, a.currentPrice); valB = parsePct(baseB.lynchFairValue, b.currentPrice); break;
       case 'rule1': valA = baseA.ruleOneFairValue; valB = baseB.ruleOneFairValue; break;
       case 'rule1-pct': valA = parsePct(baseA.ruleOneFairValue, a.currentPrice); valB = parsePct(baseB.ruleOneFairValue, b.currentPrice); break;
       case 'evaluator': valA = evaluatorA; valB = evaluatorB; break;
@@ -107,27 +105,9 @@ function renderTable() {
     tdPrice.textContent = `${fmt(v.currentPrice)} ${v.currency || 'USD'}`;
     tr.appendChild(tdPrice);
     
-    // Lynch Base
-    const tdLynch = document.createElement('td');
-    tdLynch.className = 'table-val';
-    tdLynch.textContent = fmt(base.lynchFairValue);
-    tr.appendChild(tdLynch);
-    
-    // Lynch Pct
-    const tdLynchPct = document.createElement('td');
-    tdLynchPct.className = 'table-val';
-    const lPct = parsePct(base.lynchFairValue, v.currentPrice);
-    if (lPct !== null) {
-      const isGood = lPct > 0;
-      tdLynchPct.innerHTML = `<span class="${isGood ? 'good' : 'bad'}">${isGood ? '+' : ''}${fmt(lPct)}%</span>`;
-    } else {
-      tdLynchPct.textContent = 'n/a';
-    }
-    tr.appendChild(tdLynchPct);
-
     // Rule 1 Base
     const tdRule1 = document.createElement('td');
-    tdRule1.className = 'table-val';
+    tdRule1.className = 'table-val table-val-rule-one';
     tdRule1.textContent = fmt(base.ruleOneFairValue);
     tr.appendChild(tdRule1);
     

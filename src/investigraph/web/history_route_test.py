@@ -30,7 +30,6 @@ def _payload(**overrides):
         exitPeMultiple=25,
         requiredReturnPercent=15,
         years=5,
-        lynchFairValue=156,
         ruleOneFairValue=180,
     )
     fields.update(overrides)
@@ -81,7 +80,6 @@ def test_post_with_nested_scenario_fields_round_trips(client):
             "exitPeMultiple": 15,
             "requiredReturnPercent": 15,
             "mosPercent": 0,
-            "lynchFairValue": 100,
             "ruleOneFairValue": 110,
         }
     )

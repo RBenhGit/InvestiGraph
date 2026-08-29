@@ -515,19 +515,6 @@ def _valuate_body(**overrides) -> dict:
         "effectiveGrowth": 10.0,
         "bearGrowth": 7.5,
         "bullGrowth": 12.5,
-        "lynch": {
-            "base": {
-                "ok": True,
-                "fairValue": 100.0,
-                "inputs": {
-                    "epsTtm": 10.0,
-                    "growthRatePercentRaw": 10.0,
-                    "growthRatePercentClamped": 10.0,
-                },
-            },
-            "bear": {"ok": False, "error": "NEGATIVE_GROWTH_RATE"},
-            "bull": {"ok": True, "fairValue": 125.0, "inputs": {}},
-        },
         "ruleOne": {
             "base": {
                 "ok": True,
@@ -570,8 +557,7 @@ def test_valuate_prints_fair_values(capsys):
     )
     out = capsys.readouterr().out
     assert "Ticker: AAPL" in out
-    assert "Method A (Lynch) fair value: 100.00" in out
-    assert "Method B (Rule #1) fair value: 150.00" in out
+    assert "Rule #1 fair value: 150.00" in out
 
 
 def test_valuate_shows_mos_and_sticker_price_when_mos_provided(capsys):
@@ -600,15 +586,12 @@ def test_valuate_shows_mos_and_sticker_price_when_mos_provided(capsys):
 
 def test_valuate_shows_failed_method_with_error_code(capsys):
     body = _valuate_body()
-    body["lynch"]["base"] = {"ok": False, "error": "MISSING_GROWTH_RATE"}
+    body["ruleOne"]["base"] = {"ok": False, "error": "MISSING_GROWTH_RATE"}
     with patch("investigraph.__main__.handle_valuate", return_value=body):
         code = main(["valuate", "AAPL"])
 
     assert code == 0
-    assert (
-        "Method A (Lynch) fair value: FAILED (MISSING_GROWTH_RATE)"
-        in capsys.readouterr().out
-    )
+    assert "Rule #1 fair value: FAILED (MISSING_GROWTH_RATE)" in capsys.readouterr().out
 
 
 def test_valuate_shows_yahoo_fallback_source_note(capsys):
@@ -664,7 +647,6 @@ def test_valuate_save_calls_create_valuation_with_camelcase_payload(capsys):
             "requiredReturnPercent": 15,
             "years": 10,
             "mosPercent": 0,
-            "lynchFairValue": 100.0,
             "ruleOneFairValue": 150.0,
             "notes": "thesis",
         }
@@ -696,7 +678,6 @@ def test_valuate_history_flag_prints_formatted_table(capsys):
             "exitPeMultiple": 25.0,
             "requiredReturnPercent": 15.0,
             "years": 5,
-            "lynchFairValue": 156.0,
             "ruleOneFairValue": 180.0,
             "mosPercent": 0,
             "notes": "",
@@ -709,7 +690,6 @@ def test_valuate_history_flag_prints_formatted_table(capsys):
     mock_list.assert_called_once_with("AAPL", None)
     out = capsys.readouterr().out
     assert "AAPL" in out
-    assert "156.00" in out
     assert "180.00" in out
 
 

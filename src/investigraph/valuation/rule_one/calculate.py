@@ -40,9 +40,9 @@ def calculate_rule_one_value(
     0) discounts the sticker price down to the target buy price
     (`fair_value = sticker_price * (1 - mos_percent / 100)`).
 
-    Unlike `calculate_lynch_value`, a non-positive growth rate is not
-    rejected here: compounding a positive EPS at a negative rate shrinks it
-    without ever flipping the sign, so the result stays meaningful.
+    A non-positive growth rate is not rejected here: compounding a positive
+    EPS at a negative rate shrinks it without ever flipping the sign, so the
+    result stays meaningful.
 
     `exit_pe_multiple`, `required_return_percent`, `years`, and `mos_percent`
     all accept `None` (not just the original TS's `undefined`) because

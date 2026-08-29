@@ -111,8 +111,7 @@
     </div>
     <div class="method-key">
       <a href="/static/valuations.html" class="about-link" style="margin-right: 15px;">All Valuations</a>
-      <span class="method-key-chip a"><span class="dot"></span>Rule #1</span>
-      <span class="method-key-chip b"><span class="dot"></span>Peter Lynch</span>
+      <span class="method-key-chip b"><span class="dot"></span>Rule #1</span>
       <a href="/static/about.html" class="about-link">About</a>
     </div>
   </div>
@@ -121,8 +120,8 @@
 <div class="wrap">
   <div class="hero">
     <p class="lede">
-      Enter a ticker to render its fundamentals dashboard and compare two EPS-growth &times;
-      multiple fair value estimates side by side.
+      Enter a ticker to render its fundamentals dashboard and its EPS-growth &times;
+      multiple fair value estimate.
     </p>
 
     <div class="querybar">
@@ -280,7 +279,6 @@
 
     <div id="cards" class="cards">
       <div class="card a">
-        <div class="card-eyebrow">Method A</div>
         <h2>Rule #1</h2>
         <p class="method-desc">
           Project EPS forward, apply an exit P/E, discount back at the required return.
@@ -303,31 +301,6 @@
             <div id="rule-one-bull-fv" class="fair-value">—</div>
             <div id="rule-one-bull-verdict" class="verdict"></div>
             <div id="rule-one-bull-inputs" class="inputs-used"></div>
-          </div>
-        </div>
-      </div>
-      <div class="card b">
-        <div class="card-eyebrow">Method B</div>
-        <h2>Peter Lynch</h2>
-        <p class="method-desc">FairValue = EPS(ttm) × growth rate. No discounting.</p>
-        <div class="scenarios-grid">
-          <div class="scenario-col bear-col">
-            <div class="scenario-name">Bear</div>
-            <div id="lynch-bear-fv" class="fair-value">—</div>
-            <div id="lynch-bear-verdict" class="verdict"></div>
-            <div id="lynch-bear-inputs" class="inputs-used"></div>
-          </div>
-          <div class="scenario-col base-col">
-            <div class="scenario-name">Base</div>
-            <div id="lynch-base-fv" class="fair-value">—</div>
-            <div id="lynch-base-verdict" class="verdict"></div>
-            <div id="lynch-base-inputs" class="inputs-used"></div>
-          </div>
-          <div class="scenario-col bull-col">
-            <div class="scenario-name">Bull</div>
-            <div id="lynch-bull-fv" class="fair-value">—</div>
-            <div id="lynch-bull-verdict" class="verdict"></div>
-            <div id="lynch-bull-inputs" class="inputs-used"></div>
           </div>
         </div>
       </div>
@@ -371,7 +344,6 @@
             <th>Evaluator</th>
             <th>Price</th>
             <th class="th-a">Rule #1 FV</th>
-            <th class="th-b">Lynch FV</th>
             <th>Growth</th>
             <th>Assumptions</th>
             <th>Notes</th>

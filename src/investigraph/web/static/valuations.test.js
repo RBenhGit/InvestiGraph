@@ -33,8 +33,6 @@ describe('valuations.js frontend', () => {
             <th data-sort="date"></th>
             <th data-sort="ticker"></th>
             <th data-sort="price"></th>
-            <th data-sort="lynch"></th>
-            <th data-sort="lynch-pct"></th>
             <th data-sort="rule1"></th>
             <th data-sort="rule1-pct"></th>
             <th data-sort="evaluator"></th>
@@ -100,7 +98,6 @@ describe('valuations.js frontend', () => {
       evaluator: overrides.evaluator,
       base: {
         // `in` rather than `??` so a test can pass an explicit null and have it stay null.
-        lynchFairValue: 'lynchFairValue' in overrides ? overrides.lynchFairValue : 120,
         ruleOneFairValue: 'ruleOneFairValue' in overrides ? overrides.ruleOneFairValue : 80,
       },
     };
@@ -115,7 +112,6 @@ describe('valuations.js frontend', () => {
       currentPrice: overrides.currentPrice ?? 200,
       currency: 'USD',
       evaluator: overrides.evaluator,
-      lynchFairValue: overrides.lynchFairValue ?? 250,
       ruleOneFairValue: overrides.ruleOneFairValue ?? 150,
     };
   }
@@ -166,8 +162,7 @@ describe('valuations.js frontend', () => {
       renderTable();
       const [row] = rowTexts();
       expect(row[1]).toBe('AAPL');
-      expect(row[3]).toBe('120.00'); // Lynch base FV
-      expect(row[5]).toBe('80.00'); // Rule #1 base FV
+      expect(row[3]).toBe('80.00'); // Rule #1 base FV
     });
 
     it('falls back to the flat record itself for a legacy record with no `base`', () => {
@@ -175,16 +170,18 @@ describe('valuations.js frontend', () => {
       renderTable();
       const [row] = rowTexts();
       expect(row[1]).toBe('MSFT');
-      expect(row[3]).toBe('250.00');
-      expect(row[5]).toBe('150.00');
+      expect(row[3]).toBe('150.00');
     });
 
     it('renders a positive diff as +% and a negative diff as -%', () => {
-      setValuations([scenarioRecord()]);
+      setValuations([
+        scenarioRecord({ id: 'up', ticker: 'AAPL', ruleOneFairValue: 120 }),
+        scenarioRecord({ id: 'down', ticker: 'MSFT', ruleOneFairValue: 80 }),
+      ]);
       renderTable();
-      const [row] = rowTexts();
-      expect(row[4]).toBe('+20.00%'); // 120 vs 100
-      expect(row[6]).toBe('-20.00%'); // 80 vs 100
+      const [up, down] = rowTexts();
+      expect(up[4]).toBe('+20.00%'); // 120 vs 100
+      expect(down[4]).toBe('-20.00%'); // 80 vs 100
     });
 
     it('shows n/a for a diff when the price is zero rather than crashing or showing Infinity', () => {
@@ -192,13 +189,12 @@ describe('valuations.js frontend', () => {
       renderTable();
       const [row] = rowTexts();
       expect(row[4]).toBe('n/a');
-      expect(row[6]).toBe('n/a');
     });
 
     it('defaults a record with no evaluator to Aviv', () => {
       setValuations([scenarioRecord()]);
       renderTable();
-      expect(rowTexts()[0][7]).toBe('Aviv');
+      expect(rowTexts()[0][5]).toBe('Aviv');
     });
 
     it('shows an invalid evaluatedAt as N/A instead of "Invalid Date"', () => {
