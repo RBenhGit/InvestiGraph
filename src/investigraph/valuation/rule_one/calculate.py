@@ -1,4 +1,4 @@
-"""Method B (Rule #1-style): project EPS forward, apply an exit P/E, discount back."""
+"""Rule #1-style valuation: project EPS forward, apply an exit P/E, discount back."""
 
 from __future__ import annotations
 
