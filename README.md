@@ -46,7 +46,11 @@ Enter a ticker once: the chart grid (Plotly.js, interactive) and the Bear/Base/B
 cards render from the same fetch. Save a valuation with an evaluator name and it shows up on
 `/static/valuations.html`, a sortable "all valuations" dashboard with live prices and an
 upside-% chart. Key endpoints: `GET /chart-data`, `POST /api/valuate`, `GET/POST /api/history`,
-`DELETE /api/history/<id>`, `GET /api/valuations`, `GET /api/live-prices`.
+`DELETE /api/history/<id>`, `GET /api/valuations`, `GET /api/live-prices`. Also served: `GET /`
+(the ticker/chart-set picker page itself), `GET /render` (a server-rendered HTML dashboard; no
+front-end code calls this anymore — the picker page above fetches `/chart-data` and renders
+client-side instead, so this route is currently unused by the shipped UI), and `POST /chart-sets`
+(saves a custom chart set from the checkbox picker for reuse).
 
 ### CLI — render a static dashboard
 
@@ -84,6 +88,13 @@ symbol (`.TA` routes to TASE).
 ```sh
 uv run python -m investigraph valuate AAPL
 ```
+
+`valuate TICKER [-s|--save] [-m|--mos PERCENT] [-n|--notes TEXT] [-H|--history]` — `--save`
+persists the result to history; `--mos` sets the Rule #1 Margin of Safety percent (e.g. `25` for
+25%, default `0`); `--notes` attaches free text to a saved record; `--history` lists saved
+valuations instead of computing a new one (optionally filtered to `TICKER` if given). Uses fixed
+Rule #1 assumptions — exit P/E multiple 15, 15% required return, a 10-year horizon — matching the
+original TS CLI's constants; these aren't currently configurable from the CLI.
 
 Calls the exact same growth-fallback chain and valuation math the web UI's `/api/valuate` uses,
 so a CLI figure and a web figure for identical inputs always match (see CLAUDE.md's Gotchas on

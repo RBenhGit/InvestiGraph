@@ -144,10 +144,11 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
         (it has a real consumer in the original, so it isn't speculative code).
       Full suite after all fixes: 430 passed (422 + 8 new regression tests).
 - [x] **Phase 7 — Converge and build the merged web app.** DONE, all 7 units, one reviewable
-      commit per unit (see `git log` on `merge/import-sources` between the convergence-review
-      commit and this one for the full trail). Turned out substantially larger than the
-      original plan scoped — needed two ports the plan hadn't accounted for before the response
-      could even be assembled.
+      commit per unit (see `git log 82ac565..HEAD` — the convergence-review fix commit onward —
+      for the full trail; `merge/import-sources`, the branch this work originally lived on, was
+      fast-forward merged into `main` and deleted after Phase 9). Turned out substantially larger
+      than the original plan scoped — needed two ports the plan hadn't accounted for before the
+      response could even be assembled.
       1. `valuation/historical_pe.py` (8 tests, ported 1:1 from `historicalPe.test.ts` —
          deliberately does *not* reuse `template/trailing.py`'s daily `PE_RATIO_TTM`, a
          different statistic that would silently change what "median 3y P/E" means) +
@@ -279,10 +280,10 @@ session; update it at the end of every phase (close-out checklist in `docs/MERGE
 
 ## Merge complete
 
-All 9 phases done. `main` still points at the pre-merge Financial_Charts tip — `merge/
-import-sources` has not yet been merged into it. Merging this branch into `main` (and deciding
-whether to keep or squash the 125+ imported-history commits from Phase 2) is a deliberate
-next step for the user to trigger, not assumed here.
+All 9 phases done. `merge/import-sources` was fast-forward merged into `main` on 2026-08-29
+(no divergence to reconcile — `main` was a strict ancestor), then deleted both locally and on
+`origin`; all 157 commits, including the 125+ imported-history commits from Phase 2, are
+preserved intact on `main`.
 
 ## Post-merge features
 
