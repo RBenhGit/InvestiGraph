@@ -93,7 +93,15 @@
   #results.loading { opacity: 0.5; }
   #chart-section .hint { color: var(--chart-ink-muted); }
   #chart-section .results-header { margin: 0 0 1rem; font-size: 1.1rem; padding: 0 1.5rem; }
-  #chart-section .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; padding: 0 1.5rem 1.5rem; }
+  #chart-section .results-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; padding: 0 1.5rem 1.5rem; }
+  /* Below three chart-widths' worth of space, fall back to fewer columns
+     rather than squeezing three into a too-narrow card. */
+  @media (max-width: 1100px) {
+    #chart-section .results-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 700px) {
+    #chart-section .results-grid { grid-template-columns: 1fr; }
+  }
   #chart-section .card { border: 1px solid var(--chart-border); border-radius: 8px; padding: 1rem; background: var(--chart-surface); }
   #chart-section .card h3 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--chart-ink-secondary); }
   #chart-section .card .plot { width: 100%; height: 260px; }
@@ -144,18 +152,6 @@
             <label class="label" for="source-select">Source</label>
             <select id="source-select" name="source" class="assumption-input assumption-select">
               {% for s in sources %}<option value="{{ s }}" {{ 'selected' if s == defaults.source }}>{{ s }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="field">
-            <label class="label" for="period-select">Period</label>
-            <select id="period-select" name="period" class="assumption-input assumption-select">
-              {% for p in periods %}<option value="{{ p }}" {{ 'selected' if p == defaults.period }}>{{ p }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="field">
-            <label class="label" for="range-select">Range</label>
-            <select id="range-select" name="range" class="assumption-input assumption-select">
-              {% for r in ranges %}<option value="{{ r }}" {{ 'selected' if r == defaults.range }}>{{ r }}</option>{% endfor %}
             </select>
           </div>
           <div class="field">
