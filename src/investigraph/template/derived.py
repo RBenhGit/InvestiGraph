@@ -97,6 +97,13 @@ FCF_MARGIN = DerivedMetric(
     compute=ratio,
 )
 
+OPERATING_MARGIN = DerivedMetric(
+    metric_id="operating_margin",
+    title="Operating Margin",
+    inputs=("ebit", "revenue"),
+    compute=ratio,
+)
+
 CURRENT_RATIO = DerivedMetric(
     metric_id="current_ratio",
     title="Current Ratio",

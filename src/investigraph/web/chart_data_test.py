@@ -167,6 +167,37 @@ def test_margins_scales_raw_ratio_to_percent():
     assert net["values"] == [10.0]
 
 
+def test_margins_includes_operating_margin_when_ebit_and_revenue_available():
+    fundamentals = _fundamentals_with(
+        {
+            "gross_margin": _float_series("gross_margin", [(_D, 0.4)]),
+            "net_margin": _float_series("net_margin", [(_D, 0.1)]),
+            "ebit": _money_series("ebit", [(_D, 30)], scale=Unit.MILLIONS),
+            "revenue": _money_series("revenue", [(_D, 200)], scale=Unit.MILLIONS),
+        }
+    )
+
+    [spec] = _specs_for(["margins"], fundamentals)
+
+    gross, net, operating = spec["series"]
+    assert operating["label"] == "Operating Margin"
+    assert operating["values"] == [15.0]
+
+
+def test_margins_omits_operating_margin_when_ebit_unavailable():
+    fundamentals = _fundamentals_with(
+        {
+            "gross_margin": _float_series("gross_margin", [(_D, 0.4)]),
+            "net_margin": _float_series("net_margin", [(_D, 0.1)]),
+        }
+    )
+
+    [spec] = _specs_for(["margins"], fundamentals)
+
+    labels = [s["label"] for s in spec["series"]]
+    assert "Operating Margin" not in labels
+
+
 def test_derived_percentage_line_fcf_margin():
     fundamentals = _fundamentals_with(
         {

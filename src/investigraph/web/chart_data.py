@@ -30,6 +30,7 @@ from investigraph.template.derived import (
     CURRENT_RATIO,
     DEBT_TO_EQUITY,
     FCF_MARGIN,
+    OPERATING_MARGIN,
     ROCE,
     ROIC,
     DerivedMetric,
@@ -193,6 +194,21 @@ def _margins(fundamentals: CompanyFundamentals) -> dict:
                 "values": [p.value * 100 for p in points],
             }
         )
+
+    # Operating margin is derived (ebit / revenue) rather than a source-supplied
+    # series like gross/net margin above, so it isn't in `required_metrics` — it
+    # degrades to simply omitting its line instead of blanking the whole chart
+    # when `ebit` or `revenue` is unavailable for this ticker/source.
+    operating_margin = resolve(fundamentals, OPERATING_MARGIN)
+    if operating_margin.available:
+        series.append(
+            {
+                "label": "Operating Margin",
+                "dates": [p.date for p in operating_margin.points],
+                "values": [p.value * 100 for p in operating_margin.points],
+            }
+        )
+
     return {"kind": "line", "y_label": "Margin (%)", "series": series}
 
 
