@@ -2,13 +2,16 @@ from matplotlib.axes import Axes
 
 from investigraph.charts.base import draw_no_data, render_ratio_line
 from investigraph.template.derived import DEBT_TO_EQUITY, resolve
-from investigraph.template.models import CompanyFundamentals
+from investigraph.template.models import CompanyFundamentals, Period
 
 
 class DebtLeverageChart:
     name = "debt_leverage"
     title = "Debt / Financial Leverage"
     required_metrics = ["total_debt", "total_equity"]
+    # See docs/UX_NOTES.md — quarterly cadence, full available history.
+    period = Period.QUARTERLY
+    range = "max"
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
         series = resolve(fundamentals, DEBT_TO_EQUITY)

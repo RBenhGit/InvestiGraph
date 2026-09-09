@@ -2,13 +2,16 @@ from matplotlib.axes import Axes
 
 from investigraph.charts.base import render_percentage_line
 from investigraph.template.derived import OPERATING_MARGIN, resolve
-from investigraph.template.models import CompanyFundamentals
+from investigraph.template.models import CompanyFundamentals, Period
 
 
 class MarginsChart:
     name = "margins"
     title = "Margins"
     required_metrics = ["gross_margin", "net_margin"]
+    # See docs/UX_NOTES.md — quarterly cadence, full available history.
+    period = Period.QUARTERLY
+    range = "max"
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
         for metric_id, label in [

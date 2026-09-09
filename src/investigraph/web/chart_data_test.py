@@ -110,9 +110,19 @@ def _full_fundamentals() -> CompanyFundamentals:
 
 
 def _specs_for(chart_names: list[str], fundamentals: CompanyFundamentals) -> list[dict]:
+    """Shape `chart_names` from one hand-built `fundamentals`, regardless of what
+    (period, range) each chart actually declares (see `charts/base.py`'s `Chart`
+    protocol) — these tests exercise shaping logic, not the per-chart fetch
+    plumbing, so `fundamentals` is registered under every pair the named charts
+    need rather than requiring each test to build one fundamentals per pair.
+    """
     set_name = "custom:chart_data_test:" + ",".join(chart_names)
-    register_chart_set(set_name, [get_chart(name) for name in chart_names])
-    return build_chart_specs(fundamentals, set_name)
+    charts = [get_chart(name) for name in chart_names]
+    register_chart_set(set_name, charts)
+    fundamentals_by_period_range = {
+        (chart.period, chart.range): fundamentals for chart in charts
+    }
+    return build_chart_specs(fundamentals_by_period_range, set_name)
 
 
 def test_missing_required_metric_is_no_data():
@@ -410,12 +420,25 @@ def test_return_on_equity_line():
     assert spec["series"][0]["values"] == [7.5]
 
 
+def _fundamentals_by_period_range_for(
+    charts: list, fundamentals: CompanyFundamentals
+) -> dict[tuple[Period, str], CompanyFundamentals]:
+    """Same "one hand-built fundamentals under every (period, range) key
+    `charts` need" approach as `_specs_for`, for tests that call
+    `build_chart_specs` directly against the whole catalog.
+    """
+    return {(chart.period, chart.range): fundamentals for chart in charts}
+
+
 def test_every_catalog_chart_has_a_shaper_and_does_not_crash():
     fundamentals = _full_fundamentals()
     set_name = "custom:chart_data_test:everything"
-    register_chart_set(set_name, available_charts())
+    charts = available_charts()
+    register_chart_set(set_name, charts)
 
-    specs = build_chart_specs(fundamentals, set_name)
+    specs = build_chart_specs(
+        _fundamentals_by_period_range_for(charts, fundamentals), set_name
+    )
 
     assert len(specs) == len(available_charts())
     for spec in specs:
@@ -425,9 +448,12 @@ def test_every_catalog_chart_has_a_shaper_and_does_not_crash():
 def test_chart_data_response_round_trips_every_kind():
     fundamentals = _full_fundamentals()
     set_name = "custom:chart_data_test:round_trip"
-    register_chart_set(set_name, available_charts())
+    charts = available_charts()
+    register_chart_set(set_name, charts)
 
-    specs = build_chart_specs(fundamentals, set_name)
+    specs = build_chart_specs(
+        _fundamentals_by_period_range_for(charts, fundamentals), set_name
+    )
     response = ChartDataResponse(
         ticker=fundamentals.ticker,
         market=fundamentals.market.value,

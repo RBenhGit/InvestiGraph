@@ -52,11 +52,21 @@ def _add_render_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--period",
         choices=[p.value for p in Period],
-        default=config.DEFAULT_PERIOD,
-        help="ttm is modeled but not yet supported by any registered source",
+        default=None,
+        help=(
+            "override every chart's own period (see charts/base.py) with one "
+            "value; omit to let each chart use its declared period"
+        ),
     )
     parser.add_argument(
-        "--range", type=str.lower, choices=RANGES, default=config.DEFAULT_RANGE
+        "--range",
+        type=str.lower,
+        choices=RANGES,
+        default=None,
+        help=(
+            "override every chart's own range with one value; omit to let "
+            "each chart use its declared range"
+        ),
     )
     parser.add_argument(
         "--chart-set", dest="chart_set", default=config.DEFAULT_CHART_SET
@@ -161,12 +171,12 @@ def _run_render(args: argparse.Namespace) -> int:
     ticker = normalize_ticker(ticker)
 
     market = market_of(ticker)
-    period = Period(args.period)
     source_name = args.source or config.data_source_name()
 
     chart_set_name = _resolve_chart_set_name(args)
     if chart_set_name is None:
         return 1
+    charts = get_chart_set(chart_set_name)
 
     try:
         adapter = get_source(source_name)
@@ -174,43 +184,73 @@ def _run_render(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    try:
-        require_supported_period(adapter.capability(), period)
-    except UnsupportedPeriod as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
+    # --period/--range (both None unless the user explicitly passes them)
+    # override every chart's own declared period/range with one value,
+    # matching the CLI's pre-existing single-fundamentals behavior; omitted,
+    # each chart is fetched at its own (period, range) — see charts/base.py.
+    # Keyed by each chart's *effective* pair (post-override) so a partial
+    # override (only one of --period/--range given) still keys correctly per
+    # chart, and `write_output`/`render_chart_cards` can look every chart up
+    # by its own `(chart.period, chart.range)` unchanged.
+    override_period = Period(args.period) if args.period else None
+    override_range = args.range
+    effective_pair = {
+        chart.name: (override_period or chart.period, override_range or chart.range)
+        for chart in charts
+    }
+    pairs = sorted(set(effective_pair.values()))
 
     cache = TemplateCache()
-    try:
-        fundamentals = _fetch_with_cache_fallback(
-            adapter, cache, ticker, source_name, market, period, args.range
-        )
-    except TickerNotFound:
-        print(f"error: ticker not found: {ticker}", file=sys.stderr)
-        return 1
-    except SourceUnavailable as exc:
-        print(
-            f"error: source unavailable and no cache to fall back to: {exc}",
-            file=sys.stderr,
-        )
-        return 1
+    fetched: dict[tuple[Period, str], CompanyFundamentals] = {}
+    for period, range_ in pairs:
+        try:
+            require_supported_period(adapter.capability(), period)
+        except UnsupportedPeriod as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
-    fundamentals.source_limits.extend(
-        limit
-        for limit in check_request(adapter.capability(), market, period, args.range)
-        if limit not in fundamentals.source_limits
-    )
-    fundamentals.source_limits.extend(
-        limit
-        for limit in chart_support.capability_limits(
-            get_chart_set(chart_set_name), adapter.capability()
+        try:
+            fundamentals = _fetch_with_cache_fallback(
+                adapter, cache, ticker, source_name, market, period, range_
+            )
+        except TickerNotFound:
+            print(f"error: ticker not found: {ticker}", file=sys.stderr)
+            return 1
+        except SourceUnavailable as exc:
+            print(
+                f"error: source unavailable and no cache to fall back to: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+
+        fundamentals.source_limits.extend(
+            limit
+            for limit in check_request(adapter.capability(), market, period, range_)
+            if limit not in fundamentals.source_limits
         )
-        if limit not in fundamentals.source_limits
-    )
+        fetched[(period, range_)] = fundamentals
+
+    # capability_limits is purely metric-based (not period/range-specific), so
+    # it's computed once and merged into every fetched fundamentals rather
+    # than duplicated per (period, range) pair.
+    limits = chart_support.capability_limits(charts, adapter.capability())
+    for fundamentals in fetched.values():
+        fundamentals.source_limits.extend(
+            limit for limit in limits if limit not in fundamentals.source_limits
+        )
+
+    # Remapped to each chart's own declared (period, range) key — with an
+    # override in play, several charts' declared keys can point at the same
+    # fetched fundamentals, which is fine: write_output looks each chart up
+    # by (chart.period, chart.range), not by the pair actually fetched.
+    fundamentals_by_period_range = {
+        (chart.period, chart.range): fetched[effective_pair[chart.name]]
+        for chart in charts
+    }
 
     out_path = Path(args.out) if args.out else Path("out") / f"{ticker}.html"
     try:
-        write_output(fundamentals, out_path, chart_set_name)
+        write_output(fundamentals_by_period_range, out_path, chart_set_name)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

@@ -2,13 +2,22 @@ from typing import Protocol
 
 from matplotlib.axes import Axes
 
-from investigraph.template.models import CompanyFundamentals
+from investigraph.template.models import CompanyFundamentals, Period
 
 
 class Chart(Protocol):
     name: str
     title: str
     required_metrics: list[str]
+
+    # Each chart now owns its own fetch cadence/window instead of sharing one
+    # global period+range for the whole page (see docs/UX_NOTES.md) — a
+    # price-driven chart typically wants a daily "10y" window, an
+    # income-statement chart wants ANNUAL/max, a margin ratio wants
+    # QUARTERLY/max. `fetch_fundamentals`/`build_chart_specs` group charts by
+    # this pair so charts that agree hit one fetch/cache entry, not one each.
+    period: Period
+    range: str
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None: ...
 

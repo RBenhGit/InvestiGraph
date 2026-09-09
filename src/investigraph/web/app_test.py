@@ -46,6 +46,30 @@ def _fundamentals() -> CompanyFundamentals:
     )
 
 
+def _fundamentals_by_period_range_for_charts(charts):
+    """One fundamentals reused under every (period, range) key `charts`
+    declare (see `charts/base.py`'s `Chart` protocol) — the stand-in for
+    `web.service.load_fundamentals_for_charts` in tests that mock the fetch.
+    """
+    fundamentals = _fundamentals()
+    return {(chart.period, chart.range): fundamentals for chart in charts}
+
+
+def _patch_load_fundamentals_for_charts():
+    """`patch()` context manager stubbing `load_fundamentals_for_charts` with
+    one fundamentals per (period, range) key actually requested — a `charts`
+    kwarg-agnostic replacement for the old single-`CompanyFundamentals`
+    `load_fundamentals` mock these tests used before every chart owned its
+    own period/range (see `charts/base.py`'s `Chart` protocol).
+    """
+    return patch(
+        "investigraph.web.app.load_fundamentals_for_charts",
+        side_effect=lambda ticker, source_name, charts: (
+            _fundamentals_by_period_range_for_charts(charts)
+        ),
+    )
+
+
 @pytest.fixture
 def client(tmp_path):
     # tmp_path-backed store: create_app() now bootstrap-loads persisted chart
@@ -65,7 +89,7 @@ def test_index_shows_the_form(client):
 
 
 def test_render_returns_dashboard_html(client):
-    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
+    with _patch_load_fundamentals_for_charts():
         response = client.get("/render?ticker=AAPL&source=yfinance")
 
     assert response.status_code == 200
@@ -82,7 +106,7 @@ def test_render_without_ticker_is_a_400(client):
 
 def test_render_unknown_ticker_shows_not_found(client):
     with patch(
-        "investigraph.web.app.load_fundamentals",
+        "investigraph.web.app.load_fundamentals_for_charts",
         side_effect=TickerNotFound("ZZZ"),
     ):
         response = client.get("/render?ticker=ZZZ")
@@ -153,7 +177,7 @@ def test_index_chart_set_dropdown_reflects_the_live_registry(client):
 
 
 def test_render_with_charts_param_selects_only_named_charts(client):
-    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
+    with _patch_load_fundamentals_for_charts():
         response = client.get("/render?ticker=AAPL&charts=price")
 
     assert response.status_code == 200
@@ -170,7 +194,7 @@ def test_render_with_unknown_chart_param_shows_error(client):
 
 
 def test_render_with_duplicate_chart_params_renders_each_chart_once(client):
-    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
+    with _patch_load_fundamentals_for_charts():
         response = client.get("/render?ticker=AAPL&charts=price&charts=price")
 
     assert response.status_code == 200
@@ -178,20 +202,24 @@ def test_render_with_duplicate_chart_params_renders_each_chart_once(client):
 
 
 def test_render_with_empty_charts_param_falls_back_to_chart_set(client):
-    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
+    with _patch_load_fundamentals_for_charts():
         response = client.get("/render?ticker=AAPL&charts=")
 
     assert response.status_code == 200
 
 
 def test_render_normalizes_lowercase_ticker(client):
-    with patch(
-        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
-    ) as mock_load:
+    with _patch_load_fundamentals_for_charts() as mock_load:
         response = client.get("/render?ticker=aapl&charts=price")
 
     assert response.status_code == 200
-    mock_load.assert_called_once_with("AAPL", "yfinance", Period.ANNUAL, "5y")
+    # "price" is the only requested chart, so the grouped fetch should be
+    # called with exactly that one chart, under the normalized ticker.
+    mock_load.assert_called_once()
+    called_ticker, called_source, called_charts = mock_load.call_args[0]
+    assert called_ticker == "AAPL"
+    assert called_source == "yfinance"
+    assert [c.name for c in called_charts] == ["price"]
 
 
 def test_render_rejects_invalid_ticker(client):
@@ -201,33 +229,6 @@ def test_render_rejects_invalid_ticker(client):
     assert "Invalid ticker" in response.get_data(as_text=True)
 
 
-def test_render_rejects_unsupported_period(client):
-    response = client.get("/render?ticker=AAPL&period=notaperiod")
-
-    assert response.status_code == 400
-    assert "Unsupported period" in response.get_data(as_text=True)
-
-
-def test_render_rejects_unsupported_range(client):
-    response = client.get("/render?ticker=AAPL&range=8y")
-
-    assert response.status_code == 400
-    assert "Unsupported range" in response.get_data(as_text=True)
-
-
-def test_render_accepts_ttm_period(client):
-    # TTM is derived from the trailing four quarters (template/trailing.py's
-    # derive_ttm_fundamentals) — both sources declare it, so this must reach
-    # load_fundamentals like any other period, not be rejected pre-fetch.
-    with patch(
-        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
-    ) as mock_load:
-        response = client.get("/render?ticker=AAPL&period=ttm")
-
-    assert response.status_code == 200
-    mock_load.assert_called_once_with("AAPL", "yfinance", Period.TTM, "5y")
-
-
 def test_render_rejects_unknown_chart_set(client):
     response = client.get("/render?ticker=AAPL&chart_set=not-a-real-set")
 
@@ -235,8 +236,36 @@ def test_render_rejects_unknown_chart_set(client):
     assert "unknown chart set" in response.get_data(as_text=True).lower()
 
 
+def test_render_rejects_a_chart_whose_own_period_the_source_does_not_declare(client):
+    # Each chart now owns its own period (see charts/base.py's Chart
+    # protocol) instead of one global period picked in the top menu — this
+    # exercises that the pre-fetch capability gate still runs, now per the
+    # requested chart's own declared period rather than a request-wide one.
+    # "margins" declares Period.QUARTERLY; a source declaring only ANNUAL
+    # must still be rejected before any fetch is attempted.
+    from investigraph.sources.base import Capability
+    from investigraph.template.models import Market
+
+    stub_capability = Capability(
+        markets={Market.US, Market.TASE},
+        periods={Period.ANNUAL},
+        max_history={Period.ANNUAL: 5},
+        metrics={"gross_margin", "net_margin"},
+    )
+
+    class _AnnualOnlyAdapter:
+        def capability(self) -> Capability:
+            return stub_capability
+
+    with patch("investigraph.web.app.get_source", return_value=_AnnualOnlyAdapter()):
+        response = client.get("/render?ticker=AAPL&charts=margins")
+
+    assert response.status_code == 400
+    assert "does not support period quarterly" in response.get_data(as_text=True)
+
+
 def test_chart_data_returns_dashboard_json(client):
-    with patch("investigraph.web.app.load_fundamentals", return_value=_fundamentals()):
+    with _patch_load_fundamentals_for_charts():
         response = client.get("/chart-data?ticker=AAPL&source=yfinance&charts=price")
 
     assert response.status_code == 200
@@ -257,7 +286,7 @@ def test_chart_data_without_ticker_is_a_400(client):
 
 def test_chart_data_unknown_ticker_shows_not_found(client):
     with patch(
-        "investigraph.web.app.load_fundamentals",
+        "investigraph.web.app.load_fundamentals_for_charts",
         side_effect=TickerNotFound("ZZZ"),
     ):
         response = client.get("/chart-data?ticker=ZZZ")
@@ -291,21 +320,16 @@ def test_chart_data_with_unknown_chart_param_shows_error(client):
     assert "unknown chart" in response.get_json()["error"]
 
 
-def test_chart_data_rejects_unsupported_period(client):
-    response = client.get("/chart-data?ticker=AAPL&period=notaperiod")
-
-    assert response.status_code == 400
-    assert "Unsupported period" in response.get_json()["error"]
-
-
 def test_chart_data_normalizes_lowercase_ticker(client):
-    with patch(
-        "investigraph.web.app.load_fundamentals", return_value=_fundamentals()
-    ) as mock_load:
+    with _patch_load_fundamentals_for_charts() as mock_load:
         response = client.get("/chart-data?ticker=aapl&charts=price")
 
     assert response.status_code == 200
-    mock_load.assert_called_once_with("AAPL", "yfinance", Period.ANNUAL, "5y")
+    mock_load.assert_called_once()
+    called_ticker, called_source, called_charts = mock_load.call_args[0]
+    assert called_ticker == "AAPL"
+    assert called_source == "yfinance"
+    assert [c.name for c in called_charts] == ["price"]
 
 
 def test_create_chart_set_succeeds_and_shows_up_in_the_dropdown(client):

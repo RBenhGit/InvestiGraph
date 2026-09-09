@@ -2,7 +2,7 @@ import pandas as pd
 from matplotlib.axes import Axes
 
 from investigraph.charts.base import currency_symbol
-from investigraph.template.models import CompanyFundamentals
+from investigraph.template.models import CompanyFundamentals, Period
 
 _SMA_WINDOWS = (50, 150, 200)
 
@@ -11,6 +11,12 @@ class PriceChart:
     name = "price"
     title = "Price"
     required_metrics = ["price"]
+    # A daily driver; cadence is unaffected by period, kept at the app's
+    # long-standing default rather than switched to a new one for this chart
+    # (see docs/UX_NOTES.md — this chart's own group is "keep as-is"). "10y"
+    # degrades gracefully to whatever history the source actually has.
+    period = Period.ANNUAL
+    range = "10y"
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
         points = fundamentals.series["price"].points

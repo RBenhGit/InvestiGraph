@@ -1,7 +1,7 @@
 from matplotlib.axes import Axes
 
 from investigraph.charts.base import currency_symbol, draw_no_data
-from investigraph.template.models import CompanyFundamentals
+from investigraph.template.models import CompanyFundamentals, Period
 from investigraph.template.trailing import MARKET_CAP, resolve_trailing
 
 
@@ -9,6 +9,10 @@ class MarketCapChart:
     name = "market_cap"
     title = "Market Cap"
     required_metrics = ["price", "shares_outstanding"]
+    # Price-driven; see PriceChart's period/range comment (docs/UX_NOTES.md's
+    # "keep as-is" group).
+    period = Period.ANNUAL
+    range = "10y"
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
         series = resolve_trailing(fundamentals, MARKET_CAP)

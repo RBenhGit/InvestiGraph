@@ -41,10 +41,14 @@ def _fundamentals(ticker: str = "AAPL") -> CompanyFundamentals:
 
 
 def _capability() -> Capability:
+    # Declares every Period, not just ANNUAL: the default "fundamentals" chart
+    # set now spans ANNUAL/QUARTERLY/TTM charts (each chart owns its own
+    # period/range — see charts/base.py's Chart protocol), and this stub's
+    # job is a permissive happy-path fixture, not exercising capability gating.
     return Capability(
         markets={Market.US, Market.TASE},
-        periods={Period.ANNUAL},
-        max_history={Period.ANNUAL: 5},
+        periods={Period.ANNUAL, Period.QUARTERLY, Period.TTM},
+        max_history={Period.ANNUAL: 5, Period.QUARTERLY: 5, Period.TTM: 5},
         metrics={"price"},
     )
 
@@ -115,6 +119,12 @@ def test_render_unknown_source_returns_error(tmp_path, monkeypatch, capsys):
 
 
 def test_render_uses_cache_before_fetching(tmp_path, monkeypatch):
+    # The default "fundamentals" set's charts now span several distinct
+    # (period, range) pairs (each chart owns its own -- see charts/base.py's
+    # Chart protocol), so one render legitimately issues more than one fetch;
+    # what this test actually exercises is that a second render of the same
+    # ticker hits the cache instead of re-fetching, i.e. the second render
+    # adds no new fetch calls beyond the first.
     monkeypatch.chdir(tmp_path)
     fetch_calls = []
 
@@ -125,9 +135,11 @@ def test_render_uses_cache_before_fetching(tmp_path, monkeypatch):
 
     with patch("investigraph.__main__.get_source", return_value=_CountingAdapter()):
         main(["AAPL", "--out", str(tmp_path / "a.html")])
+        first_run_fetches = len(fetch_calls)
         main(["AAPL", "--out", str(tmp_path / "b.html")])
 
-    assert len(fetch_calls) == 1
+    assert first_run_fetches > 0
+    assert len(fetch_calls) == first_run_fetches
 
 
 def test_render_normalizes_lowercase_ticker(tmp_path, monkeypatch):
@@ -144,7 +156,12 @@ def test_render_normalizes_lowercase_ticker(tmp_path, monkeypatch):
         code = main(["aapl", "--out", str(out)])
 
     assert code == 0
-    assert fetch_calls == ["AAPL"]
+    # The default set's charts span several (period, range) pairs (each
+    # chart owns its own -- see charts/base.py's Chart protocol), so more
+    # than one fetch call is expected; every one of them must still see the
+    # normalized ticker.
+    assert fetch_calls
+    assert all(ticker == "AAPL" for ticker in fetch_calls)
     assert out.name == "out.html"
 
 
@@ -259,16 +276,27 @@ def test_render_rejects_a_period_the_source_does_not_declare(
     # Uses a stub source whose Capability declares only ANNUAL -- both real
     # sources (yfinance, twelvedata) declare TTM (derived, see
     # template/trailing.py); this exercises the generic pre-fetch gate itself,
-    # not real TTM support.
+    # not real TTM support. A local override, not the shared _StubAdapter
+    # (whose capability now declares every Period as a permissive happy-path
+    # fixture for other tests) -- this test needs the narrower ANNUAL-only
+    # declaration to exercise the gate at all.
     monkeypatch.chdir(tmp_path)
     fetch_calls = []
 
-    class _CountingAdapter(_StubAdapter):
+    class _AnnualOnlyAdapter(_StubAdapter):
+        def capability(self) -> Capability:
+            return Capability(
+                markets={Market.US, Market.TASE},
+                periods={Period.ANNUAL},
+                max_history={Period.ANNUAL: 5},
+                metrics={"price"},
+            )
+
         def fetch(self, ticker, market, period, range):
             fetch_calls.append(ticker)
             return super().fetch(ticker, market, period, range)
 
-    with patch("investigraph.__main__.get_source", return_value=_CountingAdapter()):
+    with patch("investigraph.__main__.get_source", return_value=_AnnualOnlyAdapter()):
         code = main(["AAPL", "--period", "ttm", "--out", str(tmp_path / "out.html")])
 
     assert code == 1

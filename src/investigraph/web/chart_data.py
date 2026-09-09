@@ -36,7 +36,7 @@ from investigraph.template.derived import (
     DerivedMetric,
     resolve,
 )
-from investigraph.template.models import CompanyFundamentals, Point
+from investigraph.template.models import CompanyFundamentals, Period, Point
 from investigraph.template.trailing import (
     DIVIDEND_YIELD_TTM,
     MARKET_CAP,
@@ -93,9 +93,16 @@ class ChartDataResponse(BaseModel):
 
 
 def build_chart_specs(
-    fundamentals: CompanyFundamentals, chart_set_name: str
+    fundamentals_by_period_range: dict[tuple[Period, str], CompanyFundamentals],
+    chart_set_name: str,
 ) -> list[dict]:
     """One JSON-serializable chart spec dict per chart in `chart_set_name`, in order.
+
+    Each chart now fetches its own `(period, range)` (see `charts/base.py`'s `Chart`
+    protocol) rather than the whole page sharing one `CompanyFundamentals` —
+    `fundamentals_by_period_range` is the grouped-fetch result from
+    `web.service.load_fundamentals_for_charts`, keyed by exactly the pairs this
+    chart set's charts declare.
 
     Mirrors `charts.base.render_or_no_data`'s required-metrics gate; a chart
     whose gate passes can still shape to `None` (e.g. a derived value with no
@@ -104,6 +111,7 @@ def build_chart_specs(
     """
     specs: list[dict] = []
     for chart in get_chart_set(chart_set_name):
+        fundamentals = fundamentals_by_period_range[(chart.period, chart.range)]
         missing = [
             metric_id
             for metric_id in chart.required_metrics
