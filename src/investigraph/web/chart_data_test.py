@@ -1,6 +1,8 @@
 import json
 from datetime import date, timedelta
 
+import pytest
+
 from investigraph.charts.catalog import available_charts, get_chart
 from investigraph.charts.registry import register_chart_set
 from investigraph.template.models import (
@@ -141,7 +143,73 @@ def test_money_bar_uses_raw_scale_relative_value_not_base_units():
     [spec] = _specs_for(["revenue"], fundamentals)
 
     assert spec["kind"] == "bar"
-    assert spec["series"] == [{"label": "Revenue", "dates": [_D], "values": [12.3]}]
+    # "revenue" carries a trend-fit overlay (see charts/fit.py), which is
+    # None here since a single point is too few to fit a trend line.
+    assert spec["series"] == [
+        {"label": "Revenue", "dates": [_D], "values": [12.3], "fit": None}
+    ]
+
+
+def test_money_bar_with_fit_includes_both_linear_and_exponential_trend():
+    # Revenue growing 10%/yr, sampled at 4 yearly points -- enough for both
+    # a linear and an exponential fit (see charts/fit.py).
+    points = [(date(2020 + i, 1, 1), 100.0 * (1.10**i)) for i in range(4)]
+    fundamentals = _fundamentals_with(
+        {"revenue": _money_series("revenue", points, scale=Unit.MILLIONS)}
+    )
+
+    [spec] = _specs_for(["revenue"], fundamentals)
+
+    fit = spec["series"][0]["fit"]
+    assert fit is not None
+    assert len(fit.linear_values) == 4
+    assert len(fit.exponential_values) == 4
+    assert fit.exponential_cagr == pytest.approx(0.10, abs=0.01)
+
+
+def test_money_bar_with_fit_omits_fit_when_a_value_is_non_positive():
+    # A loss-making year (negative net income) makes the exponential fit
+    # undefined (no real logarithm) -- the whole overlay is omitted rather
+    # than sending the frontend a fit with only linear populated.
+    points = [
+        (date(2020, 1, 1), 10.0),
+        (date(2021, 1, 1), -5.0),
+        (date(2022, 1, 1), 8.0),
+    ]
+    fundamentals = _fundamentals_with(
+        {"net_income": _money_series("net_income", points, scale=Unit.MILLIONS)}
+    )
+
+    [spec] = _specs_for(["net_income"], fundamentals)
+
+    assert spec["series"][0]["fit"] is None
+
+
+def test_money_bar_with_fit_round_trips_through_json():
+    # A populated TrendFit must serialize cleanly through
+    # ChartDataResponse.model_dump_json() (see that model's module docstring
+    # on why raw NaN tokens must never reach flask.jsonify()) -- not just
+    # exist as a Python object on the shaped dict.
+    points = [(date(2020 + i, 1, 1), 100.0 * (1.10**i)) for i in range(4)]
+    fundamentals = _fundamentals_with(
+        {"revenue": _money_series("revenue", points, scale=Unit.MILLIONS)}
+    )
+    [spec] = _specs_for(["revenue"], fundamentals)
+    response = ChartDataResponse(
+        ticker=fundamentals.ticker,
+        market=fundamentals.market.value,
+        currency=fundamentals.currency.value,
+        source_limits=fundamentals.source_limits,
+        charts=[spec],
+    )
+
+    parsed = json.loads(response.model_dump_json())
+
+    fit = parsed["charts"][0]["series"][0]["fit"]
+    assert fit is not None
+    assert len(fit["linear_values"]) == 4
+    assert len(fit["exponential_values"]) == 4
+    assert fit["exponential_cagr"] == pytest.approx(0.10, abs=0.01)
 
 
 def test_money_line_uses_base_units_across_series():
