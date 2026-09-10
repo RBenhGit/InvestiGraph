@@ -1,5 +1,5 @@
 import math
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -94,3 +94,41 @@ def test_fit_results_contain_no_nan_or_inf():
     assert math.isfinite(linear.rate)
     assert all(math.isfinite(v) for v in exponential.fitted_values)
     assert math.isfinite(exponential.rate)
+
+
+def test_a_single_nan_gap_does_not_poison_the_whole_fit():
+    # A TTM series (EPS, FCF -- see template/trailing.py's ttm_series) marks
+    # a missing quarter with a NaN point rather than omitting it, so a
+    # plotted line visibly breaks there instead of interpolating straight
+    # through. Before this test's fix, fit_linear/fit_exponential had no
+    # guard against a non-finite input value: math.log(nan) is nan (not an
+    # exception) and `nan <= 0` is False, so a single NaN silently turned
+    # *every* fitted value and the reported rate into NaN, not just the gap
+    # date's own point -- the same "one bad point mustn't corrupt the whole
+    # series" failure mode CLAUDE.md's NaN-gap-marker gotcha warns about.
+    dates = [_D0 + timedelta(days=91 * i) for i in range(8)]
+    values = [4.6, 5.0, float("nan"), float("nan"), float("nan"), 6.6, 7.0, 7.4]
+
+    linear = fit_linear(dates, values)
+    exponential = fit_exponential(dates, values)
+
+    assert linear is not None
+    assert math.isfinite(linear.rate)
+    assert all(math.isfinite(v) for v in linear.fitted_values)
+
+    assert exponential is not None
+    assert math.isfinite(exponential.rate)
+    assert all(math.isfinite(v) for v in exponential.fitted_values)
+    # The recovered growth rate should be in the right ballpark for a series
+    # that grows from ~4.6 to ~7.4 over roughly 8 quarters (~2 years).
+    assert exponential.rate == pytest.approx(0.36, abs=0.1)
+
+
+def test_returns_none_when_fewer_than_two_real_points_remain():
+    # Every value but one is a NaN gap marker -- too few real points for
+    # either fit, same as an all-NaN or too-short series.
+    dates = [_D0, _D1, _D2]
+    values = [10.0, float("nan"), float("nan")]
+
+    assert fit_linear(dates, values) is None
+    assert fit_exponential(dates, values) is None

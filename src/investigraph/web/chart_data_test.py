@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import date, timedelta
 
 import pytest
@@ -183,6 +184,35 @@ def test_money_bar_with_fit_omits_fit_when_a_value_is_non_positive():
     [spec] = _specs_for(["net_income"], fundamentals)
 
     assert spec["series"][0]["fit"] is None
+
+
+def test_money_bar_with_fit_recovers_a_sane_rate_across_a_ttm_gap():
+    # A TTM series (EPS, FCF) marks a missing quarter with a Money-tagged NaN
+    # point rather than omitting it (see template/trailing.py's ttm_series
+    # and CLAUDE.md's NaN-gap-marker gotcha), so the plotted line visibly
+    # breaks there. Before charts/fit.py filtered non-finite values before
+    # fitting, a single such gap silently turned every fitted value and the
+    # reported CAGR into NaN -- this exercises that real shape end to end,
+    # not just fit_linear/fit_exponential in isolation (see fit_test.py).
+    points = [
+        (date(2020, 1, 1), 4.6),
+        (date(2020, 4, 1), 5.0),
+        (date(2020, 7, 1), float("nan")),
+        (date(2020, 10, 1), float("nan")),
+        (date(2021, 1, 1), float("nan")),
+        (date(2021, 4, 1), 6.6),
+        (date(2021, 7, 1), 7.0),
+        (date(2021, 10, 1), 7.4),
+    ]
+    fundamentals = _fundamentals_with({"eps": _money_series("eps", points)})
+
+    [spec] = _specs_for(["eps"], fundamentals)
+
+    fit = spec["series"][0]["fit"]
+    assert fit is not None
+    assert math.isfinite(fit.exponential_cagr)
+    assert all(math.isfinite(v) for v in fit.exponential_values)
+    assert all(math.isfinite(v) for v in fit.linear_values)
 
 
 def test_money_bar_with_fit_round_trips_through_json():

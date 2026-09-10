@@ -481,6 +481,12 @@
     if (!series.fit) return null;
     var values = mode === 'linear' ? series.fit.linear_values : series.fit.exponential_values;
     var rate = mode === 'linear' ? series.fit.linear_rate_per_year : series.fit.exponential_cagr;
+    // Defense in depth: the backend never sends a fit with a null/NaN rate
+    // (charts/fit.py filters gap points before fitting and returns no fit
+    // at all rather than a partial one), but treat one as "no fit" here too
+    // rather than let `null.toFixed` throw or `(null * 100).toFixed(1)`
+    // silently render a fabricated "0.0%/yr" label on a blank line.
+    if (typeof rate !== 'number' || !isFinite(rate) || !values) return null;
     var label = mode === 'linear'
       ? (series.label + ' (fit: ' + rate.toFixed(2) + '/yr)')
       : (series.label + ' (fit: ' + (rate * 100).toFixed(1) + '%/yr)');

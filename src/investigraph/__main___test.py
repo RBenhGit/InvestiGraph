@@ -199,6 +199,44 @@ def test_render_with_duplicate_chart_ids_renders_each_chart_once(tmp_path, monke
     assert out.read_text().count("<h3>Price</h3>") == 1
 
 
+def test_render_range_override_applies_per_chart_own_period(tmp_path, monkeypatch):
+    # --range overrides every chart's own declared range (see charts/base.py's
+    # Chart protocol) while --period is left unset, so each chart keeps its
+    # OWN period -- revenue (ANNUAL) and margins (QUARTERLY) must each be
+    # fetched under their own period paired with the overridden range, not
+    # collapsed onto one shared period. This is the partial-override case
+    # __main__._run_render's effective_pair/fetched remap has to get right:
+    # a bug there would either KeyError or silently hand one chart the
+    # other's fundamentals.
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "out.html"
+    fetch_calls = []
+
+    class _RecordingAdapter(_StubAdapter):
+        def fetch(self, ticker, market, period, range):
+            fetch_calls.append((period, range))
+            return super().fetch(ticker, market, period, range)
+
+    with patch("investigraph.__main__.get_source", return_value=_RecordingAdapter()):
+        code = main(
+            [
+                "AAPL",
+                "--charts",
+                "revenue,margins",
+                "--range",
+                "10y",
+                "--out",
+                str(out),
+            ]
+        )
+
+    assert code == 0
+    assert set(fetch_calls) == {(Period.ANNUAL, "10y"), (Period.QUARTERLY, "10y")}
+    html = out.read_text()
+    assert "<h3>Revenue</h3>" in html
+    assert "<h3>Margins</h3>" in html
+
+
 def test_render_with_unknown_chart_id_returns_error(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 
