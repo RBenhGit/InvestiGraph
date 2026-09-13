@@ -41,7 +41,7 @@ def test_renders_a_daily_price_over_ttm_eps_line():
 
     PERatioChart().render(ax, fundamentals)
 
-    assert len(ax.lines) == 1
+    assert len(ax.lines) == 2
     assert list(ax.lines[0].get_ydata()) == [100.0 / 4.0, 200.0 / 5.0]
     plt.close(fig)
 
@@ -145,6 +145,70 @@ def test_a_loss_year_breaks_the_line_instead_of_interpolating_through_it():
     assert len(values) == 2
     assert math.isnan(values[0])  # 2022-06-01: trailing EPS is the loss year
     assert values[1] == 25.0  # 2023-06-01: trailing EPS is FY2022's 4.0
+    plt.close(fig)
+
+
+def test_draws_a_horizontal_average_line_over_the_data_range():
+    fundamentals = fundamentals_with(
+        {
+            "price": money_series("price", [100.0, 200.0, 300.0]),
+            "eps": money_series("eps", [4.0, 4.0, 4.0]),
+        }
+    )
+    fig, ax = plt.subplots()
+
+    PERatioChart().render(ax, fundamentals)
+
+    # P/E values are 25, 50, 75 -> average 50
+    assert len(ax.lines) == 2
+    average_line = ax.lines[1]
+    assert list(average_line.get_ydata()) == [50.0, 50.0]
+    assert average_line.get_label() == "Avg 50.0x"
+    plt.close(fig)
+
+
+def test_average_line_excludes_nan_loss_year_gaps():
+    eps = MetricSeries(
+        metric_id="eps",
+        points=[
+            Point(
+                date=date(2020, 12, 31),
+                value=Money(value=5.0, currency=Currency.USD, scale=Unit.ONES),
+            ),
+            Point(
+                date=date(2021, 12, 31),
+                value=Money(value=-2.0, currency=Currency.USD, scale=Unit.ONES),
+            ),
+            Point(
+                date=date(2022, 12, 31),
+                value=Money(value=5.0, currency=Currency.USD, scale=Unit.ONES),
+            ),
+        ],
+        available=True,
+    )
+    price = MetricSeries(
+        metric_id="price",
+        points=[
+            Point(
+                date=date(2022, 6, 1),
+                value=Money(value=100.0, currency=Currency.USD, scale=Unit.ONES),
+            ),
+            Point(
+                date=date(2023, 6, 1),
+                value=Money(value=100.0, currency=Currency.USD, scale=Unit.ONES),
+            ),
+        ],
+        available=True,
+    )
+    fundamentals = fundamentals_with({"price": price, "eps": eps})
+    fig, ax = plt.subplots()
+
+    PERatioChart().render(ax, fundamentals)
+
+    # Only the 2023-06-01 point is valid (P/E = 20); the NaN loss-year point
+    # must not be averaged in as 0 or corrupt the average with NaN.
+    average_line = ax.lines[1]
+    assert list(average_line.get_ydata()) == [20.0, 20.0]
     plt.close(fig)
 
 

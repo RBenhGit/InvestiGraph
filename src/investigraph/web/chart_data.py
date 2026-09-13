@@ -17,6 +17,7 @@ which pandas SMA warm-up periods and other computed ratios can produce.
 
 from __future__ import annotations
 
+import math
 from datetime import date
 from typing import Annotated, Callable, Literal
 
@@ -51,10 +52,13 @@ class SeriesSpec(BaseModel):
     label: str
     dates: list[date]
     values: list[float]
-    # Optional drawing hints for the browser: overlay lines (price's SMAs) are
-    # drawn thin and without per-point markers so the primary series stands out.
+    # Optional drawing hints for the browser: overlay lines (price's SMAs, the
+    # P/E average line) are drawn thin and without per-point markers so the
+    # primary series stands out; `dash` further distinguishes a reference line
+    # (e.g. the P/E average) from actual data.
     width: float | None = None
     markers: bool = True
+    dash: str | None = None
 
 
 class _ChartSpecBase(BaseModel):
@@ -382,6 +386,31 @@ def _trailing_percentage_line(
     return shaper
 
 
+def _pe_ratio(fundamentals: CompanyFundamentals) -> dict | None:
+    series = resolve_trailing(fundamentals, PE_RATIO_TTM)
+    if not series.available:
+        return None
+    dates = [p.date for p in series.points]
+    values = [p.value for p in series.points]
+
+    valid = [v for v in values if not math.isnan(v)]
+    lines = [{"label": "P/E", "dates": dates, "values": values, "markers": False}]
+    if valid:
+        average = sum(valid) / len(valid)
+        lines.append(
+            {
+                "label": f"Avg {average:.1f}x",
+                "dates": dates,
+                "values": [average] * len(dates),
+                "markers": False,
+                "width": 1,
+                "dash": "dash",
+            }
+        )
+
+    return {"kind": "line", "y_label": "P/E (x)", "series": lines}
+
+
 def _market_cap(fundamentals: CompanyFundamentals) -> dict | None:
     series = resolve_trailing(fundamentals, MARKET_CAP)
     if not series.available:
@@ -434,7 +463,7 @@ _SHAPERS: dict[str, Callable[[CompanyFundamentals], dict | None]] = {
     "return_on_capital": _return_on_capital,
     "valuation": _valuation,
     "market_cap": _market_cap,
-    "pe_ratio": _trailing_ratio_line(PE_RATIO_TTM, "P/E", "P/E (x)", markers=False),
+    "pe_ratio": _pe_ratio,
     "dividend_yield": _trailing_percentage_line(
         DIVIDEND_YIELD_TTM, "Dividend Yield", "Dividend Yield (%)", markers=False
     ),

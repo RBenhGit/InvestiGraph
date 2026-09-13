@@ -164,6 +164,70 @@ def test_transport_failure_raises_source_unavailable():
             TwelveDataAdapter().fetch("AAPL", Market.US, Period.ANNUAL, "1y")
 
 
+def _mock_response(payload: dict):
+    from unittest.mock import Mock
+
+    response = Mock()
+    response.json.return_value = payload
+    return response
+
+
+def test_rate_limit_retries_with_backoff_then_succeeds():
+    fixture = _load("aapl")
+    success_by_endpoint = {
+        "time_series": fixture["price"],
+        "income_statement": fixture["income"],
+        "cash_flow": fixture["cashflow"],
+        "balance_sheet": fixture["balance_sheet"],
+    }
+    rate_limited = _mock_response(
+        {"status": "error", "code": 429, "message": "You have run out of API credits"}
+    )
+
+    call_count = {"n": 0}
+
+    def fake_requests_get(url, params, timeout):
+        # Every endpoint's very first attempt is rate-limited; the retry succeeds.
+        call_count["n"] += 1
+        endpoint = url.rsplit("/", 1)[-1]
+        if call_count["n"] <= 1:
+            return rate_limited
+        return _mock_response(success_by_endpoint[endpoint])
+
+    with (
+        patch(
+            "investigraph.sources.twelvedata.adapter.requests.get",
+            side_effect=fake_requests_get,
+        ),
+        patch("investigraph.sources.twelvedata.adapter.time.sleep") as mock_sleep,
+        patch.dict("os.environ", {"TWELVEDATA_API_KEY": "test-key"}),
+    ):
+        fundamentals = TwelveDataAdapter().fetch("AAPL", Market.US, Period.ANNUAL, "5y")
+
+    assert fundamentals.series["price"].available
+    mock_sleep.assert_called_once_with(2)
+
+
+def test_rate_limit_exhausts_retries_and_raises_source_unavailable():
+    rate_limited = _mock_response(
+        {"status": "error", "code": 429, "message": "You have run out of API credits"}
+    )
+
+    with (
+        patch(
+            "investigraph.sources.twelvedata.adapter.requests.get",
+            return_value=rate_limited,
+        ),
+        patch("investigraph.sources.twelvedata.adapter.time.sleep") as mock_sleep,
+        patch.dict("os.environ", {"TWELVEDATA_API_KEY": "test-key"}),
+    ):
+        with pytest.raises(SourceUnavailable, match="API credits"):
+            TwelveDataAdapter().fetch("AAPL", Market.US, Period.ANNUAL, "1y")
+
+    # 3 retries -> 3 sleeps, using the full backoff schedule, before giving up.
+    assert mock_sleep.call_args_list == [((2,),), ((5,),), ((10,),)]
+
+
 def test_income_row_missing_fiscal_date_is_skipped_not_a_crash():
     fixture = _load("aapl")
     malformed_row = {k: v for k, v in fixture["income"]["income_statement"][0].items()}

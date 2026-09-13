@@ -366,6 +366,24 @@ def test_pe_ratio_line():
     assert spec["series"][0]["markers"] is False
 
 
+def test_pe_ratio_includes_a_dashed_average_line():
+    fundamentals = _fundamentals_with(
+        {
+            "price": _money_series("price", [(_D, 20), (date(2021, 1, 1), 40)]),
+            "eps": _money_series("eps", [(_D, 2), (date(2021, 1, 1), 2)]),
+        }
+    )
+
+    [spec] = _specs_for(["pe_ratio"], fundamentals)
+
+    # P/E values are 10 and 20 -> average 15
+    assert len(spec["series"]) == 2
+    average = spec["series"][1]
+    assert average["label"] == "Avg 15.0x"
+    assert average["values"] == [15.0, 15.0]
+    assert average["dash"] == "dash"
+
+
 def test_pe_ratio_zero_eps_is_no_data():
     fundamentals = _fundamentals_with(
         {

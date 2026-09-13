@@ -388,6 +388,38 @@ preserved intact on `main`.
       correctly for the first time. Recorded as code-reviewer memory
       `nth-of-type-vs-class-column-highlight.md`. 498 pytest + 105 vitest passing, ruff clean.
 
+- [x] **2026-09-13 — P/E average line, Twelve Data 429 retry, yfinance currency-mismatch
+      messaging.** Three independent fixes bundled in one session:
+      - **P/E ratio average line.** Both renderers (`charts/builtins/pe_ratio.py`'s matplotlib
+        chart and `web/chart_data.py`'s `_pe_ratio` shaper, replacing the generic
+        `_trailing_ratio_line` it used before) now draw a dashed gray horizontal line at the
+        mean of the ticker's valid (non-NaN) TTM P/E points, labelled `Avg {x}x`. Needed a new
+        `SeriesSpec.dash` field (plumbed through to Plotly's `line.dash` in
+        `web/templates/index.html`) so the web chart's reference line reads as distinct from
+        the real data line the way the matplotlib version's `linestyle="--"` already did —
+        without it every series rendered solid and the average was visually indistinguishable
+        from actual P/E history.
+      - **Twelve Data 429 retry.** `TwelveDataAdapter._get` previously raised `SourceUnavailable`
+        immediately on any `status: "error"` payload, including rate-limit (`code: 429`)
+        responses — a burst of chart requests against the free tier's per-minute credit cap
+        surfaced as a hard error rather than recovering once the window cleared. Now retries
+        up to 3 times with a bounded backoff (2s/5s/10s) before giving up, since Twelve Data's
+        docs specify no `Retry-After` header or fixed formula, only "implement retry logic for
+        transient errors." Deliberately short and bounded rather than sleeping a full 60s,
+        since the dev server is single-threaded (see `web/__main__.py`) and a per-minute window
+        can clear well before a full minute if the request burst that exhausted it has stopped.
+      - **yfinance unsupported financial-currency messaging.** A ticker whose financials are
+        reported in a currency this app can't combine with its price currency (e.g. a
+        foreign-domiciled filer like ASML reporting in EUR against a USD ADR) previously
+        produced one generic "no data available" `source_limits` line per affected metric —
+        revenue, EPS, P/E, dividend yield, etc. all separately, none naming the actual cause.
+        `_fetch` now detects the unmapped `financial_currency` up front, strips those per-metric
+        lines after they're generated (matched against the new
+        `_FINANCIAL_STATEMENT_METRIC_IDS` tuple, kept in sync by hand with the
+        `_statement_series` calls below it), and appends one line naming the real reason.
+        `price`, keyed off `price_currency` separately, is unaffected.
+      508 pytest + 105 vitest passing, ruff clean.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the

@@ -473,7 +473,7 @@
       }
       return {
         type: 'scatter', mode: s.markers === false ? 'lines' : 'lines+markers', name: s.label,
-        x: s.dates, y: s.values, line: { color: color, width: s.width || 2 }, marker: { size: 6 }
+        x: s.dates, y: s.values, line: { color: color, width: s.width || 2, dash: s.dash || 'solid' }, marker: { size: 6 }
       };
     });
   }

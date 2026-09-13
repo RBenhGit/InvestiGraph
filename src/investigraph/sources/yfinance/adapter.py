@@ -26,6 +26,31 @@ _YFINANCE_PERIODS = {
     "max": "max",
 }
 
+# Every metric_id passed to `_statement_series` tagged with `financial_currency`
+# (not `price_currency`, and not the plain-ratio/-float metrics like
+# gross_margin or shares_outstanding, which don't take a currency at all) --
+# kept in sync with the `_statement_series` calls in `_fetch` below, used to
+# drop their generic "no data available" messages in favor of one clear line
+# when `financial_currency` itself is unmapped.
+_FINANCIAL_STATEMENT_METRIC_IDS = (
+    "revenue",
+    "net_income",
+    "eps",
+    "free_cash_flow",
+    "ebitda",
+    "research_and_development",
+    "selling_general_administrative",
+    "dividends_paid",
+    "ebit",
+    "total_assets",
+    "total_liabilities",
+    "total_equity",
+    "cash_and_equivalents",
+    "total_debt",
+    "total_current_assets",
+    "total_current_liabilities",
+)
+
 
 class YFinanceAdapter:
     def capability(self) -> Capability:
@@ -66,6 +91,17 @@ class YFinanceAdapter:
 
         series: dict[str, MetricSeries] = {}
         source_limits: list[str] = []
+
+        # Not a missing-data gap: the financials exist but are reported in a
+        # currency this app doesn't support combining with price (e.g. a
+        # foreign-domiciled company like ASML filing in EUR while its ADR
+        # prices in USD). Detected up front so the per-metric "no data
+        # available" lines each statement lookup below would otherwise add
+        # can be dropped in favor of naming the real reason once.
+        raw_financial_currency = info.get("financialCurrency")
+        unsupported_financial_currency = bool(raw_financial_currency) and (
+            financial_currency is None
+        )
 
         series["price"] = _price_series(
             history, info.get("currency"), price_currency, source_limits
@@ -216,6 +252,24 @@ class YFinanceAdapter:
             "total_current_liabilities",
             source_limits,
         )
+
+        if unsupported_financial_currency:
+            # Replace the per-metric "no data available" noise generated above
+            # (one per financial-statement lookup, all keyed off the same
+            # unmapped `financial_currency`) with a single line naming the
+            # actual cause. `price` is fetched separately and keyed off
+            # `price_currency`, so its own message (if any) is unaffected.
+            financial_metric_ids = set(_FINANCIAL_STATEMENT_METRIC_IDS)
+            source_limits = [
+                limit
+                for limit in source_limits
+                if limit.split(":", 1)[0] not in financial_metric_ids
+            ]
+            source_limits.append(
+                f"financials reported in {raw_financial_currency}, unsupported "
+                "for this ticker's price currency -- all financial-statement "
+                "metrics (revenue, EPS, P/E, dividend yield, etc.) unavailable"
+            )
 
         return CompanyFundamentals(
             ticker=ticker,

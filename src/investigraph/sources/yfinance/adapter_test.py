@@ -141,6 +141,36 @@ def test_tase_ticker_converts_agorot_price_and_reports_ils_financials():
     assert fundamentals.series["total_equity"].available
 
 
+def test_unsupported_financial_currency_reports_one_clear_message():
+    # A foreign-domiciled company (e.g. ASML) can price in USD while filing
+    # financials in a currency this app doesn't support (e.g. EUR) --
+    # `map_currency` returns None for "EUR", so every financial-statement
+    # metric legitimately degrades to unavailable (never silently combined
+    # with the USD price), but that must surface as one clear reason instead
+    # of a wall of generic "no data available" lines, one per metric.
+    fixture = _FakeTicker("aapl")
+    fixture.info = {**fixture.info, "financialCurrency": "EUR"}
+
+    with patch(
+        "investigraph.sources.yfinance.adapter.yf.Ticker",
+        lambda _ticker: fixture,
+    ):
+        fundamentals = YFinanceAdapter().fetch("ASML", Market.US, Period.ANNUAL, "5y")
+
+    assert fundamentals.series["price"].available
+    assert not fundamentals.series["revenue"].available
+    assert not fundamentals.series["eps"].available
+
+    currency_limits = [limit for limit in fundamentals.source_limits if "EUR" in limit]
+    assert len(currency_limits) == 1
+    assert "financials reported in EUR" in currency_limits[0]
+
+    assert not any(
+        "no data available for this ticker" in limit
+        for limit in fundamentals.source_limits
+    )
+
+
 def test_price_series_skips_rows_with_a_nan_close():
     # yfinance returns a NaN close for the current, still-open trading day —
     # must be filtered out rather than surfacing as the "latest" price.

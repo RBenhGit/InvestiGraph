@@ -1,4 +1,5 @@
 import os
+import time
 
 import requests
 from dotenv import load_dotenv
@@ -24,6 +25,17 @@ from investigraph.template.models import (
 from investigraph.template.trailing import derive_ttm_fundamentals
 
 _BASE_URL = "https://api.twelvedata.com"
+
+# Twelve Data's docs (https://twelvedata.com/docs) give no Retry-After header
+# and no fixed backoff formula for a 429 -- only "implement retry logic for
+# transient errors" and "cache to reduce calls" (the cache side is
+# `cache/store.py`, already in place). The per-minute credit window can clear
+# well before a full minute if the burst that exhausted it has stopped, so a
+# short bounded backoff is retried a few times rather than blocking the
+# (single-threaded, see web/__main__.py) dev server for up to 60s per call.
+_RATE_LIMIT_CODE = 429
+_RATE_LIMIT_MAX_RETRIES = 3
+_RATE_LIMIT_BACKOFF_SECONDS = (2, 5, 10)
 
 # Daily bars at every range, roughly 260 per year of the requested window.
 #
@@ -209,22 +221,36 @@ class TwelveDataAdapter:
     def _get(self, endpoint: str, **params) -> dict:
         query = {k: v for k, v in params.items() if v is not None}
         query["apikey"] = self._api_key
-        try:
-            response = requests.get(f"{_BASE_URL}/{endpoint}", params=query, timeout=30)
-        except requests.RequestException as exc:
-            raise SourceUnavailable(f"twelvedata request failed: {exc}") from exc
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise SourceUnavailable(
-                f"twelvedata returned a non-JSON response: {response.text[:200]}"
-            ) from exc
 
-        if isinstance(payload, dict) and payload.get("status") == "error":
-            if payload.get("code") == 404:
-                raise TickerNotFound(params.get("symbol", ""))
-            raise SourceUnavailable(payload.get("message", "twelvedata request failed"))
-        return payload
+        for attempt in range(_RATE_LIMIT_MAX_RETRIES + 1):
+            try:
+                response = requests.get(
+                    f"{_BASE_URL}/{endpoint}", params=query, timeout=30
+                )
+            except requests.RequestException as exc:
+                raise SourceUnavailable(f"twelvedata request failed: {exc}") from exc
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise SourceUnavailable(
+                    f"twelvedata returned a non-JSON response: {response.text[:200]}"
+                ) from exc
+
+            if isinstance(payload, dict) and payload.get("status") == "error":
+                if payload.get("code") == 404:
+                    raise TickerNotFound(params.get("symbol", ""))
+                if (
+                    payload.get("code") == _RATE_LIMIT_CODE
+                    and attempt < _RATE_LIMIT_MAX_RETRIES
+                ):
+                    time.sleep(_RATE_LIMIT_BACKOFF_SECONDS[attempt])
+                    continue
+                raise SourceUnavailable(
+                    payload.get("message", "twelvedata request failed")
+                )
+            return payload
+
+        raise AssertionError("unreachable: loop always returns or raises")
 
 
 def _price_params(range: str) -> dict:

@@ -1,3 +1,5 @@
+import math
+
 from matplotlib.axes import Axes
 
 from investigraph.charts.base import draw_no_data, render_ratio_line
@@ -18,5 +20,17 @@ class PERatioChart:
         dates = [p.date for p in series.points]
         values = [p.value for p in series.points]
         render_ratio_line(ax, dates, values, "P/E", markers=False)
+
+        valid = [v for v in values if not math.isnan(v)]
+        if valid:
+            average = sum(valid) / len(valid)
+            ax.axhline(
+                average,
+                color="gray",
+                linestyle="--",
+                linewidth=1,
+                label=f"Avg {average:.1f}x",
+            )
+
         ax.set_ylabel("P/E (x)")
         ax.legend(fontsize=7, loc="upper left")
