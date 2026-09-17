@@ -314,7 +314,9 @@
         placeholder="Investment thesis / notes..."
       />
       <select id="evaluator-select" class="assumption-input assumption-select" style="margin-left: 0.9rem;">
-        <!-- Populated by JS -->
+        {% for name in evaluators %}
+        <option value="{{ name }}"{% if name == selected_evaluator %} selected{% endif %}>{{ name }}</option>
+        {% endfor %}
       </select>
       <button id="add-evaluator-btn" type="button" class="btn-action-load" style="margin-left: 0.2rem; padding: 0.2rem 0.5rem;" title="Add Evaluator">+</button>
       <button id="del-evaluator-btn" type="button" class="btn-action-del" style="margin-left: 0.2rem; padding: 0.2rem 0.5rem;" title="Remove Evaluator">-</button>

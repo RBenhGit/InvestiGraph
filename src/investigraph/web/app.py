@@ -27,10 +27,14 @@ from investigraph.web.chart_data import ChartDataResponse, build_chart_specs
 from investigraph.web.chart_set_store import ChartSetStore
 from investigraph.web.history_service import (
     HistoryError,
+    add_evaluator,
     create_valuation,
     list_all_latest_valuations,
+    list_evaluators,
     list_history,
+    remove_evaluator,
     remove_valuation,
+    set_selected_evaluator,
 )
 from investigraph.web.service import load_fundamentals
 from investigraph.web.valuate_service import ValuateError, handle_valuate
@@ -161,8 +165,20 @@ def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
 
     @app.get("/")
     def index() -> str:
+        # Server-rendered rather than fetched: the front end's history load reads
+        # the selected evaluator synchronously at startup, so an async fetch here
+        # would race it and send the first /api/history request with no
+        # evaluator. Rendering the options inline removes the ordering hazard
+        # entirely. A registry that can't be read must not take down the page, so
+        # this degrades to an empty picker rather than a 500.
+        try:
+            evaluator_state = list_evaluators()
+        except HistoryError:
+            evaluator_state = {"evaluators": [], "selected": None}
         return render_template(
             "index.html",
+            evaluators=evaluator_state["evaluators"],
+            selected_evaluator=evaluator_state["selected"],
             # Read live from the registries (not hand-maintained literals) so a
             # newly registered source or curated chart set appears in the
             # picker without a template/module change here.
@@ -346,5 +362,38 @@ def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
             if isinstance(last_price, (int, float)):
                 prices[ticker] = last_price
         return jsonify(ok=True, prices=prices)
+
+    @app.get("/api/evaluators")
+    def evaluators_route():
+        try:
+            return jsonify(ok=True, data=list_evaluators())
+        except HistoryError as exc:
+            return jsonify(ok=False, error=exc.error), exc.status
+
+    @app.post("/api/evaluators")
+    def post_evaluator_route():
+        payload = request.get_json(silent=True) or {}
+        try:
+            data = add_evaluator(payload.get("name") or "")
+        except HistoryError as exc:
+            return jsonify(ok=False, error=exc.error), exc.status
+        return jsonify(ok=True, data=data), 201
+
+    @app.delete("/api/evaluators/<name>")
+    def delete_evaluator_route(name: str):
+        try:
+            data = remove_evaluator(name)
+        except HistoryError as exc:
+            return jsonify(ok=False, error=exc.error), exc.status
+        return jsonify(ok=True, data=data)
+
+    @app.put("/api/evaluators/selected")
+    def put_selected_evaluator_route():
+        payload = request.get_json(silent=True) or {}
+        try:
+            data = set_selected_evaluator(payload.get("name") or "")
+        except HistoryError as exc:
+            return jsonify(ok=False, error=exc.error), exc.status
+        return jsonify(ok=True, data=data)
 
     return app

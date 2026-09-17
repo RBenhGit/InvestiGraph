@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
@@ -18,6 +18,10 @@ describe('app.js frontend', () => {
   let renderMethodCard;
   let handleSaveValuation;
   let fetchHistory;
+  let applyEvaluatorState;
+  let originalEvaluatorSelect;
+  let originalAddBtn;
+  let originalDelBtn;
   let fmt;
   let fmtPercent;
   let formatDate;
@@ -84,6 +88,8 @@ describe('app.js frontend', () => {
         <option value="Aviv" selected>Aviv</option>
         <option value="Bob">Bob</option>
       </select>
+      <button id="add-evaluator-btn"></button>
+      <button id="del-evaluator-btn"></button>
     `;
 
     // Mock fetch for initial fetchHistory
@@ -100,7 +106,7 @@ describe('app.js frontend', () => {
     const scriptExecutor = new Function(
       'window',
       'document',
-      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, renderPriceBanner, renderGrowthTable, renderMultiplesTable, renderGrowthChips, renderScenarioColumn, renderMethodCard, handleSaveValuation, fetchHistory, fmt, fmtPercent, formatDate, renderVerdict, getCurrentValuation: () => currentValuation, setCurrentValuation: (v) => { currentValuation = v; } };`,
+      `${appJsCode}\nreturn { formatStockDataError, renderAnalystTable, renderHistoryTable, handleSubmit, renderPriceBanner, renderGrowthTable, renderMultiplesTable, renderGrowthChips, renderScenarioColumn, renderMethodCard, handleSaveValuation, fetchHistory, applyEvaluatorState, fmt, fmtPercent, formatDate, renderVerdict, getCurrentValuation: () => currentValuation, setCurrentValuation: (v) => { currentValuation = v; } };`,
     );
     const exports = scriptExecutor(window, document);
     formatStockDataError = exports.formatStockDataError;
@@ -115,12 +121,16 @@ describe('app.js frontend', () => {
     renderMethodCard = exports.renderMethodCard;
     handleSaveValuation = exports.handleSaveValuation;
     fetchHistory = exports.fetchHistory;
+    applyEvaluatorState = exports.applyEvaluatorState;
     fmt = exports.fmt;
     fmtPercent = exports.fmtPercent;
     formatDate = exports.formatDate;
     renderVerdict = exports.renderVerdict;
     getCurrentValuation = exports.getCurrentValuation;
     setCurrentValuation = exports.setCurrentValuation;
+    originalEvaluatorSelect = document.getElementById('evaluator-select');
+    originalAddBtn = document.getElementById('add-evaluator-btn');
+    originalDelBtn = document.getElementById('del-evaluator-btn');
     analystTableEl = document.getElementById('analyst-table');
     historyTbodyEl = document.getElementById('history-tbody');
     historyEmptyEl = document.getElementById('history-empty');
@@ -1262,6 +1272,204 @@ describe('app.js frontend', () => {
       if (diffEl) {
         expect(diffEl.className).not.toBe('scenario-diff');
       }
+    });
+  });
+
+  describe('evaluator picker (server-backed)', () => {
+    let evaluatorSelectEl;
+    let addBtnEl;
+    let delBtnEl;
+
+    beforeAll(() => {
+      // app.js captured these nodes as `const`s at load time, and the
+      // renderScenarioColumn tests above replace document.body wholesale. Keep
+      // the ORIGINAL nodes (the ones the handlers are bound to) and re-attach
+      // them, rather than querying for fresh ones the listeners don't know.
+      evaluatorSelectEl = originalEvaluatorSelect;
+      addBtnEl = originalAddBtn;
+      delBtnEl = originalDelBtn;
+    });
+
+    beforeEach(() => {
+      if (!document.body.contains(evaluatorSelectEl)) {
+        document.body.append(evaluatorSelectEl, addBtnEl, delBtnEl);
+      }
+      evaluatorSelectEl.innerHTML =
+        '<option value="Aviv" selected>Aviv</option><option value="Bob">Bob</option>';
+      evaluatorSelectEl.value = 'Aviv';
+    });
+
+    it('uses no browser storage at all', () => {
+      const appJsCode = fs.readFileSync(path.resolve(__dirname, 'app.js'), 'utf8');
+      // The whole point of the server-side move: a terminal is a pure display.
+      expect(appJsCode).not.toContain('localStorage');
+      expect(appJsCode).not.toContain('sessionStorage');
+      expect(appJsCode).not.toContain('indexedDB');
+    });
+
+    it('repaints the picker from a server payload', () => {
+      applyEvaluatorState({ evaluators: ['Aviv', 'Ran', 'Dana'], selected: 'Ran' });
+
+      const names = [...evaluatorSelectEl.options].map((o) => o.value);
+      expect(names).toEqual(['Aviv', 'Ran', 'Dana']);
+      expect(evaluatorSelectEl.value).toBe('Ran');
+    });
+
+    it('ignores a malformed payload rather than blanking the picker', () => {
+      applyEvaluatorState({ ok: false });
+
+      expect(evaluatorSelectEl.options.length).toBe(2);
+    });
+
+    it('persists the selection to the server when it changes', async () => {
+      const calls = [];
+      global.fetch = (url, opts) => {
+        calls.push({ url, opts });
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
+      };
+
+      evaluatorSelectEl.value = 'Bob';
+      evaluatorSelectEl.dispatchEvent(new window.Event('change'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const put = calls.find((c) => c.opts && c.opts.method === 'PUT');
+      expect(put.url).toBe('/api/evaluators/selected');
+      expect(JSON.parse(put.opts.body)).toEqual({ name: 'Bob' });
+      // The history table must still repaint for the newly picked evaluator.
+      expect(calls.some((c) => String(c.url).startsWith('/api/history'))).toBe(true);
+    });
+
+    it('still reloads history when saving the selection fails', async () => {
+      const calls = [];
+      global.fetch = (url, opts) => {
+        calls.push(String(url));
+        if (opts && opts.method === 'PUT') return Promise.reject(new Error('offline'));
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
+      };
+
+      evaluatorSelectEl.dispatchEvent(new window.Event('change'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(calls.some((u) => u.startsWith('/api/history'))).toBe(true);
+    });
+
+    it('POSTs a new evaluator and repaints from the response', async () => {
+      const calls = [];
+      window.prompt = () => 'Dana';
+      global.fetch = (url, opts) => {
+        calls.push({ url, opts });
+        if (opts && opts.method === 'POST') {
+          return Promise.resolve({
+            json: () =>
+              Promise.resolve({
+                ok: true,
+                data: { evaluators: ['Aviv', 'Bob', 'Dana'], selected: 'Aviv' },
+              }),
+          });
+        }
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
+      };
+
+      addBtnEl.dispatchEvent(new window.Event('click'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const post = calls.find((c) => c.opts && c.opts.method === 'POST');
+      expect(post.url).toBe('/api/evaluators');
+      expect(JSON.parse(post.opts.body)).toEqual({ name: 'Dana' });
+      expect([...evaluatorSelectEl.options].map((o) => o.value)).toContain('Dana');
+    });
+
+    it('does not POST when the add prompt is cancelled', async () => {
+      const calls = [];
+      window.prompt = () => null;
+      global.fetch = (url, opts) => {
+        calls.push({ url, opts });
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
+      };
+
+      addBtnEl.dispatchEvent(new window.Event('click'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(calls.some((c) => c.opts && c.opts.method === 'POST')).toBe(false);
+    });
+
+    it('surfaces a rejected name instead of silently doing nothing', async () => {
+      let alerted = '';
+      window.prompt = () => 'נדב';
+      window.alert = (msg) => {
+        alerted = msg;
+      };
+      global.fetch = () =>
+        Promise.resolve({
+          json: () =>
+            Promise.resolve({
+              ok: false,
+              error: { type: 'INVALID_INPUT', reason: 'no usable characters' },
+            }),
+        });
+
+      addBtnEl.dispatchEvent(new window.Event('click'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(alerted).toContain('no usable characters');
+    });
+
+    it('surfaces a server IO error, which uses message rather than reason', async () => {
+      let alerted = '';
+      window.prompt = () => 'Dana';
+      window.alert = (msg) => {
+        alerted = msg;
+      };
+      // history_service.py reports a 400 as error.reason but a 500 as
+      // error.message; reading only one shape showed the user "undefined".
+      global.fetch = () =>
+        Promise.resolve({
+          json: () =>
+            Promise.resolve({
+              ok: false,
+              error: { type: 'IO_ERROR', message: 'Permission denied' },
+            }),
+        });
+
+      addBtnEl.dispatchEvent(new window.Event('click'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(alerted).toContain('Permission denied');
+      expect(alerted).not.toContain('undefined');
+    });
+
+    it('DELETEs an evaluator once confirmed, URL-encoding the name', async () => {
+      const calls = [];
+      window.confirm = () => true;
+      evaluatorSelectEl.innerHTML = '<option value="Aviv Cohen" selected>Aviv Cohen</option>';
+      evaluatorSelectEl.value = 'Aviv Cohen';
+      global.fetch = (url, opts) => {
+        calls.push({ url: String(url), opts });
+        return Promise.resolve({
+          json: () =>
+            Promise.resolve({ ok: true, data: { evaluators: ['Bob'], selected: 'Bob' } }),
+        });
+      };
+
+      delBtnEl.dispatchEvent(new window.Event('click'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const del = calls.find((c) => c.opts && c.opts.method === 'DELETE');
+      expect(del.url).toBe('/api/evaluators/Aviv%20Cohen');
+    });
+
+    it('does not DELETE when the confirm is declined', async () => {
+      const calls = [];
+      window.confirm = () => false;
+      global.fetch = (url, opts) => {
+        calls.push({ url, opts });
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, data: [] }) });
+      };
+
+      delBtnEl.dispatchEvent(new window.Event('click'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(calls.some((c) => c.opts && c.opts.method === 'DELETE')).toBe(false);
     });
   });
 });

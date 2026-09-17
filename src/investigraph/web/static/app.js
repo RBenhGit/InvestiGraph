@@ -1036,59 +1036,101 @@ if (historyFilter) {
     fetchHistory(historyFilter.value);
   });
 }
-if (evaluatorSelect) {
-  evaluatorSelect.addEventListener('change', () => {
-    fetchHistory(historyFilter ? historyFilter.value : '');
-  });
+// The evaluator list and the current selection live on the server, so every
+// terminal pointed at it sees the same names -- the <option> elements are
+// rendered by the template, not built here. These handlers send changes to the
+// server and repaint from its response, which is the single source of truth.
+
+// The API reports a 400 as error.reason but a 500 as error.message (see
+// web/history_service.py), so read both rather than showing "undefined" on
+// whichever shape wasn't expected.
+function evaluatorErrorText(body, fallback) {
+  return (
+    (body && body.error && body.error.reason) ||
+    (body && body.error && body.error.message) ||
+    fallback
+  );
 }
 
-function renderEvaluators() {
-  if (!evaluatorSelect) return;
-  const list = JSON.parse(localStorage.getItem('evaluatorsList')) || ['Aviv', 'Ran'];
-  const currentVal = evaluatorSelect.value;
+// Repaint the picker from an /api/evaluators payload, preserving the server's
+// idea of which evaluator is selected.
+function applyEvaluatorState(state) {
+  if (!evaluatorSelect || !state || !Array.isArray(state.evaluators)) return;
   evaluatorSelect.innerHTML = '';
-  list.forEach(name => {
+  state.evaluators.forEach(name => {
     const opt = document.createElement('option');
     opt.value = name;
     opt.textContent = name;
     evaluatorSelect.appendChild(opt);
   });
-  if (list.includes(currentVal)) {
-    evaluatorSelect.value = currentVal;
+  if (state.selected) {
+    evaluatorSelect.value = state.selected;
   }
 }
 
+if (evaluatorSelect) {
+  evaluatorSelect.addEventListener('change', async () => {
+    // Persist the selection before reloading history. A failure here is not
+    // fatal -- the table should still repaint for the evaluator the user just
+    // picked, they just won't have it remembered on the next page load.
+    try {
+      await fetch('/api/evaluators/selected', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: evaluatorSelect.value }),
+      });
+    } catch (err) {
+      console.error('Could not save the selected evaluator', err);
+    }
+    fetchHistory(historyFilter ? historyFilter.value : '');
+  });
+}
+
 if (addEvaluatorBtn) {
-  addEvaluatorBtn.addEventListener('click', () => {
+  addEvaluatorBtn.addEventListener('click', async () => {
     const name = prompt('Enter new evaluator name:');
-    if (name && name.trim()) {
-      const list = JSON.parse(localStorage.getItem('evaluatorsList')) || ['Aviv', 'Ran'];
-      if (!list.includes(name.trim())) {
-        list.push(name.trim());
-        localStorage.setItem('evaluatorsList', JSON.stringify(list));
-        renderEvaluators();
-        evaluatorSelect.value = name.trim();
-        evaluatorSelect.dispatchEvent(new Event('change'));
+    if (!name || !name.trim()) return;
+    try {
+      const response = await fetch('/api/evaluators', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const body = await response.json();
+      if (!body || !body.ok) {
+        alert(`Could not add evaluator: ${evaluatorErrorText(body, 'Unknown error')}`);
+        return;
       }
+      applyEvaluatorState(body.data);
+      evaluatorSelect.value = name.trim();
+      evaluatorSelect.dispatchEvent(new Event('change'));
+    } catch (err) {
+      alert(`Could not add evaluator: ${err.message}`);
     }
   });
 }
 
 if (delEvaluatorBtn) {
-  delEvaluatorBtn.addEventListener('click', () => {
+  delEvaluatorBtn.addEventListener('click', async () => {
     const name = evaluatorSelect.value;
     if (!name) return;
-    if (confirm(`Remove ${name} from the dropdown? (History files are not deleted)`)) {
-      let list = JSON.parse(localStorage.getItem('evaluatorsList')) || ['Aviv', 'Ran'];
-      list = list.filter(n => n !== name);
-      localStorage.setItem('evaluatorsList', JSON.stringify(list));
-      renderEvaluators();
+    if (!confirm(`Remove ${name} from the dropdown? (History files are not deleted)`)) return;
+    try {
+      const response = await fetch(`/api/evaluators/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      });
+      const body = await response.json();
+      if (!body || !body.ok) {
+        alert(`Could not remove evaluator: ${evaluatorErrorText(body, 'Unknown error')}`);
+        return;
+      }
+      applyEvaluatorState(body.data);
       evaluatorSelect.dispatchEvent(new Event('change'));
+    } catch (err) {
+      alert(`Could not remove evaluator: ${err.message}`);
     }
   });
 }
-
-renderEvaluators();
 
 // Initial history load
 fetchHistory();

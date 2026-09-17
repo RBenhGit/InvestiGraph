@@ -29,6 +29,18 @@ from investigraph.history.models import (
     SavedValuation,
     ValuationNotFound,
 )
+from investigraph.history.evaluators import (
+    add_evaluator as _add_evaluator,
+)
+from investigraph.history.evaluators import (
+    list_evaluators as _list_evaluators,
+)
+from investigraph.history.evaluators import (
+    remove_evaluator as _remove_evaluator,
+)
+from investigraph.history.evaluators import (
+    set_selected as _set_selected,
+)
 from investigraph.history.store import (
     delete_valuation,
     get_all_latest_valuations,
@@ -88,3 +100,45 @@ def list_all_latest_valuations() -> list[dict[str, Any]]:
     except (OSError, ValueError) as exc:
         raise HistoryError(500, {"type": "IO_ERROR", "message": str(exc)}) from exc
     return [_to_camel(record) for record in records]
+
+
+# --- evaluators --------------------------------------------------------------
+#
+# The registry's payload is a plain {"evaluators": [...], "selected": ...} dict
+# of strings, not a Pydantic record, so it needs no camelCase conversion -- both
+# keys are already single words. It is returned as-is under the same {ok, data}
+# envelope the rest of this module uses.
+
+
+def list_evaluators() -> dict[str, Any]:
+    try:
+        return _list_evaluators()
+    except (OSError, ValueError) as exc:
+        raise HistoryError(500, {"type": "IO_ERROR", "message": str(exc)}) from exc
+
+
+def add_evaluator(name: str) -> dict[str, Any]:
+    try:
+        return _add_evaluator(name)
+    except InvalidHistoryInput as exc:
+        raise HistoryError(400, {"type": "INVALID_INPUT", "reason": str(exc)}) from exc
+    except (OSError, ValueError) as exc:
+        raise HistoryError(500, {"type": "IO_ERROR", "message": str(exc)}) from exc
+
+
+def remove_evaluator(name: str) -> dict[str, Any]:
+    try:
+        return _remove_evaluator(name)
+    except InvalidHistoryInput as exc:
+        raise HistoryError(400, {"type": "INVALID_INPUT", "reason": str(exc)}) from exc
+    except (OSError, ValueError) as exc:
+        raise HistoryError(500, {"type": "IO_ERROR", "message": str(exc)}) from exc
+
+
+def set_selected_evaluator(name: str) -> dict[str, Any]:
+    try:
+        return _set_selected(name)
+    except InvalidHistoryInput as exc:
+        raise HistoryError(400, {"type": "INVALID_INPUT", "reason": str(exc)}) from exc
+    except (OSError, ValueError) as exc:
+        raise HistoryError(500, {"type": "IO_ERROR", "message": str(exc)}) from exc
