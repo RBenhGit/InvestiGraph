@@ -41,7 +41,7 @@ from investigraph.template.models import CompanyFundamentals, Point
 from investigraph.template.trailing import (
     DIVIDEND_YIELD_TTM,
     MARKET_CAP,
-    PE_RATIO_TTM,
+    pe_ratio_metric,
     ROE_TTM,
     TrailingMetric,
     resolve_trailing,
@@ -387,7 +387,7 @@ def _trailing_percentage_line(
 
 
 def _pe_ratio(fundamentals: CompanyFundamentals) -> dict | None:
-    series = resolve_trailing(fundamentals, PE_RATIO_TTM)
+    series = resolve_trailing(fundamentals, pe_ratio_metric(fundamentals))
     if not series.available:
         return None
     dates = [p.date for p in series.points]

@@ -1,9 +1,25 @@
+from datetime import date
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
-from investigraph.sources.fx_rate.adapter import fetch_fx_rate
-from investigraph.template.models import Currency
+from investigraph.sources.fx_rate.adapter import (
+    attach_fx_series,
+    fetch_fx_history,
+    fetch_fx_rate,
+)
+from investigraph.template.models import (
+    CompanyFundamentals,
+    Currency,
+    Market,
+    MetricSeries,
+    Money,
+    Period,
+    Point,
+    Unit,
+)
+from investigraph.template.trailing import FX_RATE_METRIC_ID
 
 
 class _FakeTicker:
@@ -48,3 +64,116 @@ def test_any_yfinance_failure_degrades_to_none():
 
     with patch("investigraph.sources.fx_rate.adapter.yf.Ticker", boom):
         assert fetch_fx_rate(Currency.USD, Currency.ILS) is None
+
+
+class _FakeHistoryTicker:
+    def __init__(self, closes: dict[str, float]):
+        self._closes = closes
+        self.history_kwargs = None
+
+    def history(self, **kwargs):
+        self.history_kwargs = kwargs
+        index = pd.DatetimeIndex(list(self._closes), tz="UTC")
+        return pd.DataFrame({"Close": list(self._closes.values())}, index=index)
+
+
+def test_fetch_fx_history_returns_a_float_series_of_daily_closes():
+    fake = _FakeHistoryTicker({"2026-11-11": 3.18, "2026-11-12": 3.17})
+    with patch("investigraph.sources.fx_rate.adapter.yf.Ticker", lambda _s: fake):
+        series = fetch_fx_history(
+            Currency.USD, Currency.ILS, date(2026, 11, 1), date(2026, 11, 12)
+        )
+
+    assert series is not None and series.available
+    assert series.metric_id == FX_RATE_METRIC_ID
+    assert [(p.date, p.value) for p in series.points] == [
+        (date(2026, 11, 11), 3.18),
+        (date(2026, 11, 12), 3.17),
+    ]
+
+
+def test_fetch_fx_history_degrades_to_none_on_failure_or_empty():
+    def boom(_symbol):
+        raise RuntimeError("network down")
+
+    with patch("investigraph.sources.fx_rate.adapter.yf.Ticker", boom):
+        assert (
+            fetch_fx_history(
+                Currency.USD, Currency.ILS, date(2026, 1, 1), date(2026, 1, 2)
+            )
+            is None
+        )
+    with patch(
+        "investigraph.sources.fx_rate.adapter.yf.Ticker",
+        lambda _s: _FakeHistoryTicker({}),
+    ):
+        assert (
+            fetch_fx_history(
+                Currency.USD, Currency.ILS, date(2026, 1, 1), date(2026, 1, 2)
+            )
+            is None
+        )
+
+
+def _money_series(metric_id: str, currency: Currency, value: float) -> MetricSeries:
+    return MetricSeries(
+        metric_id=metric_id,
+        points=[
+            Point(
+                date=date(2026, 11, 12),
+                value=Money(value=value, currency=currency, scale=Unit.ONES),
+            )
+        ],
+        available=True,
+    )
+
+
+def _fundamentals(eps_currency: Currency, price_currency: Currency):
+    return CompanyFundamentals(
+        ticker="QLTU.TA",
+        market=Market.TASE,
+        currency=price_currency,
+        period=Period.ANNUAL,
+        range="5y",
+        series={
+            "eps": _money_series("eps", eps_currency, 4.6),
+            "price": _money_series("price", price_currency, 258),
+        },
+    )
+
+
+def test_attach_adds_an_fx_series_only_on_an_eps_price_currency_mismatch():
+    fundamentals = _fundamentals(Currency.USD, Currency.ILS)
+    history = MetricSeries(
+        metric_id=FX_RATE_METRIC_ID,
+        points=[Point(date=date(2026, 11, 12), value=3.2)],
+        available=True,
+    )
+    with patch(
+        "investigraph.sources.fx_rate.adapter.fetch_fx_history", return_value=history
+    ) as fetch:
+        attach_fx_series(fundamentals)
+
+    fetch.assert_called_once_with(
+        Currency.USD, Currency.ILS, date(2026, 11, 12), date(2026, 11, 12)
+    )
+    assert fundamentals.series[FX_RATE_METRIC_ID] is history
+
+
+def test_attach_does_nothing_and_never_fetches_when_currencies_match():
+    fundamentals = _fundamentals(Currency.USD, Currency.USD)
+    with patch("investigraph.sources.fx_rate.adapter.fetch_fx_history") as fetch:
+        attach_fx_series(fundamentals)
+
+    fetch.assert_not_called()
+    assert FX_RATE_METRIC_ID not in fundamentals.series
+
+
+def test_attach_leaves_fundamentals_untouched_when_the_fx_fetch_fails():
+    fundamentals = _fundamentals(Currency.USD, Currency.ILS)
+    with patch(
+        "investigraph.sources.fx_rate.adapter.fetch_fx_history", return_value=None
+    ):
+        attach_fx_series(fundamentals)
+
+    assert FX_RATE_METRIC_ID not in fundamentals.series

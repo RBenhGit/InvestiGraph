@@ -26,6 +26,7 @@ from investigraph.sources.commission import (
     is_degenerate,
     write_capability_module,
 )
+from investigraph.sources.fx_rate.adapter import attach_fx_series
 from investigraph.sources.market import is_valid_ticker, market_of, normalize_ticker
 from investigraph.sources.ranges import RANGES
 from investigraph.sources.registry import (
@@ -207,6 +208,8 @@ def _run_render(args: argparse.Namespace) -> int:
         )
         if limit not in fundamentals.source_limits
     )
+
+    attach_fx_series(fundamentals)
 
     out_path = Path(args.out) if args.out else Path("out") / f"{ticker}.html"
     try:

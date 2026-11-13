@@ -339,6 +339,38 @@ PE_RATIO_TTM = TrailingMetric(
     compute=_pe,
 )
 
+# Optional daily float series: price-currency units per one statement-currency unit
+# (USD->ILS ~ 3.2). Not an adapter output — `sources/fx_rate`'s `attach_fx_series` adds
+# it after load, only when `eps` and `price` are in different currencies.
+FX_RATE_METRIC_ID = "fx_rate"
+
+
+def _pe_converted(price: Money, eps_ttm: Money, fx_rate: float) -> float:
+    return _pe(
+        price,
+        Money(
+            value=eps_ttm.as_base_units() * fx_rate,
+            currency=price.currency,
+            scale=Unit.ONES,
+        ),
+    )
+
+
+PE_RATIO_TTM_FX = TrailingMetric(
+    metric_id="pe_ratio_ttm",
+    title="P/E (TTM)",
+    driver="price",
+    inputs=(TrailingInput("eps", ttm=True), TrailingInput(FX_RATE_METRIC_ID)),
+    compute=_pe_converted,
+)
+
+
+def pe_ratio_metric(fundamentals: CompanyFundamentals) -> TrailingMetric:
+    """The P/E metric to resolve: the FX-converting variant when an `fx_rate` series was
+    attached (EPS and price in different currencies), else the plain one. Both renderers
+    (matplotlib and web) go through this so they cannot disagree."""
+    return PE_RATIO_TTM_FX if FX_RATE_METRIC_ID in fundamentals.series else PE_RATIO_TTM
+
 
 def _market_cap(price: Money, shares: float) -> Money:
     return Money(

@@ -4,7 +4,7 @@ from matplotlib.axes import Axes
 
 from investigraph.charts.base import draw_no_data, render_ratio_line
 from investigraph.template.models import CompanyFundamentals
-from investigraph.template.trailing import PE_RATIO_TTM, resolve_trailing
+from investigraph.template.trailing import pe_ratio_metric, resolve_trailing
 
 
 class PERatioChart:
@@ -13,7 +13,7 @@ class PERatioChart:
     required_metrics = ["price", "eps"]
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
-        series = resolve_trailing(fundamentals, PE_RATIO_TTM)
+        series = resolve_trailing(fundamentals, pe_ratio_metric(fundamentals))
         if not series.available:
             draw_no_data(ax)
             return

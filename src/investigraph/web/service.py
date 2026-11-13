@@ -10,6 +10,7 @@ from datetime import date
 
 from investigraph.cache.store import TemplateCache
 from investigraph.sources.base import SourceUnavailable
+from investigraph.sources.fx_rate.adapter import attach_fx_series
 from investigraph.sources.market import market_of
 from investigraph.sources.registry import get_source
 from investigraph.sources.validation import check_request
@@ -52,4 +53,7 @@ def load_fundamentals(
         for limit in check_request(adapter.capability(), market, period, range_)
         if limit not in fundamentals.source_limits
     )
+    # Derived per render rather than cached (like the limits above), so a cache entry
+    # written before this existed still gets it. A no-op unless EPS/price currencies differ.
+    attach_fx_series(fundamentals)
     return fundamentals

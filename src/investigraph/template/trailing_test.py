@@ -6,7 +6,9 @@ import pytest
 from investigraph.template.trailing import (
     DIVIDEND_YIELD_TTM,
     MARKET_CAP,
+    FX_RATE_METRIC_ID,
     PE_RATIO_TTM,
+    pe_ratio_metric,
     ROE_TTM,
     TrailingInput,
     TrailingMetric,
@@ -697,3 +699,65 @@ def test_derive_ttm_fundamentals_skips_gross_margin_note_when_unavailable():
     result = derive_ttm_fundamentals(fundamentals)
 
     assert not any("gross_margin" in limit for limit in result.source_limits)
+
+
+# --- P/E across a statement-currency / price-currency mismatch ---------------
+# A TASE ticker can file in USD but be quoted in ILS. P/E is currency-neutral, but
+# only once EPS is converted at the rate in force on each price date.
+
+
+def _fx_series(values_by_date: list[tuple[date, float]]) -> MetricSeries:
+    return MetricSeries(
+        metric_id=FX_RATE_METRIC_ID,
+        points=[Point(date=d, value=v) for d, v in values_by_date],
+        available=True,
+    )
+
+
+def _usd_eps_ils_price(extra: dict[str, MetricSeries] | None = None):
+    return _fundamentals(
+        {
+            "price": _money_series(
+                "price",
+                [(date(2021, 1, 1), 300), (date(2021, 6, 1), 300)],
+                currency=Currency.ILS,
+            ),
+            "eps": _money_series("eps", [(date(2020, 12, 31), 5)]),
+            **(extra or {}),
+        }
+    )
+
+
+def test_pe_ratio_converts_eps_at_the_fx_rate_as_of_each_price_date():
+    fundamentals = _usd_eps_ils_price(
+        {
+            FX_RATE_METRIC_ID: _fx_series(
+                [(date(2021, 1, 1), 3.0), (date(2021, 5, 1), 4.0)]
+            )
+        }
+    )
+
+    series = resolve_trailing(fundamentals, pe_ratio_metric(fundamentals))
+
+    # 300 / (5 * 3.0) = 20 on 2021-01-01; 300 / (5 * 4.0) = 15 on 2021-06-01 (the
+    # 2021-05-01 rate is the latest one known by then).
+    assert [p.value for p in series.points] == pytest.approx([20.0, 15.0])
+
+
+def test_pe_ratio_without_an_fx_series_stays_no_data_on_a_currency_mismatch():
+    fundamentals = _usd_eps_ils_price()
+
+    series = resolve_trailing(fundamentals, pe_ratio_metric(fundamentals))
+
+    assert series.available is False
+
+
+def test_pe_ratio_metric_is_the_plain_one_when_there_is_no_fx_series():
+    fundamentals = _fundamentals(
+        {
+            "price": _money_series("price", [(date(2021, 1, 1), 100)]),
+            "eps": _money_series("eps", [(date(2021, 1, 1), 5)]),
+        }
+    )
+
+    assert pe_ratio_metric(fundamentals) is PE_RATIO_TTM

@@ -123,3 +123,20 @@ def test_load_fundamentals_falls_back_to_stale_cache_on_source_unavailable(
         )
 
     assert any("stale" in limit for limit in fundamentals.source_limits)
+
+
+def test_load_fundamentals_attaches_fx_even_on_a_cache_hit(tmp_path, monkeypatch):
+    # The FX series is derived per render (not cached), so a cache entry written before
+    # this existed still gets it.
+    monkeypatch.chdir(tmp_path)
+    adapter = _StubAdapter()
+    with (
+        patch("investigraph.web.service.get_source", return_value=adapter),
+        patch("investigraph.web.service.attach_fx_series") as attach,
+    ):
+        service.load_fundamentals("AAPL", "yfinance", Period.ANNUAL, "10y")
+        cached = service.load_fundamentals("AAPL", "yfinance", Period.ANNUAL, "10y")
+
+    assert adapter.fetch_calls == 1
+    assert attach.call_count == 2
+    attach.assert_called_with(cached)
