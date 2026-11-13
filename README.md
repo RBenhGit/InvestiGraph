@@ -131,8 +131,9 @@ data source directly.
   Eps_Evaluation's TS store. Storage location is overridable via the optional
   `HISTORY_FILE_PATH` env var (see [.env.example](.env.example)) — it takes precedence over
   per-evaluator storage when set.
-- **Markets: US + TASE, native currency only** (₪ / $, no FX conversion), routed by the `.TA`
-  suffix.
+- **Markets: US + TASE, native currency** (₪ / $), routed by the `.TA` suffix. FX is used only
+  where a TASE ticker files in USD but trades in ILS (EPS and the P/E chart are converted at a
+  spot / per-date USD→ILS rate; otherwise nothing is converted).
 - **Caching:** one on-disk cache directory (`.cache/`) serves both charts and valuation data.
 
 Full architectural detail, decisions, and gotchas live in [CLAUDE.md](CLAUDE.md).

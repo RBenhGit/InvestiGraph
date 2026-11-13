@@ -420,6 +420,35 @@ preserved intact on `main`.
         `price`, keyed off `price_currency` separately, is unaffected.
       508 pytest + 105 vitest passing, ruff clean.
 
+- [x] **2026-11-13 — TASE tickers that file in USD but trade in ILS (QLTU.TA).** Three
+      symptoms, found from one ticker; branch `fix/tase-usd-eps-fx`, 579 pytest + 116 vitest
+      passing, ruff clean.
+      - **Valuation refused with "unable to resolve TTM EPS".** `resolve_eps`'s currency guard
+        (EPS tagged USD vs. `fundamentals.currency` ILS) correctly refused to mix them, but the
+        message named no cause and there was no FX. New slice `sources/fx_rate/`
+        (`fetch_fx_rate`, a spot rate via yfinance `USDILS=X`; not a `DataSource`, any failure
+        degrades to `None`). `resolve_eps(..., fx_rate=)` converts the EPS and discloses the
+        rate in `detail`; `valuate_service` fetches a rate only on a mismatch and, when it
+        can't, the 400 names both currencies. `ResolvedEps.template_eps_ttm` is now always in
+        the price currency. **Assumption, unenforced:** Yahoo's `trailingEps` is in the *quote*
+        currency (verified live on QLTU.TA and ESLT.TA); Yahoo reports no currency for it.
+      - **Historical P/E averages were inflated by the exchange rate** (`valuation/
+        historical_pe.py` divided an ILS price by a USD EPS: ~129x for a ~17x stock). Now
+        `None` on a currency mismatch — no FX there, a current rate would misstate past years.
+      - **P/E (TTM) chart showed "No data".** Needs the rate *per price date*, not one spot
+        rate (USD/ILS moved ~3.2–3.7 over the window). `attach_fx_series` adds a daily float
+        `fx_rate` series (`FX_RATE_METRIC_ID`) only when `eps`/`price` currencies differ;
+        `PE_RATIO_TTM_FX` converts EPS as-of each price date; `pe_ratio_metric(fundamentals)`
+        picks it and both renderers use it. Attached per render in `web/service.py` and the
+        CLI `render` — deliberately not cached, so an existing cache entry is fixed too. Known
+        cost: `/api/valuate` also loads the unused history (~1s extra, only for these tickers).
+      - **Fair Value Ledger showed QLTU.TA at 25800 ILS / -98.7%.** `/api/live-prices` returned
+        yfinance's raw quote, which for TASE is in agorot (currency `ILA`) and overwrote the
+        stored shekel price. Now divided by 100 when the quote currency is `ILA`.
+      - **Not fixed:** one bad point in Twelve Data's QLTU.TA price series (2025-06-19: 3.59
+        instead of 359) makes the P/E line dip to ~0.3 for a day (yfinance has no such point);
+        the Revenue/Net Income/EPS chart titles read "— ILS" though those series are USD.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the

@@ -75,7 +75,11 @@ its "why."
 - **TASE agorot trap:** TASE prices are quoted in agorot (1/100 ₪) while financial statements
   are reported in millions of shekels. Every `Money` value is tagged with `(currency, scale)`
   precisely so these can never be silently combined — see `template/models.py`'s `Money.to()`
-  and `require_same_currency()`.
+  and `require_same_currency()`. Two related traps: Yahoo's *live* TASE quote is also in
+  agorot (`currency == "ILA"`; `/api/live-prices` divides by 100), and a TASE ticker can file in
+  USD while trading in ILS (QLTU.TA) — `sources/fx_rate/` supplies a spot rate for EPS
+  (valuation) and a per-date `fx_rate` series for the P/E chart; without a rate they refuse
+  rather than mix currencies.
 - **The growth-rate fallback chain must not drift between the CLI and the web UI.** It is one
   function (`analyst_estimate_5y → historical_3y → historical_1y → None`), called from both
   entry points — it has already drifted apart once in the pre-merge Eps_Evaluation codebase and
