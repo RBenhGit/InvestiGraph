@@ -16,7 +16,7 @@ from investigraph.template.models import (
     Point,
     Unit,
 )
-from investigraph.valuation.resolve_eps import resolve_eps
+from investigraph.valuation.resolve_eps import resolve_eps, statement_eps_currency
 
 
 def _money(value: float) -> Money:
@@ -236,3 +236,68 @@ def test_works_against_a_quarterly_period_fetch_via_ttm_series():
     assert resolved is not None
     assert resolved.eps_ttm == 2.0 + 2.1 + 2.2 + 2.3
     assert resolved.source == "twelvedata"
+
+
+# A TASE ticker filing in USD but quoted in ILS (e.g. QLTU.TA). With a current USD->ILS
+# rate supplied the template EPS is converted into the price currency; without one the
+# currency guard above still refuses to resolve.
+
+
+def _usd_eps_ils_price_fundamentals(latest_eps: float = 4.676):
+    return CompanyFundamentals(
+        ticker="QLTU.TA",
+        market=Market.US,
+        currency=Currency.ILS,
+        period=Period.ANNUAL,
+        range="5y",
+        series={
+            "eps": MetricSeries(
+                metric_id="eps",
+                points=[
+                    Point(date=date(2024, 12, 31), value=_money(3.017)),
+                    Point(date=date(2025, 12, 31), value=_money(latest_eps)),
+                ],
+                available=True,
+            )
+        },
+    )
+
+
+def test_converts_a_mismatched_currency_eps_when_an_fx_rate_is_supplied():
+    resolved = resolve_eps(_usd_eps_ils_price_fundamentals(), None, fx_rate=3.2)
+
+    assert resolved is not None
+    assert resolved.eps_ttm == pytest.approx(4.676 * 3.2)
+    assert resolved.template_eps_ttm == pytest.approx(4.676 * 3.2)
+    assert resolved.currency == Currency.ILS
+    assert resolved.source == "twelvedata"
+    # The note must disclose that a conversion happened, and at what rate.
+    assert "USD" in resolved.detail and "3.2" in resolved.detail
+
+
+def test_mismatched_currency_without_an_fx_rate_still_returns_none():
+    assert resolve_eps(_usd_eps_ils_price_fundamentals(), None, fx_rate=None) is None
+
+
+def test_yahoo_divergence_is_judged_against_the_converted_eps():
+    # Converted template EPS = 14.96; Yahoo (quote currency) 15.36 is a 2.6% gap, not stale.
+    # Comparing the unconverted 4.676 against 15.36 would wrongly flag it and swap in Yahoo.
+    resolved = resolve_eps(
+        _usd_eps_ils_price_fundamentals(), _consensus(trailing_eps=15.36), fx_rate=3.2
+    )
+
+    assert resolved is not None
+    assert resolved.source == "twelvedata"
+    assert resolved.eps_ttm == pytest.approx(4.676 * 3.2)
+
+
+def test_fx_rate_is_ignored_when_currencies_already_match():
+    resolved = resolve_eps(_annual_fundamentals(8.71), None, fx_rate=3.2)
+
+    assert resolved is not None
+    assert resolved.eps_ttm == 8.71
+
+
+def test_statement_eps_currency_reports_the_eps_series_currency():
+    assert statement_eps_currency(_usd_eps_ils_price_fundamentals()) == Currency.USD
+    assert statement_eps_currency(_no_eps_fundamentals()) is None

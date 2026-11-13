@@ -462,3 +462,81 @@ def test_echoes_actual_bear_growth_even_when_the_scenario_fails(
         assert body["bearGrowth"] == -5
     finally:
         _stop(patches)
+
+
+def _usd_eps_ils_price_fundamentals() -> CompanyFundamentals:
+    # A TASE ticker filing in USD but quoted in ILS (QLTU.TA's real shape).
+    base = _fundamentals(eps_values=[3.0, 4.676], current_price=258)
+    ils_price = Money(value=258, currency=Currency.ILS, scale=Unit.ONES)
+    return base.model_copy(
+        update={
+            "currency": Currency.ILS,
+            "series": {
+                **base.series,
+                "price": MetricSeries(
+                    metric_id="price",
+                    points=[Point(date=date(2026, 8, 1), value=ils_price)],
+                    available=True,
+                ),
+            },
+        }
+    )
+
+
+_VALUATE_BODY = {
+    "ticker": TICKER,
+    "growthRatePercent": 20,
+    "exitPeMultiple": 17,
+    "requiredReturnPercent": 15,
+    "years": 5,
+}
+
+
+def test_valuates_a_usd_reporting_ils_quoted_ticker_by_converting_eps(client):
+    patches = _patched(fundamentals=_usd_eps_ils_price_fundamentals())
+    try:
+        with patch(
+            "investigraph.web.valuate_service.fetch_fx_rate", return_value=3.2
+        ) as fx:
+            response = client.post("/api/valuate", json=_VALUATE_BODY)
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["ok"] is True
+        fx.assert_called_once_with(Currency.USD, Currency.ILS)
+        assert body["effectiveEps"] == pytest.approx(4.676 * 3.2)
+        assert body["data"]["currency"] == "ILS"
+        assert body["data"]["epsTtm"] == pytest.approx(4.676 * 3.2)
+        assert "USD" in body["epsSourceDetail"]
+        # Historical P/E would divide an ILS price by a USD EPS -- must not be shown.
+        assert body["data"]["historicalPe"] == {
+            "avg1y": None,
+            "avg3y": None,
+            "avg5y": None,
+        }
+    finally:
+        _stop(patches)
+
+
+def test_names_the_currency_mismatch_when_the_fx_rate_is_unavailable(client):
+    patches = _patched(fundamentals=_usd_eps_ils_price_fundamentals())
+    try:
+        with patch("investigraph.web.valuate_service.fetch_fx_rate", return_value=None):
+            response = client.post("/api/valuate", json=_VALUATE_BODY)
+        assert response.status_code == 400
+        error = response.get_json()["error"]
+        assert error["type"] == "INSUFFICIENT_DATA"
+        assert "USD" in error["reason"] and "ILS" in error["reason"]
+        assert "exchange rate" in error["reason"]
+    finally:
+        _stop(patches)
+
+
+def test_does_not_fetch_an_fx_rate_when_currencies_already_match(client):
+    patches = _patched()
+    try:
+        with patch("investigraph.web.valuate_service.fetch_fx_rate") as fx:
+            response = client.post("/api/valuate", json=_VALUATE_BODY)
+        assert response.status_code == 200
+        fx.assert_not_called()
+    finally:
+        _stop(patches)

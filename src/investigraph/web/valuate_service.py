@@ -35,10 +35,11 @@ from investigraph.sources.base import (
     TickerNotFound,
     UnsupportedPeriod,
 )
+from investigraph.sources.fx_rate.adapter import fetch_fx_rate
 from investigraph.sources.market import is_valid_ticker, normalize_ticker
 from investigraph.sources.yahoo_consensus.adapter import fetch_analyst_consensus
 from investigraph.sources.yahoo_consensus.models import AnalystConsensus
-from investigraph.template.models import CompanyFundamentals, Money, Period
+from investigraph.template.models import CompanyFundamentals, Currency, Money, Period
 from investigraph.valuation.growth import (
     calculate_ttm_eps_growth_percent,
     historical_1y_growth_percent,
@@ -47,7 +48,11 @@ from investigraph.valuation.growth import (
     resolve_growth_rate_percent,
 )
 from investigraph.valuation.historical_pe import compute_historical_pe_averages
-from investigraph.valuation.resolve_eps import ResolvedEps, resolve_eps
+from investigraph.valuation.resolve_eps import (
+    ResolvedEps,
+    resolve_eps,
+    statement_eps_currency,
+)
 from investigraph.valuation.rule_one.calculate import (
     RuleOneInputsUsed,
     calculate_rule_one_value,
@@ -85,14 +90,23 @@ def handle_valuate(payload: dict[str, Any]) -> dict[str, Any]:
     fundamentals = _load_fundamentals_or_raise(ticker, source_name)
     consensus = _fetch_consensus_best_effort(ticker)
 
-    resolved = resolve_eps(fundamentals, consensus)
+    # A ticker can file in one currency and trade in another (TASE: USD statements,
+    # ILS quotes). Fetch an FX rate only for that case; without one resolve_eps refuses.
+    eps_currency = statement_eps_currency(fundamentals)
+    fx_rate = (
+        fetch_fx_rate(eps_currency, fundamentals.currency)
+        if eps_currency is not None and eps_currency != fundamentals.currency
+        else None
+    )
+
+    resolved = resolve_eps(fundamentals, consensus, fx_rate=fx_rate)
     if resolved is None:
         raise ValuateError(
             400,
             {
                 "type": "INSUFFICIENT_DATA",
                 "ticker": ticker,
-                "reason": "unable to resolve TTM EPS",
+                "reason": _unresolved_eps_reason(eps_currency, fundamentals.currency),
             },
         )
 
@@ -169,6 +183,18 @@ def handle_valuate(payload: dict[str, Any]) -> dict[str, Any]:
         },
         "analystConsensus": _serialize_consensus(consensus),
     }
+
+
+def _unresolved_eps_reason(
+    eps_currency: Currency | None, price_currency: Currency
+) -> str:
+    if eps_currency is not None and eps_currency != price_currency:
+        return (
+            f"EPS is reported in {eps_currency.value} but the price is quoted in "
+            f"{price_currency.value}, and the {eps_currency.value}/{price_currency.value} "
+            "exchange rate could not be fetched"
+        )
+    return "unable to resolve TTM EPS"
 
 
 def _validated_ticker(payload: dict[str, Any]) -> str:

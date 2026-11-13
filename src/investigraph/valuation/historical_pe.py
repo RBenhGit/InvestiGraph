@@ -28,7 +28,13 @@ from __future__ import annotations
 import bisect
 from dataclasses import dataclass
 
-from investigraph.template.models import CompanyFundamentals, Money, Period
+from investigraph.template.models import (
+    CompanyFundamentals,
+    Currency,
+    Money,
+    Period,
+    Point,
+)
 
 
 @dataclass(frozen=True)
@@ -70,6 +76,10 @@ def _annual_pe_points(fundamentals: CompanyFundamentals) -> list[float | None]:
         return []
 
     price_points = sorted(price_series.points, key=lambda p: p.date)
+    # A P/E needs EPS and price in one currency (a TASE ticker can file in USD but be
+    # quoted in ILS). No FX here: a current rate would misstate past years, so refuse.
+    if _currencies(eps_series.points) != _currencies(price_points):
+        return []
     price_dates = [p.date for p in price_points]
 
     annual_points = sorted(eps_series.points, key=lambda p: p.date, reverse=True)
@@ -91,6 +101,10 @@ def _annual_pe_points(fundamentals: CompanyFundamentals) -> list[float | None]:
         close_value = close.as_base_units() if isinstance(close, Money) else close
         results.append(close_value / eps)
     return results
+
+
+def _currencies(points: list[Point]) -> set[Currency]:
+    return {p.value.currency for p in points if isinstance(p.value, Money)}
 
 
 def _median_window(points: list[float | None], window_size: int) -> float | None:

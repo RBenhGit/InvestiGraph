@@ -180,3 +180,17 @@ def test_returns_all_none_when_price_series_is_missing():
     result = compute_historical_pe_averages(fundamentals)
 
     assert result.avg_1y is None
+
+
+def test_returns_none_when_eps_and_price_are_in_different_currencies():
+    # USD EPS against an ILS price would give a P/E inflated by the exchange rate
+    # (QLTU.TA showed ~129x for a ~17x stock). Refuse rather than fabricate.
+    eps_points = _make_annual_eps([2] * 6)
+    ils_price = Money(value=20, currency=Currency.ILS, scale=Unit.ONES)
+    price_points = [Point(date=p.date, value=ils_price) for p in eps_points]
+
+    result = compute_historical_pe_averages(_fundamentals(eps_points, price_points))
+
+    assert result.avg_1y is None
+    assert result.avg_3y is None
+    assert result.avg_5y is None

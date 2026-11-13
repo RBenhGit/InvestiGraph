@@ -32,8 +32,11 @@ millions), not currency — would combine a USD EPS with an ILS price into a non
 fair value/upside%, exactly the class of bug `Money.require_same_currency` exists to
 prevent everywhere else `Money` is combined. This module has no FX conversion (an
 architectural constraint, not an oversight — see `docs/MERGE_SPEC.md`), so there is no
-"convert and proceed" option: a currency mismatch here must refuse to resolve, the
-same way a missing TTM EPS does.
+"convert and proceed" option *inside this module*: a currency mismatch must refuse to
+resolve, the same way a missing TTM EPS does — unless the caller supplies `fx_rate`, a
+current spot rate it fetched itself (see `sources/fx_rate/`). With a rate the template EPS
+is converted into `fundamentals.currency` and the conversion is disclosed in `detail`;
+the caller, not this module, owns fetching the rate and deciding what its absence means.
 """
 
 from __future__ import annotations
@@ -78,12 +81,18 @@ class ResolvedEps:
     # a caller actually uses); callers that need to show "what Twelve Data/the
     # template itself reported" independent of the resolution outcome need
     # this field, not `eps_ttm`.
+    #
+    # Always in `currency` (= `fundamentals.currency`): when `fx_rate` converted a
+    # differently-denominated EPS, this is the converted figure, because callers display
+    # it beside the price.
     template_eps_ttm: float
     template_eps_as_of: date_
 
 
 def resolve_eps(
-    fundamentals: CompanyFundamentals, consensus: AnalystConsensus | None
+    fundamentals: CompanyFundamentals,
+    consensus: AnalystConsensus | None,
+    fx_rate: float | None = None,
 ) -> ResolvedEps | None:
     """Resolve the EPS actually shown to the user.
 
@@ -93,8 +102,9 @@ def resolve_eps(
     positive), in which case the template's figure is kept but labeled as
     flagged. Returns `None` when the template has no usable TTM EPS to resolve
     from, or when it has one but its currency doesn't match `fundamentals.currency`
-    (see the module docstring's currency guard) — both are precondition failures,
-    not staleness questions.
+    and no `fx_rate` (target-currency units per one EPS-currency unit) was given to
+    convert it (see the module docstring's currency guard) — both are precondition
+    failures, not staleness questions. `fx_rate` is ignored when the currencies match.
     """
     template_point = _template_ttm_eps(fundamentals)
     if template_point is None:
@@ -102,12 +112,21 @@ def resolve_eps(
     template_money = template_point.value
     if not isinstance(template_money, Money):
         return None
-    if template_money.currency != fundamentals.currency:
-        return None
-    template_eps = template_money.as_base_units()
-    latest_date = template_point.date
     currency = fundamentals.currency
     symbol = _currency_symbol(currency)
+    template_eps = template_money.as_base_units()
+    conversion_note = ""
+    if template_money.currency != currency:
+        if fx_rate is None or not math.isfinite(fx_rate) or fx_rate <= 0:
+            return None
+        source_symbol = _currency_symbol(template_money.currency)
+        conversion_note = (
+            f" [converted from {source_symbol}{template_eps:.2f} "
+            f"{template_money.currency.value} at {fx_rate:.4f} "
+            f"{template_money.currency.value}/{currency.value}]"
+        )
+        template_eps = template_eps * fx_rate
+    latest_date = template_point.date
 
     yahoo_eps = consensus.trailing_eps if consensus is not None else None
 
@@ -116,7 +135,10 @@ def resolve_eps(
             eps_ttm=template_eps,
             currency=currency,
             source="twelvedata",
-            detail=f"Template TTM EPS ({symbol}{template_eps:.2f}), as of {latest_date}",
+            detail=(
+                f"Template TTM EPS ({symbol}{template_eps:.2f}){conversion_note}, "
+                f"as of {latest_date}"
+            ),
             template_eps_ttm=template_eps,
             template_eps_as_of=latest_date,
         )
@@ -133,7 +155,7 @@ def resolve_eps(
             source="yahoo-fallback",
             detail=(
                 f"Yahoo Finance trailing EPS ({symbol}{yahoo_eps:.2f}){quarter_note} — used "
-                f"because the template's TTM EPS ({symbol}{template_eps:.2f}) diverged more "
+                f"because the template's TTM EPS ({symbol}{template_eps:.2f}){conversion_note} diverged more "
                 "than 5% from Yahoo's"
             ),
             template_eps_ttm=template_eps,
@@ -145,13 +167,23 @@ def resolve_eps(
         currency=currency,
         source="twelvedata-stale-no-fallback",
         detail=(
-            f"Template TTM EPS ({symbol}{template_eps:.2f}), as of {latest_date} — flagged as "
+            f"Template TTM EPS ({symbol}{template_eps:.2f}){conversion_note}, as of {latest_date} — flagged as "
             "possibly stale (diverges more than 5% from Yahoo), but Yahoo's own figure "
             "isn't usable as a replacement"
         ),
         template_eps_ttm=template_eps,
         template_eps_as_of=latest_date,
     )
+
+
+def statement_eps_currency(fundamentals: CompanyFundamentals) -> Currency | None:
+    """The currency the template's `eps` series is denominated in (the income statement's
+    currency), or `None` if there is no usable `eps` series. Lets a caller detect the
+    mismatch `resolve_eps` guards against, to decide whether an `fx_rate` is needed."""
+    point = _template_ttm_eps(fundamentals)
+    if point is None or not isinstance(point.value, Money):
+        return None
+    return point.value.currency
 
 
 def _currency_symbol(currency: Currency) -> str:
