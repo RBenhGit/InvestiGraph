@@ -15,9 +15,11 @@ def client(tmp_path):
     return create_app(chart_set_store=ChartSetStore(tmp_path)).test_client()
 
 
-def _mock_ticker(last_price):
+def _mock_ticker(last_price, currency=None):
     ticker = MagicMock()
     ticker.fast_info = {"lastPrice": last_price} if last_price is not None else {}
+    if currency is not None:
+        ticker.fast_info["currency"] = currency
     return ticker
 
 
@@ -69,3 +71,17 @@ def test_a_ticker_with_no_last_price_is_omitted_not_a_failure(client):
     assert response.status_code == 200
     body = response.get_json()
     assert body["prices"] == {}
+
+
+def test_converts_a_tase_agorot_quote_to_shekels(client):
+    # Yahoo quotes TASE in agorot (currency "ILA"): 25800 agorot = 258 shekels. Returned
+    # raw, the ledger showed QLTU.TA at 25800 ILS and a -98.7% "upside".
+    with patch("investigraph.web.app.yf.Ticker") as mock_ticker_cls:
+        mock_ticker_cls.side_effect = lambda t: (
+            _mock_ticker(25800.0, "ILA")
+            if t == "QLTU.TA"
+            else _mock_ticker(220.5, "USD")
+        )
+        response = client.get("/api/live-prices?tickers=QLTU.TA,AAPL")
+
+    assert response.get_json()["prices"] == {"QLTU.TA": 258.0, "AAPL": 220.5}

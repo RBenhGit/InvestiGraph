@@ -18,6 +18,7 @@ from investigraph.sources.base import (
     TickerNotFound,
     UnsupportedPeriod,
 )
+from investigraph.sources.currency import AGOROT_CODE
 from investigraph.sources.market import is_valid_ticker, normalize_ticker
 from investigraph.sources.ranges import RANGES
 from investigraph.sources.registry import get_source, registered_sources
@@ -356,11 +357,17 @@ def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
             # "if q && q.symbol && q.regularMarketPrice" tolerance, which
             # silently omits a bad quote rather than erroring the whole request.
             try:
-                last_price = yf.Ticker(ticker).fast_info.get("lastPrice")
+                fast_info = yf.Ticker(ticker).fast_info
+                last_price = fast_info.get("lastPrice")
+                quote_currency = fast_info.get("currency")
             except Exception:
                 continue
             if isinstance(last_price, (int, float)):
-                prices[ticker] = last_price
+                # TASE quotes arrive in agorot (1/100 shekel); stored valuations and
+                # fair values are in shekels, so normalize or the ledger compares 100x.
+                prices[ticker] = (
+                    last_price / 100 if quote_currency == AGOROT_CODE else last_price
+                )
         return jsonify(ok=True, prices=prices)
 
     @app.get("/api/evaluators")
