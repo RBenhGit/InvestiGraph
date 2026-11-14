@@ -46,7 +46,9 @@ Enter a ticker once: the chart grid (Plotly.js, interactive) and the Bear/Base/B
 cards render from the same fetch. Save a valuation with an evaluator name and it shows up on
 `/static/valuations.html`, a sortable "all valuations" dashboard with live prices and an
 upside-% chart. Key endpoints: `GET /chart-data`, `POST /api/valuate`, `GET/POST /api/history`,
-`DELETE /api/history/<id>`, `GET /api/valuations`, `GET /api/live-prices`. Also served: `GET /`
+`DELETE /api/history/<id>`, `GET /api/valuations`, `GET /api/live-prices`,
+`GET/POST /api/evaluators`, `DELETE /api/evaluators/<name>`, `PUT /api/evaluators/selected`
+(the evaluator list and selection are stored server-side in `data/evaluators.json`). Also served: `GET /`
 (the ticker/chart-set picker page itself), `GET /render` (a server-rendered HTML dashboard; no
 front-end code calls this anymore — the picker page above fetches `/chart-data` and renders
 client-side instead, so this route is currently unused by the shipped UI), and `POST /chart-sets`

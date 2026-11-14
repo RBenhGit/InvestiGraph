@@ -449,6 +449,27 @@ preserved intact on `main`.
         instead of 359) makes the P/E line dip to ~0.3 for a day (yfinance has no such point);
         the Revenue/Net Income/EPS chart titles read "— ILS" though those series are USD.
 
+- [x] **2026-09-17 / 2026-11-14 — Evaluator list and selection moved server-side.** The
+      evaluator dropdown was the last state in the browser (`localStorage['evaluatorsList']`),
+      so a second browser/machine saw the hard-coded `['Aviv','Ran']` and a name added with `+`
+      existed in one browser only until its first save. Now `history/evaluators.py` keeps a
+      sidecar `data/evaluators.json` (display names + the selected evaluator); the per-evaluator
+      valuation files are unchanged. `list_evaluators` unions that registry with names
+      recovered from `data/evaluators/*.json`, so it deploys onto an existing install with no
+      migration and a deleted registry rebuilds itself. Routes: `GET/POST /api/evaluators`,
+      `DELETE /api/evaluators/<name>`, `PUT /api/evaluators/selected`. The dropdown is rendered
+      by the Jinja template, not fetched, so the history load can read the selection
+      synchronously at startup. `evaluators.py` deliberately does not go through `store.py`
+      (`HISTORY_FILE_PATH` would collapse every evaluator onto one file — wrong for listing
+      identities; a test pins this). `remove_evaluator` deletes only a zero-record file and
+      keeps an unparseable one. **Known limits:** the selection is one global value per server
+      (no user/session model); an evaluator with saved valuations cannot be removed from the
+      list (it is re-listed from disk) — as of 2026-11-14 the UI now says so (alert + confirm
+      text) instead of looking like a no-op. Verified end to end against a temp data dir
+      (add/duplicate/blank/select/unknown/restart persistence/remove with and without
+      records). Not exercised in a real browser — front-end covered by vitest only. 579
+      pytest + 118 vitest passing, ruff clean.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the
