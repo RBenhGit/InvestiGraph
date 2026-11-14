@@ -2,9 +2,11 @@ const tbody = document.getElementById('valuations-tbody');
 const filterInput = document.getElementById('filter-input');
 const evaluatorFilter = document.getElementById('evaluator-filter');
 const table = document.getElementById('valuations-table');
+const publishBtn = document.getElementById('publish-btn');
 let allValuations = [];
 let sortCol = 'ticker';
 let sortAsc = true;
+let lastFiltered = [];
 
 function fmt(n) {
   if (n === null || n === undefined || isNaN(n)) return 'n/a';
@@ -77,6 +79,7 @@ function renderTable() {
     return sortAsc ? valA - valB : valB - valA;
   });
 
+  lastFiltered = filtered;
   tbody.innerHTML = '';
   for (const v of filtered) {
     const base = v.base || v;
@@ -241,6 +244,103 @@ async function fetchValuations() {
     console.error('Failed to fetch valuations', err);
   }
 }
+
+// The exported snapshot is built as an HTML string (unlike the live table, which uses
+// textContent), so names that came from user input must be escaped before they are embedded.
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildPublishHtml() {
+  const chartImg = chartInstance ? chartInstance.toBase64Image() : null;
+  const rows = lastFiltered.map(v => {
+    const base = v.base || v;
+    const evaluator = escapeHtml(v.evaluator || 'Aviv');
+    const dateObj = new Date(v.evaluatedAt);
+    const dateStr = isNaN(dateObj.getTime()) ? 'N/A' : dateObj.toLocaleDateString();
+    const rPct = parsePct(base.ruleOneFairValue, v.currentPrice);
+    const pctCell = rPct !== null
+      ? `<span class="${rPct > 0 ? 'good' : 'bad'}">${rPct > 0 ? '+' : ''}${fmt(rPct)}%</span>`
+      : 'n/a';
+    return `<tr>
+      <td class="table-date">${dateStr}</td>
+      <td><span class="badge-ticker">${escapeHtml(v.ticker)}</span></td>
+      <td class="table-price">${fmt(v.currentPrice)} ${escapeHtml(v.currency || 'USD')}</td>
+      <td class="table-val table-val-rule-one">${fmt(base.ruleOneFairValue)}</td>
+      <td class="table-val">${pctCell}</td>
+      <td>${evaluator}</td>
+    </tr>`;
+  }).join('\n');
+
+  const styleTag = document.querySelector('link[href="/static/style.css"]');
+  const generatedAt = new Date().toLocaleString();
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Fair Value Ledger — Published Snapshot</title>
+<style></style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div class="masthead-bar"></div>
+    <div class="masthead-inner">
+      <div class="wordmark">Fair Value Ledger <small>Published Snapshot — ${generatedAt}</small></div>
+    </div>
+  </header>
+  <div class="content">
+    ${chartImg ? `<div style="max-width: 1000px; margin: 2rem auto; background: var(--bg-card); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border-light);">
+      <img src="${chartImg}" alt="Rule #1 Upside chart" style="width: 100%; height: auto;" />
+    </div>` : ''}
+    <div class="history-table-container">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Ticker</th><th>Current Price</th>
+            <th class="th-a">Rule #1 Base FV</th><th class="th-a">Rule #1 Diff %</th><th>Evaluator</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</body>
+</html>`;
+}
+
+async function handlePublish() {
+  let css = '';
+  try {
+    const res = await fetch('/static/style.css');
+    css = await res.text();
+  } catch (e) {
+    console.error('Failed to inline stylesheet for publish export', e);
+  }
+  let html = buildPublishHtml();
+  // A function replacement: a string one would read "$&" / "$'" inside the CSS as patterns.
+  html = html.replace('<style></style>', () => `<style>${css}</style>`);
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `fair-value-ledger-${stamp}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+if (publishBtn) publishBtn.addEventListener('click', handlePublish);
 
 filterInput.addEventListener('input', renderTable);
 evaluatorFilter.addEventListener('change', renderTable);

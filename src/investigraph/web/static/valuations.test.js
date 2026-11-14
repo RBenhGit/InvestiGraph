@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
@@ -17,6 +17,8 @@ describe('valuations.js frontend', () => {
   let populateEvaluatorFilter;
   let setValuations;
   let setSort;
+  let buildPublishHtml;
+  let handlePublish;
   let chartConfigs;
   let tbodyEl;
   let filterInputEl;
@@ -49,6 +51,9 @@ describe('valuations.js frontend', () => {
         chartConfigs.push(config);
       }
       destroy() {}
+      toBase64Image() {
+        return 'data:image/png;base64,CHARTPIXELS';
+      }
     };
     // The script calls fetchValuations() at load time.
     global.fetch = () =>
@@ -61,6 +66,7 @@ describe('valuations.js frontend', () => {
       `${code}
       return {
         fmt, parsePct, renderTable, renderChart, populateEvaluatorFilter,
+        buildPublishHtml, handlePublish,
         setValuations: (v) => { allValuations = v; },
         setSort: (col, asc) => { sortCol = col; sortAsc = asc; },
       };`,
@@ -73,6 +79,8 @@ describe('valuations.js frontend', () => {
     populateEvaluatorFilter = exports.populateEvaluatorFilter;
     setValuations = exports.setValuations;
     setSort = exports.setSort;
+    buildPublishHtml = exports.buildPublishHtml;
+    handlePublish = exports.handlePublish;
     tbodyEl = document.getElementById('valuations-tbody');
     filterInputEl = document.getElementById('filter-input');
     evaluatorFilterEl = document.getElementById('evaluator-filter');
@@ -121,6 +129,130 @@ describe('valuations.js frontend', () => {
       [...tr.querySelectorAll('td')].map((td) => td.textContent),
     );
   }
+
+  describe('Publish export', () => {
+    // The export is a standalone snapshot of what the table currently shows: whatever the
+    // filters left in `lastFiltered`, not the full ledger.
+    function publishRows(html) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return [...doc.querySelectorAll('tbody tr')].map((tr) =>
+        [...tr.querySelectorAll('td')].map((td) => td.textContent.trim()),
+      );
+    }
+
+    it('exports one row per record the table currently shows, in the same columns', () => {
+      setValuations([
+        scenarioRecord({ ticker: 'AAPL', currentPrice: 100, ruleOneFairValue: 150, evaluator: 'Ran' }),
+      ]);
+      renderTable();
+
+      const [row] = publishRows(buildPublishHtml());
+
+      expect(row[1]).toBe('AAPL');
+      expect(row[2]).toBe('100.00 USD');
+      expect(row[3]).toBe('150.00');
+      expect(row[4]).toBe('+50.00%');
+      expect(row[5]).toBe('Ran');
+    });
+
+    it('exports only the filtered rows, not the whole ledger', () => {
+      setValuations([scenarioRecord({ ticker: 'AAPL' }), legacyRecord({ ticker: 'MSFT' })]);
+      filterInputEl.value = 'msft';
+      renderTable();
+
+      expect(publishRows(buildPublishHtml()).map((r) => r[1])).toEqual(['MSFT']);
+    });
+
+    it('embeds the chart as an image', () => {
+      setValuations([scenarioRecord()]);
+      renderTable();
+      renderChart();
+
+      expect(buildPublishHtml()).toContain('data:image/png;base64,CHARTPIXELS');
+    });
+
+    it('escapes markup in names so a snapshot cannot carry a script', () => {
+      setValuations([
+        scenarioRecord({ ticker: 'X<img src=x onerror=alert(1)>', evaluator: '<script>boom()</script>' }),
+      ]);
+      renderTable();
+
+      const html = buildPublishHtml();
+
+      expect(html).not.toContain('<script>boom()');
+      expect(html).not.toContain('<img src=x');
+      expect(html).toContain('&lt;script&gt;boom()');
+    });
+
+    describe('download', () => {
+      let captured;
+      let downloads;
+      let realFetch;
+      const realCreate = URL.createObjectURL;
+      const realRevoke = URL.revokeObjectURL;
+      const realClick = HTMLAnchorElement.prototype.click;
+
+      beforeEach(() => {
+        captured = null;
+        downloads = [];
+        realFetch = global.fetch;
+        URL.createObjectURL = (blob) => {
+          captured = blob;
+          return 'blob:test';
+        };
+        URL.revokeObjectURL = () => {};
+        HTMLAnchorElement.prototype.click = function () {
+          downloads.push(this.download);
+        };
+      });
+
+      afterEach(() => {
+        global.fetch = realFetch;
+        URL.createObjectURL = realCreate;
+        URL.revokeObjectURL = realRevoke;
+        HTMLAnchorElement.prototype.click = realClick;
+      });
+
+      function readBlob(blob) {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsText(blob);
+        });
+      }
+
+      function stylesheet(css) {
+        global.fetch = (url) =>
+          url === '/static/style.css'
+            ? Promise.resolve({ text: () => Promise.resolve(css) })
+            : Promise.reject(new Error(`unexpected fetch ${url}`));
+      }
+
+      it('downloads a dated .html file with the stylesheet inlined', async () => {
+        setValuations([scenarioRecord()]);
+        renderTable();
+        stylesheet('body { color: red; }');
+
+        await handlePublish();
+
+        expect(downloads).toHaveLength(1);
+        expect(downloads[0]).toMatch(/^fair-value-ledger-\d{4}-\d{2}-\d{2}\.html$/);
+        expect(await readBlob(captured)).toContain('<style>body { color: red; }</style>');
+      });
+
+      it('inlines the stylesheet literally even when it contains replace() patterns', async () => {
+        // String.prototype.replace reads "$&" / "$'" in a *string* replacement as a pattern,
+        // which would splice the template back into the CSS.
+        setValuations([scenarioRecord()]);
+        renderTable();
+        stylesheet('a::after { content: "$&$\'$`"; }');
+
+        await handlePublish();
+
+        expect(await readBlob(captured)).toContain('<style>a::after { content: "$&$\'$`"; }</style>');
+      });
+    });
+  });
 
   describe('fmt', () => {
     it('formats a number to two decimals', () => {
