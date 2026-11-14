@@ -208,7 +208,10 @@ def test_render_with_empty_charts_param_falls_back_to_chart_set(client):
     assert response.status_code == 200
 
 
-def test_render_normalizes_lowercase_ticker(client):
+def test_render_normalizes_lowercase_ticker(client, monkeypatch):
+    # The source comes from config.data_source_name(), i.e. the environment: clear it so
+    # this asserts the code default rather than whatever the developer's local env sets.
+    monkeypatch.delenv("DATA_SOURCE", raising=False)
     with _patch_load_fundamentals_for_charts() as mock_load:
         response = client.get("/render?ticker=aapl&charts=price")
 
@@ -218,7 +221,7 @@ def test_render_normalizes_lowercase_ticker(client):
     mock_load.assert_called_once()
     called_ticker, called_source, called_charts = mock_load.call_args[0]
     assert called_ticker == "AAPL"
-    assert called_source == "yfinance"
+    assert called_source == "twelvedata"
     assert [c.name for c in called_charts] == ["price"]
 
 
@@ -320,7 +323,20 @@ def test_chart_data_with_unknown_chart_param_shows_error(client):
     assert "unknown chart" in response.get_json()["error"]
 
 
-def test_chart_data_normalizes_lowercase_ticker(client):
+@pytest.mark.parametrize("route", ["/render", "/chart-data"])
+def test_data_source_env_var_is_honored_when_no_source_param_is_given(
+    client, monkeypatch, route
+):
+    monkeypatch.setenv("DATA_SOURCE", "yfinance")
+    with _patch_load_fundamentals_for_charts() as mock_load:
+        response = client.get(f"{route}?ticker=AAPL&charts=price")
+
+    assert response.status_code == 200
+    assert mock_load.call_args[0][1] == "yfinance"
+
+
+def test_chart_data_normalizes_lowercase_ticker(client, monkeypatch):
+    monkeypatch.delenv("DATA_SOURCE", raising=False)
     with _patch_load_fundamentals_for_charts() as mock_load:
         response = client.get("/chart-data?ticker=aapl&charts=price")
 
@@ -328,7 +344,7 @@ def test_chart_data_normalizes_lowercase_ticker(client):
     mock_load.assert_called_once()
     called_ticker, called_source, called_charts = mock_load.call_args[0]
     assert called_ticker == "AAPL"
-    assert called_source == "yfinance"
+    assert called_source == "twelvedata"
     assert [c.name for c in called_charts] == ["price"]
 
 
