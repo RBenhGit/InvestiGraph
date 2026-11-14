@@ -14,3 +14,7 @@
 - [yfinance has native TTM statements](yfinance-has-native-ttm-statements.md) — `ttm_income_stmt`/`ttm_cashflow` exist (verified on 1.5.1); docs claiming no source offers TTM are wrong.
 - [nth-of-type column highlights drift](nth-of-type-vs-class-column-highlight.md) — `td.table-val:nth-of-type(N)` counts all tds; index.html's rowspan rows shift indices, so that highlight is dead.
 - [Shell guard misses `>file` redirects](shell-guard-word-boundary-misses-redirects.md) — protect-bash.sh blocks `> .env` but not `>.env`; probe no-space/append variants of any shell guard.
+- [Envelope error.reason vs error.message](envelope-error-reason-vs-message.md) — history_service's 400 uses `reason`, 500 uses `message`; handlers reading one alert "undefined" on the other.
+- [HISTORY_FILE_PATH collapses identity](history-file-path-env-collapses-identity.md) — env var is checked before the evaluator branch, so identity code must re-apply the slug regex, not call store's path helpers.
+- [Yahoo trailingEps currency on TASE](yahoo-trailing-eps-tase-currency.md) — USD-filing TASE tickers: trailingEps is ILS shekels (verified 2026-11-13); divergence check relies on it.
+- [NaN poisons whole-series aggregates](nan-poisons-whole-series-aggregate.md) — one gap marker makes any fit/CAGR/mean all-NaN; JSON laundering then turns it into `null`, which JS coerces to 0 or throws on.
