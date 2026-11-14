@@ -470,6 +470,30 @@ preserved intact on `main`.
       records). Not exercised in a real browser — front-end covered by vitest only. 579
       pytest + 118 vitest passing, ruff clean.
 
+- [x] **2026-11-14 — Merge `feat/per-chart-config` (per-chart period/range, trend fit, 3-column
+      grid) and default the data source to twelvedata.** Branch work from 2026-09-09/10 (see
+      `docs/UX_NOTES.md`), never pushed until now. Every chart declares its own
+      `(period, range)` (`Chart.period`/`Chart.range`); `load_fundamentals_for_charts` fetches
+      once per distinct pair; the global period/range pickers are gone; Revenue/Net Income/EPS/FCF
+      get a toggleable linear/exponential trend-fit overlay (`charts/fit.py`, NaN-safe);
+      `config.data_source_name()` now defaults to `twelvedata`. 593 pytest + 118 vitest passing,
+      ruff clean.
+      - **Conflicts** (`charts/builtins/pe_ratio.py`, `web/chart_data.py`): both sides' additions
+        kept (`SeriesSpec.dash` *and* `.fit`; `Period` import *and* `pe_ratio_metric`).
+      - **Semantic merge bug caught by a test, not by git:** the USD-filer FX fix
+        (`attach_fx_series`) had auto-merged into the CLI as one call on the *last* loop
+        variable, so only one of the per-pair fundamentals got the `fx_rate` series and the P/E
+        chart stayed empty for a USD-filing, ILS-quoted ticker depending on pair order. Now
+        attached to every fetched fundamentals; `test_render_attaches_fx_to_every_fetched_
+        fundamentals_not_just_the_last` fails on the old code. The web path was already correct
+        (`load_fundamentals_for_charts` → `load_fundamentals`).
+      - **Known regression for QLTU.TA:** EPS is now a `Period.TTM` chart, and twelvedata lacks
+        its Q4 2025 quarter, so no four consecutive quarters exist and the EPS chart is
+        "no data" (it showed annual EPS before). Any ticker with a missing quarter will do the
+        same. Not changed here — the TTM cadence is the branch's deliberate spec.
+      - **`DATA_SOURCE` in a local `.env` still wins** over the new code default (`config.py`
+        calls `load_dotenv()`); `.env.example` now says `twelvedata`.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the

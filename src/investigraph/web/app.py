@@ -20,7 +20,6 @@ from investigraph.sources.base import (
 )
 from investigraph.sources.currency import AGOROT_CODE
 from investigraph.sources.market import is_valid_ticker, normalize_ticker
-from investigraph.sources.ranges import RANGES
 from investigraph.sources.registry import get_source, registered_sources
 from investigraph.sources.validation import require_supported_period
 from investigraph.template.models import CompanyFundamentals, Period
@@ -37,12 +36,8 @@ from investigraph.web.history_service import (
     remove_valuation,
     set_selected_evaluator,
 )
-from investigraph.web.service import load_fundamentals
+from investigraph.web.service import load_fundamentals_for_charts
 from investigraph.web.valuate_service import ValuateError, handle_valuate
-
-# Submitted values are still validated by the real get_source/get_chart_set inside the
-# render path, so an unsupported value produces a proper error, not a blank.
-PERIODS = [p.value for p in Period]
 
 
 def _dedup_chart_ids(raw_ids: list[str]) -> list[str]:
@@ -71,12 +66,18 @@ class _RenderError(Exception):
     message: str
 
 
-def _resolve_request() -> tuple[CompanyFundamentals, str]:
+def _resolve_request() -> tuple[dict[tuple[Period, str], CompanyFundamentals], str]:
     """Validate the request query params, fetch fundamentals, and merge capability limits.
 
     Shared by `/render` and `/chart-data` so the two response formats can't drift
     in what they accept or reject. Raises `_RenderError` on any invalid input or
     fetch failure; the caller decides how to render that into its own response shape.
+
+    Each chart in the resolved set now declares its own period/range (see
+    `charts/base.py`'s `Chart` protocol) instead of the whole page sharing one
+    global period+range, so this returns a `{(period, range): fundamentals}`
+    dict — one entry per distinct pair the chart set actually needs — rather
+    than a single `CompanyFundamentals`.
     """
     ticker = (request.args.get("ticker") or "").strip()
     if not ticker:
@@ -86,12 +87,6 @@ def _resolve_request() -> tuple[CompanyFundamentals, str]:
     ticker = normalize_ticker(ticker)
 
     source_name = request.args.get("source") or config.data_source_name()
-    period_value = request.args.get("period") or config.DEFAULT_PERIOD
-    if period_value not in PERIODS:
-        raise _RenderError(400, f"Unsupported period: {period_value}")
-    range_ = (request.args.get("range") or config.DEFAULT_RANGE).lower()
-    if range_ not in RANGES:
-        raise _RenderError(400, f"Unsupported range: {range_}")
 
     chart_ids = _dedup_chart_ids(request.args.getlist("charts"))
     if chart_ids:
@@ -109,13 +104,10 @@ def _resolve_request() -> tuple[CompanyFundamentals, str]:
     else:
         chart_set = request.args.get("chart_set") or config.DEFAULT_CHART_SET
         try:
-            get_chart_set(chart_set)
+            charts = get_chart_set(chart_set)
         except KeyError as exc:
             raise _RenderError(400, str(exc).strip('"')) from exc
 
-    # Resolved here (not inside load_fundamentals) so an unsupported period
-    # is rejected before any fetch is attempted — same pre-flight gate the
-    # CLI uses, kept independent rather than threaded through service.py.
     try:
         adapter = get_source(source_name)
     except KeyError as exc:
@@ -123,14 +115,21 @@ def _resolve_request() -> tuple[CompanyFundamentals, str]:
     except MissingCredentials as exc:
         raise _RenderError(400, str(exc)) from exc
 
-    period = Period(period_value)
-    try:
-        require_supported_period(adapter.capability(), period)
-    except UnsupportedPeriod as exc:
-        raise _RenderError(400, str(exc)) from exc
+    # Resolved here (not inside load_fundamentals) so an unsupported period
+    # is rejected before any fetch is attempted — same pre-flight gate the
+    # CLI uses, kept independent rather than threaded through service.py.
+    # Checked once per distinct period the chart set's charts declare, not
+    # once for the whole page (each chart can now declare a different one).
+    for period in {chart.period for chart in charts}:
+        try:
+            require_supported_period(adapter.capability(), period)
+        except UnsupportedPeriod as exc:
+            raise _RenderError(400, str(exc)) from exc
 
     try:
-        fundamentals = load_fundamentals(ticker, source_name, period, range_)
+        fundamentals_by_period_range = load_fundamentals_for_charts(
+            ticker, source_name, charts
+        )
     except TickerNotFound as exc:
         raise _RenderError(404, f"Ticker not found: {ticker}") from exc
     except SourceUnavailable as exc:
@@ -138,14 +137,12 @@ def _resolve_request() -> tuple[CompanyFundamentals, str]:
             502, f"Source unavailable and no cache to fall back to: {exc}"
         ) from exc
 
-    fundamentals.source_limits.extend(
-        limit
-        for limit in chart_support.capability_limits(
-            get_chart_set(chart_set), adapter.capability()
+    limits = chart_support.capability_limits(charts, adapter.capability())
+    for fundamentals in fundamentals_by_period_range.values():
+        fundamentals.source_limits.extend(
+            limit for limit in limits if limit not in fundamentals.source_limits
         )
-        if limit not in fundamentals.source_limits
-    )
-    return fundamentals, chart_set
+    return fundamentals_by_period_range, chart_set
 
 
 def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
@@ -184,8 +181,6 @@ def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
             # newly registered source or curated chart set appears in the
             # picker without a template/module change here.
             sources=registered_sources(),
-            periods=PERIODS,
-            ranges=RANGES,
             chart_sets=registered_chart_sets(),
             charts=available_charts(),
             chart_support={
@@ -208,8 +203,6 @@ def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
             },
             defaults={
                 "source": config.data_source_name(),
-                "period": config.DEFAULT_PERIOD,
-                "range": config.DEFAULT_RANGE,
                 "chart_set": config.DEFAULT_CHART_SET,
             },
         )
@@ -217,23 +210,35 @@ def create_app(chart_set_store: ChartSetStore | None = None) -> Flask:
     @app.get("/render")
     def render():
         try:
-            fundamentals, chart_set = _resolve_request()
+            fundamentals_by_period_range, chart_set = _resolve_request()
         except _RenderError as exc:
             return render_template("error.html", message=exc.message), exc.status
-        return render_html(fundamentals, chart_set)
+        return render_html(fundamentals_by_period_range, chart_set)
 
     @app.get("/chart-data")
     def chart_data_route():
         try:
-            fundamentals, chart_set = _resolve_request()
+            fundamentals_by_period_range, chart_set = _resolve_request()
         except _RenderError as exc:
             return jsonify(error=exc.message), exc.status
+        # Every entry shares the same ticker/market/currency (only period/range
+        # differ), so any one of them supplies those top-level response fields;
+        # source_limits is merged across all of them so a limit surfaced under
+        # one (period, range) pair isn't lost.
+        any_fundamentals = next(iter(fundamentals_by_period_range.values()))
+        source_limits = []
+        for fundamentals in fundamentals_by_period_range.values():
+            source_limits.extend(
+                limit
+                for limit in fundamentals.source_limits
+                if limit not in source_limits
+            )
         response = ChartDataResponse(
-            ticker=fundamentals.ticker,
-            market=fundamentals.market.value,
-            currency=fundamentals.currency.value,
-            source_limits=fundamentals.source_limits,
-            charts=build_chart_specs(fundamentals, chart_set),
+            ticker=any_fundamentals.ticker,
+            market=any_fundamentals.market.value,
+            currency=any_fundamentals.currency.value,
+            source_limits=source_limits,
+            charts=build_chart_specs(fundamentals_by_period_range, chart_set),
         )
         # Never flask.jsonify() a model with computed floats — it reproduces raw
         # NaN tokens (invalid JSON); Pydantic's model_dump_json() launders NaN to

@@ -2,13 +2,16 @@ from matplotlib.axes import Axes
 
 from investigraph.charts.base import draw_no_data, render_ratio_line
 from investigraph.template.derived import CURRENT_RATIO, resolve
-from investigraph.template.models import CompanyFundamentals
+from investigraph.template.models import CompanyFundamentals, Period
 
 
 class RatiosChart:
     name = "ratios"
     title = "Current Ratio"
     required_metrics = ["total_current_assets", "total_current_liabilities"]
+    # See docs/UX_NOTES.md — quarterly cadence, full available history.
+    period = Period.QUARTERLY
+    range = "max"
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
         series = resolve(fundamentals, CURRENT_RATIO)

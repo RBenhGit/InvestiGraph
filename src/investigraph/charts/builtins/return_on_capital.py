@@ -2,7 +2,7 @@ from matplotlib.axes import Axes
 
 from investigraph.charts.base import draw_no_data, render_percentage_line
 from investigraph.template.derived import ROCE, ROIC, resolve
-from investigraph.template.models import CompanyFundamentals
+from investigraph.template.models import CompanyFundamentals, Period
 
 
 class ReturnOnCapitalChart:
@@ -17,6 +17,9 @@ class ReturnOnCapitalChart:
         "total_equity",
         "cash_and_equivalents",
     ]
+    # See docs/UX_NOTES.md — quarterly cadence, full available history.
+    period = Period.QUARTERLY
+    range = "max"
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
         roce_series = resolve(fundamentals, ROCE)

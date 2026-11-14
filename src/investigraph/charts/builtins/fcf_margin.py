@@ -2,13 +2,16 @@ from matplotlib.axes import Axes
 
 from investigraph.charts.base import draw_no_data, render_percentage_line
 from investigraph.template.derived import FCF_MARGIN, resolve
-from investigraph.template.models import CompanyFundamentals
+from investigraph.template.models import CompanyFundamentals, Period
 
 
 class FCFMarginChart:
     name = "fcf_margin"
     title = "FCF Margin"
     required_metrics = ["free_cash_flow", "revenue"]
+    # See docs/UX_NOTES.md — quarterly cadence, full available history.
+    period = Period.QUARTERLY
+    range = "max"
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
         series = resolve(fundamentals, FCF_MARGIN)

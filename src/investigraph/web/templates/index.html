@@ -93,9 +93,20 @@
   #results.loading { opacity: 0.5; }
   #chart-section .hint { color: var(--chart-ink-muted); }
   #chart-section .results-header { margin: 0 0 1rem; font-size: 1.1rem; padding: 0 1.5rem; }
-  #chart-section .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; padding: 0 1.5rem 1.5rem; }
+  #chart-section .results-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; padding: 0 1.5rem 1.5rem; }
+  /* Below three chart-widths' worth of space, fall back to fewer columns
+     rather than squeezing three into a too-narrow card. */
+  @media (max-width: 1100px) {
+    #chart-section .results-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 700px) {
+    #chart-section .results-grid { grid-template-columns: 1fr; }
+  }
   #chart-section .card { border: 1px solid var(--chart-border); border-radius: 8px; padding: 1rem; background: var(--chart-surface); }
   #chart-section .card h3 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--chart-ink-secondary); }
+  #chart-section .fit-controls { display: flex; align-items: center; gap: 0.6rem; margin: -0.2rem 0 0.5rem; font-size: 0.78rem; color: var(--chart-ink-muted); }
+  #chart-section .fit-controls label { display: flex; align-items: center; gap: 0.25rem; white-space: nowrap; }
+  #chart-section .fit-controls select { font-size: 0.78rem; padding: 0.05rem 0.2rem; }
   #chart-section .card .plot { width: 100%; height: 260px; }
   #chart-section .no-data { display: flex; align-items: center; justify-content: center; height: 260px; color: var(--chart-ink-muted); }
   #chart-section .limits { margin-top: 1.5rem; color: var(--chart-error); padding: 0 1.5rem 1.5rem; }
@@ -144,18 +155,6 @@
             <label class="label" for="source-select">Source</label>
             <select id="source-select" name="source" class="assumption-input assumption-select">
               {% for s in sources %}<option value="{{ s }}" {{ 'selected' if s == defaults.source }}>{{ s }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="field">
-            <label class="label" for="period-select">Period</label>
-            <select id="period-select" name="period" class="assumption-input assumption-select">
-              {% for p in periods %}<option value="{{ p }}" {{ 'selected' if p == defaults.period }}>{{ p }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="field">
-            <label class="label" for="range-select">Range</label>
-            <select id="range-select" name="range" class="assumption-input assumption-select">
-              {% for r in ranges %}<option value="{{ r }}" {{ 'selected' if r == defaults.range }}>{{ r }}</option>{% endfor %}
             </select>
           </div>
           <div class="field">
@@ -454,9 +453,14 @@
 
   function plotlyLayout(spec) {
     var theme = currentTheme();
+    var fitOn = !!(fitState[spec.name] && fitState[spec.name].on);
     return {
       margin: { l: 50, r: 16, t: 8, b: 36 },
-      showlegend: spec.series.length > 1,
+      // A single-series chart with its trend-fit overlay on has two traces
+      // (the series plus the fit line) even though spec.series.length is
+      // still 1 — the fit's rate-per-year/CAGR label only reaches the user
+      // through this legend, so it must show whenever the overlay is on.
+      showlegend: spec.series.length > 1 || fitOn,
       legend: { orientation: 'h', font: { size: 11, color: theme.ink } },
       paper_bgcolor: theme.surface,
       plot_bgcolor: theme.surface,
@@ -467,8 +471,36 @@
     };
   }
 
+  // Per-card trend-fit overlay state (Revenue/Net Income/EPS/FCF only — see
+  // docs/UX_NOTES.md and web/chart_data.py's TrendFit). Off by default and
+  // toggled client-side from the already-fetched `fit` data on each series
+  // spec, so switching it on/off or between linear/exponential never
+  // re-fetches. Keyed by chart name; reset on every renderDashboard() call
+  // since a fresh ticker/chart-set legitimately starts from "off" again.
+  var fitState = {};
+
+  function fitTrace(series, color, mode) {
+    if (!series.fit) return null;
+    var values = mode === 'linear' ? series.fit.linear_values : series.fit.exponential_values;
+    var rate = mode === 'linear' ? series.fit.linear_rate_per_year : series.fit.exponential_cagr;
+    // Defense in depth: the backend never sends a fit with a null/NaN rate
+    // (charts/fit.py filters gap points before fitting and returns no fit
+    // at all rather than a partial one), but treat one as "no fit" here too
+    // rather than let `null.toFixed` throw or `(null * 100).toFixed(1)`
+    // silently render a fabricated "0.0%/yr" label on a blank line.
+    if (typeof rate !== 'number' || !isFinite(rate) || !values) return null;
+    var label = mode === 'linear'
+      ? (series.label + ' (fit: ' + rate.toFixed(2) + '/yr)')
+      : (series.label + ' (fit: ' + (rate * 100).toFixed(1) + '%/yr)');
+    return {
+      type: 'scatter', mode: 'lines', name: label,
+      x: series.dates, y: values,
+      line: { color: color, width: 1.5, dash: 'dot' }, hoverinfo: 'skip'
+    };
+  }
+
   function plotlyTraces(spec) {
-    return spec.series.map(function (s, i) {
+    var traces = spec.series.map(function (s, i) {
       var color = PALETTE[i % PALETTE.length];
       if (spec.kind === 'bar') {
         return { type: 'bar', name: s.label, x: s.dates, y: s.values, marker: { color: color } };
@@ -478,6 +510,14 @@
         x: s.dates, y: s.values, line: { color: color, width: s.width || 2, dash: s.dash || 'solid' }, marker: { size: 6 }
       };
     });
+    var state = fitState[spec.name];
+    if (state && state.on) {
+      spec.series.forEach(function (s, i) {
+        var trace = fitTrace(s, PALETTE[i % PALETTE.length], state.mode);
+        if (trace) traces.push(trace);
+      });
+    }
+    return traces;
   }
 
   function buildCardSkeleton(container, spec) {
@@ -486,8 +526,58 @@
     var h3 = document.createElement('h3');
     h3.textContent = spec.title;
     card.appendChild(h3);
+
+    var hasFit = spec.series && spec.series.some(function (s) { return s.fit; });
+    if (hasFit) {
+      if (!fitState[spec.name]) fitState[spec.name] = { on: false, mode: 'exponential' };
+      card.appendChild(buildFitControls(spec));
+    }
+
     container.appendChild(card);
     return card;
+  }
+
+  function buildFitControls(spec) {
+    var controls = document.createElement('div');
+    controls.className = 'fit-controls';
+
+    var toggleLabel = document.createElement('label');
+    var toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.checked = fitState[spec.name].on;
+    toggleLabel.appendChild(toggle);
+    toggleLabel.appendChild(document.createTextNode(' Trend fit'));
+    controls.appendChild(toggleLabel);
+
+    var modeSelect = document.createElement('select');
+    ['exponential', 'linear'].forEach(function (mode) {
+      var option = document.createElement('option');
+      option.value = mode;
+      option.textContent = mode === 'exponential' ? 'Exponential' : 'Linear';
+      if (fitState[spec.name].mode === mode) option.selected = true;
+      modeSelect.appendChild(option);
+    });
+    modeSelect.disabled = !fitState[spec.name].on;
+    controls.appendChild(modeSelect);
+
+    function replot() {
+      var plotDiv = controls.parentElement.querySelector('.plot');
+      if (plotDiv) {
+        Plotly.react(plotDiv, plotlyTraces(spec), plotlyLayout(spec), { responsive: true, displaylogo: false });
+      }
+    }
+
+    toggle.addEventListener('change', function () {
+      fitState[spec.name].on = toggle.checked;
+      modeSelect.disabled = !toggle.checked;
+      replot();
+    });
+    modeSelect.addEventListener('change', function () {
+      fitState[spec.name].mode = modeSelect.value;
+      replot();
+    });
+
+    return controls;
   }
 
   function fillCard(card, spec) {
@@ -507,6 +597,10 @@
   function renderDashboard(data) {
     lastResponse = data;
     results.innerHTML = '';
+    // Fresh ticker/chart-set: every trend-fit toggle starts back at "off"
+    // rather than carrying over a previous ticker's state onto a
+    // same-named-but-different chart.
+    fitState = {};
 
     var header = document.getElementById('chart-results-heading');
     header.textContent = data.ticker + ' (' + data.market + ') — ' + data.currency;

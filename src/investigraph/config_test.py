@@ -3,9 +3,9 @@ from unittest.mock import patch
 from investigraph.config import data_source_name
 
 
-def test_defaults_to_yfinance():
+def test_defaults_to_twelvedata():
     with patch.dict("os.environ", {}, clear=True):
-        assert data_source_name() == "yfinance"
+        assert data_source_name() == "twelvedata"
 
 
 def test_reads_data_source_env_var():

@@ -25,6 +25,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from investigraph.charts.base import currency_symbol
+from investigraph.charts.fit import fit_exponential, fit_linear
 from investigraph.charts.registry import get_chart_set
 from investigraph.template.derived import (
     BOOK_VALUE_PER_SHARE,
@@ -37,7 +38,7 @@ from investigraph.template.derived import (
     DerivedMetric,
     resolve,
 )
-from investigraph.template.models import CompanyFundamentals, Point
+from investigraph.template.models import CompanyFundamentals, Period, Point
 from investigraph.template.trailing import (
     DIVIDEND_YIELD_TTM,
     MARKET_CAP,
@@ -46,6 +47,18 @@ from investigraph.template.trailing import (
     TrailingMetric,
     resolve_trailing,
 )
+
+
+class TrendFit(BaseModel):
+    """A linear and an exponential trend line through the same series, both
+    precomputed so the browser can toggle between them (or hide the overlay
+    entirely) without a re-fetch — see `charts/fit.py` and `docs/UX_NOTES.md`.
+    """
+
+    linear_values: list[float]
+    linear_rate_per_year: float
+    exponential_values: list[float]
+    exponential_cagr: float
 
 
 class SeriesSpec(BaseModel):
@@ -59,6 +72,9 @@ class SeriesSpec(BaseModel):
     width: float | None = None
     markers: bool = True
     dash: str | None = None
+    # Present only on the primary series of a chart offering a trend-fit
+    # overlay (Revenue, Net Income, EPS, FCF) — absent everywhere else.
+    fit: TrendFit | None = None
 
 
 class _ChartSpecBase(BaseModel):
@@ -97,9 +113,16 @@ class ChartDataResponse(BaseModel):
 
 
 def build_chart_specs(
-    fundamentals: CompanyFundamentals, chart_set_name: str
+    fundamentals_by_period_range: dict[tuple[Period, str], CompanyFundamentals],
+    chart_set_name: str,
 ) -> list[dict]:
     """One JSON-serializable chart spec dict per chart in `chart_set_name`, in order.
+
+    Each chart now fetches its own `(period, range)` (see `charts/base.py`'s `Chart`
+    protocol) rather than the whole page sharing one `CompanyFundamentals` —
+    `fundamentals_by_period_range` is the grouped-fetch result from
+    `web.service.load_fundamentals_for_charts`, keyed by exactly the pairs this
+    chart set's charts declare.
 
     Mirrors `charts.base.render_or_no_data`'s required-metrics gate; a chart
     whose gate passes can still shape to `None` (e.g. a derived value with no
@@ -108,6 +131,7 @@ def build_chart_specs(
     """
     specs: list[dict] = []
     for chart in get_chart_set(chart_set_name):
+        fundamentals = fundamentals_by_period_range[(chart.period, chart.range)]
         missing = [
             metric_id
             for metric_id in chart.required_metrics
@@ -137,6 +161,58 @@ def _money_bar(metric_id: str) -> Callable[[CompanyFundamentals], dict]:
                     "label": label,
                     "dates": [p.date for p in points],
                     "values": [p.value.value for p in points],
+                }
+            ],
+        }
+
+    return shaper
+
+
+def _trend_fit(dates: list[date], values: list[float]) -> TrendFit | None:
+    """Both a linear and an exponential fit through the same series, or
+    `None` if either isn't computable — see `charts/fit.py`. `fit_linear`
+    fails only for a degenerate series (fewer than 2 points); `fit_exponential`
+    can additionally fail on a non-positive value (e.g. a loss-making year's
+    net income). Rather than send the frontend a `TrendFit` with one mode
+    populated and the other missing — forcing it to special-case a partial
+    toggle — the whole overlay is omitted when either mode can't be computed.
+    """
+    linear = fit_linear(dates, values)
+    exponential = fit_exponential(dates, values)
+    if linear is None or exponential is None:
+        return None
+    return TrendFit(
+        linear_values=linear.fitted_values,
+        linear_rate_per_year=linear.rate,
+        exponential_values=exponential.fitted_values,
+        exponential_cagr=exponential.rate,
+    )
+
+
+def _money_bar_with_fit(metric_id: str) -> Callable[[CompanyFundamentals], dict]:
+    """Like `_money_bar`, plus a precomputed linear+exponential trend fit on
+    the same series — for the growth-extrapolation charts (Revenue, Net
+    Income, EPS, FCF) called out in `docs/UX_NOTES.md`. The frontend toggles
+    the overlay on/off and switches its mode client-side from this one
+    response; a chart whose series is too short/unfit-able for the
+    exponential mode (e.g. a loss-making year) simply carries no `fit` at
+    all rather than a partially-populated one.
+    """
+
+    def shaper(fundamentals: CompanyFundamentals) -> dict:
+        points = fundamentals.series[metric_id].points
+        label = metric_id.replace("_", " ").title()
+        dates = [p.date for p in points]
+        values = [p.value.value for p in points]
+        return {
+            "kind": "bar",
+            "y_label": f"{label} ({currency_symbol(fundamentals)})",
+            "series": [
+                {
+                    "label": label,
+                    "dates": dates,
+                    "values": values,
+                    "fit": _trend_fit(dates, values),
                 }
             ],
         }
@@ -431,10 +507,10 @@ def _market_cap(fundamentals: CompanyFundamentals) -> dict | None:
 
 _SHAPERS: dict[str, Callable[[CompanyFundamentals], dict | None]] = {
     "price": _price,
-    "revenue": _money_bar("revenue"),
-    "net_income": _money_bar("net_income"),
-    "free_cash_flow": _money_bar("free_cash_flow"),
-    "eps": _money_bar("eps"),
+    "revenue": _money_bar_with_fit("revenue"),
+    "net_income": _money_bar_with_fit("net_income"),
+    "free_cash_flow": _money_bar_with_fit("free_cash_flow"),
+    "eps": _money_bar_with_fit("eps"),
     "margins": _margins,
     "fcf_margin": _percentage_line_derived(FCF_MARGIN, "FCF Margin", "FCF Margin (%)"),
     "ebitda": _money_bar("ebitda"),

@@ -8,6 +8,7 @@ from investigraph.charts.builtins._test_helpers import (
     fundamentals_with,
     money_series,
 )
+from investigraph.charts.registry import get_chart_set
 from investigraph.dashboard.layout import render_chart_cards, render_grid_figure
 
 
@@ -15,8 +16,23 @@ def _fundamentals():
     return fundamentals_with({"price": money_series("price", [1.0, 2.0, 3.0])})
 
 
+def _fundamentals_by_period_range(chart_set_name: str):
+    """One hand-built fundamentals reused under every (period, range) key the
+    named chart set's charts declare (see `charts/base.py`'s `Chart`
+    protocol) — these tests exercise the grid/card layout, not per-chart
+    fetch plumbing.
+    """
+    fundamentals = _fundamentals()
+    return {
+        (chart.period, chart.range): fundamentals
+        for chart in get_chart_set(chart_set_name)
+    }
+
+
 def test_render_chart_cards_returns_one_card_per_chart_in_the_set():
-    cards = render_chart_cards(_fundamentals(), "fundamentals")
+    cards = render_chart_cards(
+        _fundamentals_by_period_range("fundamentals"), "fundamentals"
+    )
 
     assert len(cards) == 6
     titles = [c.title for c in cards]
@@ -27,14 +43,18 @@ def test_render_chart_cards_returns_one_card_per_chart_in_the_set():
 
 
 def test_render_grid_figure_has_an_axes_per_chart():
-    fig = render_grid_figure(_fundamentals(), "fundamentals")
+    fig = render_grid_figure(
+        _fundamentals_by_period_range("fundamentals"), "TEST", "fundamentals"
+    )
 
     assert len(fig.axes) >= 6
     plt.close(fig)
 
 
 def test_render_grid_figure_titles_include_ticker():
-    fig = render_grid_figure(_fundamentals(), "fundamentals")
+    fig = render_grid_figure(
+        _fundamentals_by_period_range("fundamentals"), "TEST", "fundamentals"
+    )
 
     assert "TEST" in fig._suptitle.get_text()
     plt.close(fig)

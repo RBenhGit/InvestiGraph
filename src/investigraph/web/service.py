@@ -9,6 +9,7 @@ private code, by design.
 from datetime import date
 
 from investigraph.cache.store import TemplateCache
+from investigraph.charts.base import Chart
 from investigraph.sources.base import SourceUnavailable
 from investigraph.sources.fx_rate.adapter import attach_fx_series
 from investigraph.sources.market import market_of
@@ -57,3 +58,26 @@ def load_fundamentals(
     # written before this existed still gets it. A no-op unless EPS/price currencies differ.
     attach_fx_series(fundamentals)
     return fundamentals
+
+
+def load_fundamentals_for_charts(
+    ticker: str, source_name: str, charts: list[Chart]
+) -> dict[tuple[Period, str], CompanyFundamentals]:
+    """Fetch one `CompanyFundamentals` per distinct `(period, range)` pair `charts`
+    actually need, not one per chart.
+
+    Each chart now declares its own cadence/window (see `Chart.period`/`Chart.range`
+    in `charts/base.py`) instead of the whole page sharing one global period+range.
+    Most charts in a set agree on a handful of pairs (e.g. quarterly/max for the
+    margin-style ratios, annual/max for the income-statement totals, annual/10y for
+    the price-driven charts) — grouping means those charts share one fetch/cache
+    entry via `load_fundamentals` instead of issuing a redundant call each.
+
+    Raises the same typed errors as `load_fundamentals`, on the first pair that
+    fails — a page load either fully succeeds or reports one error, same as today.
+    """
+    pairs = sorted({(chart.period, chart.range) for chart in charts})
+    return {
+        (period, range_): load_fundamentals(ticker, source_name, period, range_)
+        for period, range_ in pairs
+    }

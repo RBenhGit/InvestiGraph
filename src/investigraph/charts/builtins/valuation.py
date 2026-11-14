@@ -4,13 +4,17 @@ from matplotlib.axes import Axes
 
 from investigraph.charts.base import draw_no_data, render_ratio_line
 from investigraph.template.derived import BOOK_VALUE_PER_SHARE, resolve
-from investigraph.template.models import CompanyFundamentals, Point
+from investigraph.template.models import CompanyFundamentals, Period, Point
 
 
 class ValuationChart:
     name = "valuation"
     title = "Valuation (P/B)"
     required_metrics = ["price", "total_equity", "shares_outstanding"]
+    # Price-driven; see PriceChart's period/range comment (docs/UX_NOTES.md's
+    # "keep as-is" group).
+    period = Period.ANNUAL
+    range = "10y"
 
     def render(self, ax: Axes, fundamentals: CompanyFundamentals) -> None:
         book_value = resolve(fundamentals, BOOK_VALUE_PER_SHARE)

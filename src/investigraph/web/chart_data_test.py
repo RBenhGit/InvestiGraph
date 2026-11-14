@@ -1,5 +1,8 @@
 import json
+import math
 from datetime import date, timedelta
+
+import pytest
 
 from investigraph.charts.catalog import available_charts, get_chart
 from investigraph.charts.registry import register_chart_set
@@ -110,9 +113,19 @@ def _full_fundamentals() -> CompanyFundamentals:
 
 
 def _specs_for(chart_names: list[str], fundamentals: CompanyFundamentals) -> list[dict]:
+    """Shape `chart_names` from one hand-built `fundamentals`, regardless of what
+    (period, range) each chart actually declares (see `charts/base.py`'s `Chart`
+    protocol) — these tests exercise shaping logic, not the per-chart fetch
+    plumbing, so `fundamentals` is registered under every pair the named charts
+    need rather than requiring each test to build one fundamentals per pair.
+    """
     set_name = "custom:chart_data_test:" + ",".join(chart_names)
-    register_chart_set(set_name, [get_chart(name) for name in chart_names])
-    return build_chart_specs(fundamentals, set_name)
+    charts = [get_chart(name) for name in chart_names]
+    register_chart_set(set_name, charts)
+    fundamentals_by_period_range = {
+        (chart.period, chart.range): fundamentals for chart in charts
+    }
+    return build_chart_specs(fundamentals_by_period_range, set_name)
 
 
 def test_missing_required_metric_is_no_data():
@@ -131,7 +144,102 @@ def test_money_bar_uses_raw_scale_relative_value_not_base_units():
     [spec] = _specs_for(["revenue"], fundamentals)
 
     assert spec["kind"] == "bar"
-    assert spec["series"] == [{"label": "Revenue", "dates": [_D], "values": [12.3]}]
+    # "revenue" carries a trend-fit overlay (see charts/fit.py), which is
+    # None here since a single point is too few to fit a trend line.
+    assert spec["series"] == [
+        {"label": "Revenue", "dates": [_D], "values": [12.3], "fit": None}
+    ]
+
+
+def test_money_bar_with_fit_includes_both_linear_and_exponential_trend():
+    # Revenue growing 10%/yr, sampled at 4 yearly points -- enough for both
+    # a linear and an exponential fit (see charts/fit.py).
+    points = [(date(2020 + i, 1, 1), 100.0 * (1.10**i)) for i in range(4)]
+    fundamentals = _fundamentals_with(
+        {"revenue": _money_series("revenue", points, scale=Unit.MILLIONS)}
+    )
+
+    [spec] = _specs_for(["revenue"], fundamentals)
+
+    fit = spec["series"][0]["fit"]
+    assert fit is not None
+    assert len(fit.linear_values) == 4
+    assert len(fit.exponential_values) == 4
+    assert fit.exponential_cagr == pytest.approx(0.10, abs=0.01)
+
+
+def test_money_bar_with_fit_omits_fit_when_a_value_is_non_positive():
+    # A loss-making year (negative net income) makes the exponential fit
+    # undefined (no real logarithm) -- the whole overlay is omitted rather
+    # than sending the frontend a fit with only linear populated.
+    points = [
+        (date(2020, 1, 1), 10.0),
+        (date(2021, 1, 1), -5.0),
+        (date(2022, 1, 1), 8.0),
+    ]
+    fundamentals = _fundamentals_with(
+        {"net_income": _money_series("net_income", points, scale=Unit.MILLIONS)}
+    )
+
+    [spec] = _specs_for(["net_income"], fundamentals)
+
+    assert spec["series"][0]["fit"] is None
+
+
+def test_money_bar_with_fit_recovers_a_sane_rate_across_a_ttm_gap():
+    # A TTM series (EPS, FCF) marks a missing quarter with a Money-tagged NaN
+    # point rather than omitting it (see template/trailing.py's ttm_series
+    # and CLAUDE.md's NaN-gap-marker gotcha), so the plotted line visibly
+    # breaks there. Before charts/fit.py filtered non-finite values before
+    # fitting, a single such gap silently turned every fitted value and the
+    # reported CAGR into NaN -- this exercises that real shape end to end,
+    # not just fit_linear/fit_exponential in isolation (see fit_test.py).
+    points = [
+        (date(2020, 1, 1), 4.6),
+        (date(2020, 4, 1), 5.0),
+        (date(2020, 7, 1), float("nan")),
+        (date(2020, 10, 1), float("nan")),
+        (date(2021, 1, 1), float("nan")),
+        (date(2021, 4, 1), 6.6),
+        (date(2021, 7, 1), 7.0),
+        (date(2021, 10, 1), 7.4),
+    ]
+    fundamentals = _fundamentals_with({"eps": _money_series("eps", points)})
+
+    [spec] = _specs_for(["eps"], fundamentals)
+
+    fit = spec["series"][0]["fit"]
+    assert fit is not None
+    assert math.isfinite(fit.exponential_cagr)
+    assert all(math.isfinite(v) for v in fit.exponential_values)
+    assert all(math.isfinite(v) for v in fit.linear_values)
+
+
+def test_money_bar_with_fit_round_trips_through_json():
+    # A populated TrendFit must serialize cleanly through
+    # ChartDataResponse.model_dump_json() (see that model's module docstring
+    # on why raw NaN tokens must never reach flask.jsonify()) -- not just
+    # exist as a Python object on the shaped dict.
+    points = [(date(2020 + i, 1, 1), 100.0 * (1.10**i)) for i in range(4)]
+    fundamentals = _fundamentals_with(
+        {"revenue": _money_series("revenue", points, scale=Unit.MILLIONS)}
+    )
+    [spec] = _specs_for(["revenue"], fundamentals)
+    response = ChartDataResponse(
+        ticker=fundamentals.ticker,
+        market=fundamentals.market.value,
+        currency=fundamentals.currency.value,
+        source_limits=fundamentals.source_limits,
+        charts=[spec],
+    )
+
+    parsed = json.loads(response.model_dump_json())
+
+    fit = parsed["charts"][0]["series"][0]["fit"]
+    assert fit is not None
+    assert len(fit["linear_values"]) == 4
+    assert len(fit["exponential_values"]) == 4
+    assert fit["exponential_cagr"] == pytest.approx(0.10, abs=0.01)
 
 
 def test_money_line_uses_base_units_across_series():
@@ -428,12 +536,25 @@ def test_return_on_equity_line():
     assert spec["series"][0]["values"] == [7.5]
 
 
+def _fundamentals_by_period_range_for(
+    charts: list, fundamentals: CompanyFundamentals
+) -> dict[tuple[Period, str], CompanyFundamentals]:
+    """Same "one hand-built fundamentals under every (period, range) key
+    `charts` need" approach as `_specs_for`, for tests that call
+    `build_chart_specs` directly against the whole catalog.
+    """
+    return {(chart.period, chart.range): fundamentals for chart in charts}
+
+
 def test_every_catalog_chart_has_a_shaper_and_does_not_crash():
     fundamentals = _full_fundamentals()
     set_name = "custom:chart_data_test:everything"
-    register_chart_set(set_name, available_charts())
+    charts = available_charts()
+    register_chart_set(set_name, charts)
 
-    specs = build_chart_specs(fundamentals, set_name)
+    specs = build_chart_specs(
+        _fundamentals_by_period_range_for(charts, fundamentals), set_name
+    )
 
     assert len(specs) == len(available_charts())
     for spec in specs:
@@ -443,9 +564,12 @@ def test_every_catalog_chart_has_a_shaper_and_does_not_crash():
 def test_chart_data_response_round_trips_every_kind():
     fundamentals = _full_fundamentals()
     set_name = "custom:chart_data_test:round_trip"
-    register_chart_set(set_name, available_charts())
+    charts = available_charts()
+    register_chart_set(set_name, charts)
 
-    specs = build_chart_specs(fundamentals, set_name)
+    specs = build_chart_specs(
+        _fundamentals_by_period_range_for(charts, fundamentals), set_name
+    )
     response = ChartDataResponse(
         ticker=fundamentals.ticker,
         market=fundamentals.market.value,

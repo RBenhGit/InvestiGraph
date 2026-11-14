@@ -54,7 +54,10 @@ body {
 .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
 a { color: var(--accent-b); }
 a:hover { color: var(--ink); }
-.wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.5rem 4rem; }
+/* Widened from 68rem so the 3-column chart grid (#chart-section
+   .results-grid) gets real screen estate instead of 3 columns squeezed
+   into a narrower box — see docs/UX_NOTES.md. */
+.wrap { max-width: 84rem; margin: 0 auto; padding: 0 1.5rem 4rem; }
 
 /* ---------------- Masthead ---------------- */
 .masthead-bar {
