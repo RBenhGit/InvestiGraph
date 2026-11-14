@@ -865,20 +865,29 @@ def test_derive_ttm_uses_the_reconstructed_quarter_and_says_so():
     assert "2025-12-31" in note and "approximate" in note
 
 
-def test_derive_ttm_does_not_call_the_annual_loader_when_there_is_no_gap():
+def test_derive_ttm_loads_the_annual_series_once_for_all_metrics():
     calls = []
 
     def loader():
         calls.append(1)
-        return _qltu_annual_fundamentals()
+        return _fundamentals(
+            {
+                "eps": _money_series("eps", _QLTU_ANNUAL),
+                "revenue": _money_series("revenue", _QLTU_ANNUAL),
+            },
+            period=Period.ANNUAL,
+        )
 
-    complete = _fundamentals(
-        {"eps": _money_series("eps", [(d, 1.0) for d in _Q])},
+    quarterly = _fundamentals(
+        {
+            "eps": _money_series("eps", [(d, 1.0) for d in _Q]),
+            "revenue": _money_series("revenue", [(d, 1.0) for d in _Q]),
+        },
         period=Period.QUARTERLY,
     )
-    derive_ttm_fundamentals(complete, annual_loader=loader)
+    derive_ttm_fundamentals(quarterly, annual_loader=loader)
 
-    assert calls == []
+    assert calls == [1]
 
 
 def test_derive_ttm_keeps_the_gap_when_the_annual_series_is_unavailable():
@@ -892,3 +901,151 @@ def test_derive_ttm_keeps_the_gap_when_the_annual_series_is_unavailable():
     assert not any("approximate" in limit for limit in result.source_limits)
     note = next(limit for limit in result.source_limits if "eps" in limit)
     assert "could not be reconstructed" in note
+
+
+# --- Fiscal-year-end points from the annual series -----------------------------
+# Twelve Data's plan returns only ~6 quarters, so a TTM built from quarters alone has a
+# handful of points. TTM at a fiscal year end *is* the annual figure, so the annual series
+# supplies exact older points (yearly cadence) without any estimation.
+
+_QLTU_ANNUAL_LONG = [
+    (date(2020, 12, 31), 0.64),
+    (date(2021, 12, 31), 1.443),
+    (date(2023, 12, 31), 2.688),
+    (date(2024, 12, 31), 3.017),
+    (date(2025, 12, 31), 4.676),
+]
+
+
+def _annual_fundamentals(values, currency=Currency.USD) -> CompanyFundamentals:
+    return _fundamentals(
+        {"eps": _money_series("eps", values, currency=currency)}, period=Period.ANNUAL
+    )
+
+
+def test_derive_ttm_adds_fiscal_year_ends_before_the_quarterly_window():
+    result = derive_ttm_fundamentals(
+        _qltu_quarterly_fundamentals(),
+        annual_loader=lambda: _annual_fundamentals(_QLTU_ANNUAL_LONG),
+    )
+
+    ttm = _values(result.series["eps"])
+    assert sorted(ttm) == [
+        date(2020, 12, 31),
+        date(2021, 12, 31),
+        date(2023, 12, 31),
+        date(2024, 12, 31),
+        date(2025, 12, 31),
+        date(2026, 3, 31),
+        date(2026, 6, 30),
+    ]
+    # Older points are the annual figures themselves; recent ones still roll quarterly.
+    assert ttm[date(2021, 12, 31)] == 1.443
+    assert ttm[date(2026, 6, 30)] == pytest.approx(4.795)
+
+
+def test_derive_ttm_prefers_the_quarterly_derived_point_on_the_same_date():
+    # Complete quarters: the rolling sum at 2022-12-31 is 4.0. An annual figure of 4.3 for the
+    # same year end (per-share totals are not strictly additive) must not replace or
+    # duplicate it, or the line would jump between two values for one date.
+    quarterly = _fundamentals(
+        {"eps": _money_series("eps", [(d, 1.0) for d in _Q])}, period=Period.QUARTERLY
+    )
+
+    result = derive_ttm_fundamentals(
+        quarterly,
+        annual_loader=lambda: _annual_fundamentals([(date(2022, 12, 31), 4.3)]),
+    )
+
+    points = [p for p in result.series["eps"].points if p.date == date(2022, 12, 31)]
+    assert [p.value.value for p in points] == [4.0]
+
+
+def test_derive_ttm_replaces_a_gap_marker_with_the_annual_figure():
+    # Q1-Q4 2025 are not all present, so every window is a NaN gap marker; the fiscal-year-end
+    # annual figure is a real value for that date and supersedes the marker.
+    quarterly = _fundamentals(
+        {"eps": _money_series("eps", [q for q in _QLTU_QUARTERS if q[0].year == 2025])},
+        period=Period.QUARTERLY,
+    )
+
+    result = derive_ttm_fundamentals(
+        quarterly, annual_loader=lambda: _annual_fundamentals(_QLTU_ANNUAL)
+    )
+
+    values = _values(result.series["eps"])
+    assert values[date(2025, 12, 31)] == pytest.approx(4.676)
+    assert all(v == v for v in values.values())  # no NaN markers left at annual dates
+
+
+def test_derive_ttm_skips_annual_points_in_a_different_currency():
+    # A series must stay one currency; the annual figures are left out rather than mixed in,
+    # and the quarterly-derived TTM is untouched.
+    complete = _fundamentals(
+        {"eps": _money_series("eps", [(d, 1.0) for d in _Q])}, period=Period.QUARTERLY
+    )
+
+    result = derive_ttm_fundamentals(
+        complete,
+        annual_loader=lambda: _annual_fundamentals(
+            [(date(2019, 12, 31), 9.0)], currency=Currency.ILS
+        ),
+    )
+
+    values = _values(result.series["eps"])
+    assert date(2019, 12, 31) not in values
+    assert values[date(2023, 3, 31)] == 4.0
+
+
+def test_derive_ttm_never_merges_annual_into_an_empty_series_of_another_currency():
+    # Every quarterly window here is a gap, so the TTM series is empty — an empty series
+    # accepts any currency, so the guard must compare against the quarterly series itself.
+    result = derive_ttm_fundamentals(
+        _qltu_quarterly_fundamentals(),
+        annual_loader=lambda: _annual_fundamentals(
+            _QLTU_ANNUAL_LONG, currency=Currency.ILS
+        ),
+    )
+
+    assert result.series["eps"].available is False
+
+
+def test_derive_ttm_says_the_older_history_is_yearly():
+    result = derive_ttm_fundamentals(
+        _qltu_quarterly_fundamentals(),
+        annual_loader=lambda: _annual_fundamentals(_QLTU_ANNUAL_LONG),
+    )
+
+    note = next(limit for limit in result.source_limits if "yearly" in limit)
+    assert "eps" in note and "2020-12-31" in note
+
+
+def test_derive_ttm_adds_no_yearly_note_when_nothing_was_added():
+    result = derive_ttm_fundamentals(
+        _qltu_quarterly_fundamentals(), annual_loader=lambda: None
+    )
+
+    assert not any("yearly" in limit for limit in result.source_limits)
+
+
+def test_derive_ttm_reports_the_yearly_history_in_a_single_line_for_all_metrics():
+    quarterly = _fundamentals(
+        {
+            "eps": _money_series("eps", _QLTU_QUARTERS),
+            "revenue": _money_series("revenue", _QLTU_QUARTERS),
+        },
+        period=Period.QUARTERLY,
+    )
+    annual = _fundamentals(
+        {
+            "eps": _money_series("eps", _QLTU_ANNUAL_LONG),
+            "revenue": _money_series("revenue", _QLTU_ANNUAL_LONG),
+        },
+        period=Period.ANNUAL,
+    )
+
+    result = derive_ttm_fundamentals(quarterly, annual_loader=lambda: annual)
+
+    notes = [limit for limit in result.source_limits if "yearly" in limit]
+    assert len(notes) == 1
+    assert "eps" in notes[0] and "revenue" in notes[0]

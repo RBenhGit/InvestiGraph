@@ -516,6 +516,29 @@ preserved intact on `main`.
         keeps showing the old gap until tomorrow (or until its `*_ttm_*` file under
         `.cache/investigraph/` is deleted).
 
+- [x] **2026-11-14 — Longer TTM history: fiscal-year-end points from the annual series.**
+      Twelve Data's plan returns only ~6 quarters and refuses anything longer (`start_date` /
+      `outputsize` -> "Full access to historical data is available only in the Enterprise plan",
+      probed live on QLTU.TA; yfinance returns the same depth), so a TTM built from quarters had
+      3 points. TTM at a fiscal year end *is* the annual total, so `derive_ttm_fundamentals`
+      now also adds the annual figure at each earlier year end (`_with_annual_year_ends`): QLTU.TA
+      TTM EPS goes from 3 to 7 points (2020-2026), FCF to 8. Exact values, yearly cadence in the
+      past and quarterly at the end; the trend fit works from real dates so mixed cadence is fine.
+      Rules: a real quarterly-derived point on the same date always wins (no second value for one
+      date), a NaN gap marker is superseded by the real annual value, and annual points whose
+      currency/scale differ from the *quarterly* series are never merged (checked against the
+      quarterly series because the TTM series can be empty, and an empty series accepts any
+      currency — a test pins this). One `source_limits` line states the older history is yearly.
+      `max_history[TTM]` is now 6 (twelvedata) / 4 (yfinance), following ANNUAL; the commission
+      generator still derives TTM at QUARTERLY depth on purpose (an under-claim is safe, and a
+      future adapter is not guaranteed to pass the annual loader). 615 pytest + 124 vitest
+      passing, ruff clean, green with DATA_SOURCE set to either source.
+      - **Cost:** the annual loader is no longer lazy-on-gap — every TTM fetch now costs one
+        extra annual fetch (~300 credits against a 610/min budget). A lighter annual fetch
+        (income + cash flow only, no balance sheet or price series) would cut it by about a
+        third; not done.
+      - **Not solved:** genuinely deeper *quarterly* history needs Twelve Data Enterprise.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the

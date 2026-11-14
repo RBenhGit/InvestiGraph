@@ -15,7 +15,7 @@ CAPABILITY = Capability(
     # actually checked against live data before now. TTM is derived from the
     # trailing four quarters (template/trailing.py's derive_ttm_fundamentals), so
     # it needs the same history depth as QUARTERLY.
-    max_history={Period.ANNUAL: 4, Period.QUARTERLY: 1, Period.TTM: 1},
+    max_history={Period.ANNUAL: 4, Period.QUARTERLY: 1, Period.TTM: 4},
     metrics={
         "price",
         "revenue",

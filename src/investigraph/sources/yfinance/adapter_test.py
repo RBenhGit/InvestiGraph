@@ -213,9 +213,10 @@ def test_declares_capability():
     assert "price" in capability.metrics
     # TTM is derived (template/trailing.py's derive_ttm_fundamentals), not native.
     assert Period.TTM in capability.periods
-    assert (
-        capability.max_history[Period.TTM] == capability.max_history[Period.QUARTERLY]
-    )
+    # TTM history reaches as far back as the annual series (fiscal-year-end points), not just
+    # as far as the few quarters the source returns.
+    assert capability.max_history[Period.TTM] == capability.max_history[Period.ANNUAL]
+    assert capability.max_history[Period.TTM] > capability.max_history[Period.QUARTERLY]
 
 
 def test_network_failure_raises_source_unavailable():

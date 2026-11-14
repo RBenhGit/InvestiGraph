@@ -19,9 +19,10 @@ from investigraph.template.models import Market, Period
 CAPABILITY = Capability(
     markets={Market.US, Market.TASE},
     periods={Period.ANNUAL, Period.QUARTERLY, Period.TTM},
-    # TTM is derived from the trailing four quarters (template/trailing.py's
-    # derive_ttm_fundamentals), so it needs the same history depth as QUARTERLY.
-    max_history={Period.ANNUAL: 6, Period.QUARTERLY: 1, Period.TTM: 1},
+    # TTM is derived (template/trailing.py's derive_ttm_fundamentals) from the few quarters
+    # this plan returns, plus the annual figure as the TTM value at each earlier fiscal year
+    # end — so its depth follows ANNUAL (yearly cadence that far back), not QUARTERLY.
+    max_history={Period.ANNUAL: 6, Period.QUARTERLY: 1, Period.TTM: 6},
     metrics={
         "price",
         "revenue",

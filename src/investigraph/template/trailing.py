@@ -203,6 +203,70 @@ _GROSS_MARGIN_TTM_NOTE = (
 )
 
 
+def _money_tags(series: MetricSeries) -> set[tuple[object, object]]:
+    return {
+        (p.value.currency, p.value.scale)
+        for p in series.points
+        if isinstance(p.value, Money)
+    }
+
+
+def _with_annual_year_ends(
+    ttm: MetricSeries, annual: MetricSeries, quarterly: MetricSeries
+) -> tuple[MetricSeries, list[date]]:
+    """Add the annual figure as the TTM value at each fiscal year end it has no real point for.
+
+    TTM at a fiscal year end *is* the annual total, so these are exact, not estimates; they
+    extend the history past what a source's few quarters allow (Twelve Data's plan returns
+    ~6), at yearly cadence. An existing real point near that date always wins — adding a second
+    value for one date would make the line jump — while a NaN gap marker there is superseded by
+    the real annual value. Annual points whose currency/scale differ from the *quarterly*
+    series' are never merged (checked against `quarterly`, not `ttm`, which can be empty when
+    every window is a gap — an empty series would accept anything). Returns the series and the
+    dates added.
+    """
+    if not annual.available:
+        return ttm, []
+    annual_tags, quarterly_tags = _money_tags(annual), _money_tags(quarterly)
+    if annual_tags and quarterly_tags and annual_tags != quarterly_tags:
+        return ttm, []
+    real = [p for p in ttm.points if _is_real(p.value)]
+    added = [
+        a
+        for a in annual.points
+        if _is_real(a.value)
+        and not any(abs((p.date - a.date).days) <= _SAME_PERIOD_DAYS for p in real)
+    ]
+    if not added:
+        return ttm, []
+    kept = [
+        p
+        for p in ttm.points
+        if _is_real(p.value)
+        or not any(abs((p.date - a.date).days) <= _SAME_PERIOD_DAYS for a in added)
+    ]
+    try:
+        merged = MetricSeries(
+            metric_id=ttm.metric_id,
+            points=sorted([*kept, *added], key=lambda p: p.date),
+            available=True,
+        )
+    except ValueError:
+        return ttm, []
+    return merged, [a.date for a in added]
+
+
+def _yearly_note(added: dict[str, list[date]]) -> str:
+    """One line for every metric that got annual points, not one per metric (a TTM fetch has
+    about nine flow metrics and the limits panel would be mostly this)."""
+    every = [d for dates in added.values() for d in dates]
+    return (
+        f"TTM history from {min(every).isoformat()} to {max(every).isoformat()} is yearly "
+        "(fiscal-year-end values from the annual statements), not rolling quarterly sums, "
+        f"for: {', '.join(added)}"
+    )
+
+
 def _has_ttm_gap(quarterly: MetricSeries, ttm: MetricSeries) -> bool:
     """Whether a flow metric's TTM is missing windows a reconstructed quarter could fix: a
     NaN gap marker, or no TTM at all despite at least four quarters being present."""
@@ -249,12 +313,15 @@ def derive_ttm_fundamentals(
     through instead (each point still that quarter's own margin, not a trailing one), with a
     `source_limits` note disclosing the approximation.
 
-    `annual_loader` (optional) supplies the matching `Period.ANNUAL` fundamentals, used only
-    to reconstruct a quarter the source omitted (see `fill_missing_fourth_quarters`). It is
-    called **at most once, and only when some flow metric's TTM actually has a gap**, so a
-    ticker with complete quarters never pays for the extra fetch; returning `None` (e.g. the
-    annual fetch failed) just leaves the gap visible. Every reconstruction is disclosed in
-    `source_limits`.
+    `annual_loader` (optional) supplies the matching `Period.ANNUAL` fundamentals, used for
+    two things: reconstructing a quarter the source omitted (`fill_missing_fourth_quarters`),
+    and extending the history with the annual figure as the TTM value at each earlier fiscal
+    year end (`_with_annual_year_ends`) — sources return only a few quarters, but TTM at a
+    fiscal year end *is* the annual total. It is called **at most once**, but now on every
+    call that supplies it, so each TTM fetch costs one extra annual fetch (Twelve Data bills
+    the statement endpoints heavily). Returning `None` (e.g. that fetch failed) leaves the
+    quarterly-only TTM, with a note if a gap could not be filled. Every reconstruction and the
+    yearly cadence of the older history are disclosed in `source_limits`.
     """
     if quarterly.period != Period.QUARTERLY:
         raise ValueError(
@@ -264,22 +331,30 @@ def derive_ttm_fundamentals(
 
     new_series: dict[str, MetricSeries] = {}
     fill_notes: list[str] = []
+    yearly_added: dict[str, list[date]] = {}
     annual: CompanyFundamentals | None = None
     annual_loaded = False
     for metric_id, series in quarterly.series.items():
         if metric_id in _FLOW_METRIC_IDS:
             ttm = ttm_series(series, Period.QUARTERLY, mark_gaps=True)
-            if annual_loader is not None and _has_ttm_gap(series, ttm):
+            if annual_loader is not None:
                 if not annual_loaded:
                     annual, annual_loaded = annual_loader(), True
                 annual_series = annual.series.get(metric_id) if annual else None
-                if annual is None:
-                    fill_notes.append(_unfilled_note(metric_id))
+                if _has_ttm_gap(series, ttm):
+                    if annual is None:
+                        fill_notes.append(_unfilled_note(metric_id))
+                    elif annual_series is not None:
+                        filled, dates = fill_missing_fourth_quarters(
+                            series, annual_series
+                        )
+                        if dates:
+                            ttm = ttm_series(filled, Period.QUARTERLY, mark_gaps=True)
+                            fill_notes.append(_fill_note(metric_id, dates))
                 if annual_series is not None:
-                    filled, dates = fill_missing_fourth_quarters(series, annual_series)
-                    if dates:
-                        ttm = ttm_series(filled, Period.QUARTERLY, mark_gaps=True)
-                        fill_notes.append(_fill_note(metric_id, dates))
+                    ttm, added = _with_annual_year_ends(ttm, annual_series, series)
+                    if added:
+                        yearly_added[metric_id] = added
             new_series[metric_id] = ttm
         elif metric_id != "net_margin":
             new_series[metric_id] = series
@@ -294,6 +369,8 @@ def derive_ttm_fundamentals(
         new_series["net_margin"] = resolve(interim, _NET_MARGIN)
 
     source_limits = [*quarterly.source_limits, *fill_notes]
+    if yearly_added:
+        source_limits.append(_yearly_note(yearly_added))
     gross_margin = quarterly.series.get("gross_margin")
     if gross_margin is not None and gross_margin.available:
         source_limits.append(_GROSS_MARGIN_TTM_NOTE)
