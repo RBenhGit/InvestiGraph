@@ -108,6 +108,67 @@ def ttm_series(
     )
 
 
+# A fiscal quarter end falls roughly 91 days after the previous one; anything outside this
+# band between consecutive points is not "consecutive quarters" and must not be solved for.
+_QUARTER_SPACING_DAYS = (60, 130)
+# How close a quarterly point must be to a fiscal year end to count as that year's Q4.
+_SAME_PERIOD_DAYS = 15
+
+
+def fill_missing_fourth_quarters(
+    quarterly: MetricSeries, annual: MetricSeries
+) -> tuple[MetricSeries, list[date]]:
+    """Add a quarter the source omitted, as the fiscal-year total minus the other three.
+
+    Some sources report a flow metric for Q1-Q3 and the full year but no standalone Q4
+    (observed for EPS: both sources omit QLTU.TA's Q4 2025 while reporting its net income),
+    so no four consecutive quarters exist and every TTM window is skipped. For each annual
+    point with no quarterly point at its date, this derives that quarter *only* when exactly
+    three plainly consecutive quarters precede it within the year — with two unknowns the
+    annual total cannot be split, so it refuses rather than guess. Currency/scale mismatches,
+    missing annual data, and non-finite results are also refusals, never fabricated values.
+
+    Exact for additive metrics; approximate for per-share ones (EPS), because the share count
+    drifts across the year — callers should disclose that. Returns the new series (date-
+    ordered, real points untouched) and the dates it filled.
+    """
+    if not quarterly.available or not annual.available:
+        return quarterly, []
+
+    points = sorted(quarterly.points, key=lambda p: p.date)
+    low, high = _QUARTER_SPACING_DAYS
+    added: list[Point] = []
+    for year_total in sorted(annual.points, key=lambda p: p.date):
+        year_end = year_total.date
+        if any(abs((p.date - year_end).days) <= _SAME_PERIOD_DAYS for p in points):
+            continue
+        prior = [
+            p
+            for p in points
+            if 0 < (year_end - p.date).days <= _MAX_QUARTER_WINDOW_DAYS
+        ]
+        if len(prior) != 3:
+            continue
+        chain = [*(p.date for p in prior), year_end]
+        if not all(low <= (b - a).days <= high for a, b in zip(chain, chain[1:])):
+            continue
+        try:
+            value = year_total.value - reduce(add, (p.value for p in prior))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if not _is_real(value):
+            continue
+        added.append(Point(date=year_end, value=value))
+
+    if not added:
+        return quarterly, []
+    merged = sorted([*points, *added], key=lambda p: p.date)
+    return (
+        MetricSeries(metric_id=quarterly.metric_id, points=merged, available=True),
+        [p.date for p in added],
+    )
+
+
 # The 20-metric catalog both `sources/yfinance/adapter.py` and
 # `sources/twelvedata/adapter.py` populate. Flow (income/cash-flow-statement) metrics
 # sum correctly over a trailing 4-quarter window; everything else in `CompanyFundamentals.series`
@@ -142,7 +203,33 @@ _GROSS_MARGIN_TTM_NOTE = (
 )
 
 
-def derive_ttm_fundamentals(quarterly: CompanyFundamentals) -> CompanyFundamentals:
+def _has_ttm_gap(quarterly: MetricSeries, ttm: MetricSeries) -> bool:
+    """Whether a flow metric's TTM is missing windows a reconstructed quarter could fix: a
+    NaN gap marker, or no TTM at all despite at least four quarters being present."""
+    if any(not _is_real(p.value) for p in ttm.points):
+        return True
+    return not ttm.available and len(quarterly.points) >= 4
+
+
+def _unfilled_note(metric_id: str) -> str:
+    return (
+        f"{metric_id}: a quarter is missing at the source and could not be reconstructed "
+        "because the annual data was unavailable, so its TTM has gaps"
+    )
+
+
+def _fill_note(metric_id: str, dates: list[date]) -> str:
+    shown = ", ".join(d.isoformat() for d in dates)
+    return (
+        f"{metric_id}: the {shown} quarter is missing at the source and was derived as the "
+        "fiscal-year total minus the other three quarters (approximate for per-share metrics)"
+    )
+
+
+def derive_ttm_fundamentals(
+    quarterly: CompanyFundamentals,
+    annual_loader: Callable[[], CompanyFundamentals | None] | None = None,
+) -> CompanyFundamentals:
     """Derive a `Period.TTM` `CompanyFundamentals` from a `Period.QUARTERLY` one.
 
     Both registered sources' `capability.py` now declare `Period.TTM`, but neither adapter
@@ -161,6 +248,13 @@ def derive_ttm_fundamentals(quarterly: CompanyFundamentals) -> CompanyFundamenta
     adapter, so it can't be correctly recomputed here — its whole quarterly series passes
     through instead (each point still that quarter's own margin, not a trailing one), with a
     `source_limits` note disclosing the approximation.
+
+    `annual_loader` (optional) supplies the matching `Period.ANNUAL` fundamentals, used only
+    to reconstruct a quarter the source omitted (see `fill_missing_fourth_quarters`). It is
+    called **at most once, and only when some flow metric's TTM actually has a gap**, so a
+    ticker with complete quarters never pays for the extra fetch; returning `None` (e.g. the
+    annual fetch failed) just leaves the gap visible. Every reconstruction is disclosed in
+    `source_limits`.
     """
     if quarterly.period != Period.QUARTERLY:
         raise ValueError(
@@ -169,9 +263,24 @@ def derive_ttm_fundamentals(quarterly: CompanyFundamentals) -> CompanyFundamenta
         )
 
     new_series: dict[str, MetricSeries] = {}
+    fill_notes: list[str] = []
+    annual: CompanyFundamentals | None = None
+    annual_loaded = False
     for metric_id, series in quarterly.series.items():
         if metric_id in _FLOW_METRIC_IDS:
-            new_series[metric_id] = ttm_series(series, Period.QUARTERLY, mark_gaps=True)
+            ttm = ttm_series(series, Period.QUARTERLY, mark_gaps=True)
+            if annual_loader is not None and _has_ttm_gap(series, ttm):
+                if not annual_loaded:
+                    annual, annual_loaded = annual_loader(), True
+                annual_series = annual.series.get(metric_id) if annual else None
+                if annual is None:
+                    fill_notes.append(_unfilled_note(metric_id))
+                if annual_series is not None:
+                    filled, dates = fill_missing_fourth_quarters(series, annual_series)
+                    if dates:
+                        ttm = ttm_series(filled, Period.QUARTERLY, mark_gaps=True)
+                        fill_notes.append(_fill_note(metric_id, dates))
+            new_series[metric_id] = ttm
         elif metric_id != "net_margin":
             new_series[metric_id] = series
 
@@ -184,7 +293,7 @@ def derive_ttm_fundamentals(quarterly: CompanyFundamentals) -> CompanyFundamenta
         )
         new_series["net_margin"] = resolve(interim, _NET_MARGIN)
 
-    source_limits = list(quarterly.source_limits)
+    source_limits = [*quarterly.source_limits, *fill_notes]
     gross_margin = quarterly.series.get("gross_margin")
     if gross_margin is not None and gross_margin.available:
         source_limits.append(_GROSS_MARGIN_TTM_NOTE)

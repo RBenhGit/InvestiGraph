@@ -487,12 +487,34 @@ preserved intact on `main`.
         attached to every fetched fundamentals; `test_render_attaches_fx_to_every_fetched_
         fundamentals_not_just_the_last` fails on the old code. The web path was already correct
         (`load_fundamentals_for_charts` → `load_fundamentals`).
-      - **Known regression for QLTU.TA:** EPS is now a `Period.TTM` chart, and twelvedata lacks
-        its Q4 2025 quarter, so no four consecutive quarters exist and the EPS chart is
-        "no data" (it showed annual EPS before). Any ticker with a missing quarter will do the
-        same. Not changed here — the TTM cadence is the branch's deliberate spec.
+      - **Known regression for QLTU.TA — fixed in the entry below.** EPS is a `Period.TTM`
+        chart and twelvedata omits its Q4 2025 EPS, so the chart was "no data".
       - **`DATA_SOURCE` in a local `.env` still wins** over the new code default (`config.py`
         calls `load_dotenv()`); `.env.example` now says `twelvedata`.
+
+- [x] **2026-11-14 — Reconstruct a quarter the source omits, so TTM EPS shows the latest
+      quarters.** Both twelvedata and yfinance report QLTU.TA's Q4 2025 *net income* but not
+      its Q4 2025 *EPS*, so no four consecutive quarters existed and every TTM EPS window was
+      skipped. `template/trailing.py`'s `fill_missing_fourth_quarters` derives the missing
+      quarter as the fiscal-year total minus the other three, and only when exactly three
+      plainly consecutive quarters precede the year end (two unknowns can't be solved from one
+      total), the annual point exists, and the arithmetic is currency-consistent; otherwise it
+      refuses rather than guess. `derive_ttm_fundamentals(..., annual_loader=)` calls it, and
+      both adapters pass a lazy loader for the `Period.ANNUAL` fetch. QLTU.TA TTM EPS is now
+      4.676 (= the annual figure at the fiscal year end), 4.058, 4.795 for 2025-12-31 /
+      2026-03-31 / 2026-06-30, with a `source_limits` line naming the derived quarter and
+      calling it approximate (per-share figures aren't strictly additive: the share count
+      drifts). 605 pytest + 118 vitest passing, ruff clean.
+      - **Cost, and why the loader is lazy:** Twelve Data bills the statement endpoints
+        heavily (the free tier's 610 credits/min allows roughly two full fetches), so the
+        annual fetch happens only when a flow metric's TTM actually has a gap — tickers with
+        complete quarters pay nothing. The TTM result is cached for the day like any other.
+      - **If the annual fetch fails** (e.g. out of credits) the TTM keeps its gap and a
+        `source_limits` line says the quarter "could not be reconstructed" instead of leaving
+        an unexplained "no data".
+      - **Cache caveat:** the cache is keyed by day, so a TTM entry written before this change
+        keeps showing the old gap until tomorrow (or until its `*_ttm_*` file under
+        `.cache/investigraph/` is deleted).
 
 ## Open items carried from Phase 0
 

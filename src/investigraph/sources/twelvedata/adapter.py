@@ -73,7 +73,16 @@ class TwelveDataAdapter:
     ) -> CompanyFundamentals:
         if period == Period.TTM:
             quarterly = self.fetch(ticker, market, Period.QUARTERLY, range)
-            return derive_ttm_fundamentals(quarterly)
+
+            def annual_loader() -> CompanyFundamentals | None:
+                # Lazy, and only to reconstruct a quarter the source omitted; a failed
+                # annual fetch must not fail a TTM request that has its quarters.
+                try:
+                    return self.fetch(ticker, market, Period.ANNUAL, range)
+                except SourceUnavailable:
+                    return None
+
+            return derive_ttm_fundamentals(quarterly, annual_loader=annual_loader)
 
         symbol = ticker.removesuffix(".TA") if market == Market.TASE else ticker
         mic_code = "XTAE" if market == Market.TASE else None

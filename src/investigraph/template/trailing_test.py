@@ -13,6 +13,7 @@ from investigraph.template.trailing import (
     TrailingInput,
     TrailingMetric,
     derive_ttm_fundamentals,
+    fill_missing_fourth_quarters,
     resolve_trailing,
     ttm_series,
 )
@@ -761,3 +762,133 @@ def test_pe_ratio_metric_is_the_plain_one_when_there_is_no_fx_series():
     )
 
     assert pe_ratio_metric(fundamentals) is PE_RATIO_TTM
+
+
+# --- Reconstructing a missing fourth quarter ---------------------------------
+# Both sources omit QLTU.TA's Q4 2025 EPS (but not its net income), so no four
+# consecutive quarters exist and every TTM EPS window is skipped. Q4 is the fiscal-year
+# total minus the other three quarters. Numbers below are QLTU.TA's real ones.
+
+_QLTU_QUARTERS = [
+    (date(2025, 3, 31), 1.227),
+    (date(2025, 6, 30), 1.398),
+    (date(2025, 9, 30), 2.315),
+    (date(2026, 3, 31), 0.609),
+    (date(2026, 6, 30), 2.135),
+]
+_QLTU_ANNUAL = [(date(2024, 12, 31), 3.017), (date(2025, 12, 31), 4.676)]
+
+
+def _values(series: MetricSeries) -> dict[date, float]:
+    return {p.date: p.value.value for p in series.points}
+
+
+def test_fill_derives_the_missing_fourth_quarter_as_annual_minus_the_other_three():
+    filled, dates = fill_missing_fourth_quarters(
+        _money_series("eps", _QLTU_QUARTERS), _money_series("eps", _QLTU_ANNUAL)
+    )
+
+    assert dates == [date(2025, 12, 31)]
+    assert _values(filled)[date(2025, 12, 31)] == pytest.approx(4.676 - 4.940)
+    # The real points are untouched and the result stays date-ordered.
+    assert _values(filled)[date(2025, 9, 30)] == 2.315
+    assert [p.date for p in filled.points] == sorted(p.date for p in filled.points)
+
+
+def test_fill_leaves_a_quarter_the_source_already_reports_alone():
+    quarters = [*_QLTU_QUARTERS, (date(2025, 12, 31), -0.25)]
+
+    filled, dates = fill_missing_fourth_quarters(
+        _money_series("eps", quarters), _money_series("eps", _QLTU_ANNUAL)
+    )
+
+    assert dates == []
+    assert _values(filled)[date(2025, 12, 31)] == -0.25
+
+
+def test_fill_refuses_when_another_quarter_of_that_year_is_also_missing():
+    # Two unknowns (Q2 and Q4) cannot be solved from one annual total.
+    quarters = [q for q in _QLTU_QUARTERS if q[0] != date(2025, 6, 30)]
+
+    filled, dates = fill_missing_fourth_quarters(
+        _money_series("eps", quarters), _money_series("eps", _QLTU_ANNUAL)
+    )
+
+    assert dates == []
+    assert date(2025, 12, 31) not in _values(filled)
+
+
+def test_fill_refuses_without_an_annual_point_for_that_fiscal_year():
+    filled, dates = fill_missing_fourth_quarters(
+        _money_series("eps", _QLTU_QUARTERS),
+        _money_series("eps", [(date(2024, 12, 31), 3.017)]),
+    )
+
+    assert dates == []
+
+
+def test_fill_refuses_when_annual_and_quarterly_currencies_differ():
+    filled, dates = fill_missing_fourth_quarters(
+        _money_series("eps", _QLTU_QUARTERS),
+        _money_series("eps", _QLTU_ANNUAL, currency=Currency.ILS),
+    )
+
+    assert dates == []
+
+
+def _qltu_quarterly_fundamentals() -> CompanyFundamentals:
+    return _fundamentals(
+        {"eps": _money_series("eps", _QLTU_QUARTERS)}, period=Period.QUARTERLY
+    )
+
+
+def _qltu_annual_fundamentals() -> CompanyFundamentals:
+    return _fundamentals(
+        {"eps": _money_series("eps", _QLTU_ANNUAL)}, period=Period.ANNUAL
+    )
+
+
+def test_derive_ttm_uses_the_reconstructed_quarter_and_says_so():
+    result = derive_ttm_fundamentals(
+        _qltu_quarterly_fundamentals(), annual_loader=_qltu_annual_fundamentals
+    )
+
+    ttm = _values(result.series["eps"])
+    # At a fiscal year end the TTM must equal the annual figure exactly; the two later
+    # windows roll forward through the reconstructed quarter.
+    assert ttm[date(2025, 12, 31)] == pytest.approx(4.676)
+    assert ttm[date(2026, 3, 31)] == pytest.approx(4.676 - 1.227 + 0.609)
+    assert ttm[date(2026, 6, 30)] == pytest.approx(
+        4.676 - 1.227 - 1.398 + 0.609 + 2.135
+    )
+    note = next(limit for limit in result.source_limits if "eps" in limit)
+    assert "2025-12-31" in note and "approximate" in note
+
+
+def test_derive_ttm_does_not_call_the_annual_loader_when_there_is_no_gap():
+    calls = []
+
+    def loader():
+        calls.append(1)
+        return _qltu_annual_fundamentals()
+
+    complete = _fundamentals(
+        {"eps": _money_series("eps", [(d, 1.0) for d in _Q])},
+        period=Period.QUARTERLY,
+    )
+    derive_ttm_fundamentals(complete, annual_loader=loader)
+
+    assert calls == []
+
+
+def test_derive_ttm_keeps_the_gap_when_the_annual_series_is_unavailable():
+    result = derive_ttm_fundamentals(
+        _qltu_quarterly_fundamentals(), annual_loader=lambda: None
+    )
+
+    assert result.series["eps"].available is False
+    # No reconstruction happened, and the user is told why the chart is empty rather than
+    # being left with an unexplained "no data".
+    assert not any("approximate" in limit for limit in result.source_limits)
+    note = next(limit for limit in result.source_limits if "eps" in limit)
+    assert "could not be reconstructed" in note

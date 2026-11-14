@@ -258,3 +258,30 @@ def test_fetch_ttm_derives_from_a_quarterly_fetch():
     mock_derive.assert_called_once()
     (quarterly_arg,), _ = mock_derive.call_args
     assert quarterly_arg.period == Period.QUARTERLY
+
+
+def test_fetch_ttm_hands_derive_a_loader_that_fetches_the_annual_series():
+    # The annual series is only used to reconstruct a missing quarter; the loader is
+    # lazy so a ticker with complete quarters never pays for the extra fetch.
+    with patch(
+        "investigraph.sources.yfinance.adapter.derive_ttm_fundamentals",
+        return_value=object(),
+    ) as mock_derive:
+        _fetch_with_fixture("aapl", "AAPL", Market.US, Period.TTM, "5y")
+
+    loader = mock_derive.call_args.kwargs["annual_loader"]
+    with patch.object(YFinanceAdapter, "fetch", return_value="annual") as fetch:
+        assert loader() == "annual"
+    assert fetch.call_args.args[2] == Period.ANNUAL
+
+
+def test_ttm_annual_loader_degrades_to_none_when_the_source_is_unavailable():
+    with patch(
+        "investigraph.sources.yfinance.adapter.derive_ttm_fundamentals",
+        return_value=object(),
+    ) as mock_derive:
+        _fetch_with_fixture("aapl", "AAPL", Market.US, Period.TTM, "5y")
+
+    loader = mock_derive.call_args.kwargs["annual_loader"]
+    with patch.object(YFinanceAdapter, "fetch", side_effect=SourceUnavailable("down")):
+        assert loader() is None
