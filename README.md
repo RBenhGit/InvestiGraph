@@ -79,7 +79,14 @@ point is that quarter's own margin, not a trailing figure — flagged in the pag
 panel; `net_margin` *is* correctly recomputed (both its inputs are available as flow series). A
 TTM window missing a quarter (a gap in the underlying quarterly data) breaks the plotted line at
 that point rather than silently interpolating across it — the same convention every other
-computed metric in `template/` uses for a bad or missing point. The
+computed metric in `template/` uses for a bad or missing point. Two things reduce those gaps,
+both disclosed in the source-limits panel: a quarter the source omits (e.g. a Q4 EPS that is
+reported for the year but not on its own) is reconstructed as the fiscal-year total minus the
+other three quarters — exact for additive metrics, approximate for per-share ones — and, since
+Twelve Data's plan returns only ~6 quarters (anything longer is Enterprise-only), the annual
+figure is added as the TTM value at each earlier fiscal year end, giving exact points at yearly
+cadence before the quarterly window. Both use the `Period.ANNUAL` fetch, so each TTM fetch costs
+one extra annual fetch. The
 default `fundamentals` chart set renders 6 charts; the catalog holds 21 — use `--charts`
 (comma-separated ids) or the web UI's checkbox picker for any other combination. Tickers are
 matched by `^[A-Za-z0-9.\-]+$` — no exchange-qualified form like `AAPL:NASDAQ`; use the bare

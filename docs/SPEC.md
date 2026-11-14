@@ -39,7 +39,9 @@ native currency, and degrade gracefully to "No Data" where a source lacks a metr
   happens to expose its own native TTM endpoint. Point-in-time metrics and `price` pass
   through their full quarterly series unchanged; `gross_margin` is a labeled approximation
   (its numerator isn't tracked as its own series, so it can't be correctly recomputed) —
-  see `README.md`'s CLI section for the full breakdown.
+  see `README.md`'s CLI section for the full breakdown. TTM also uses the annual series: to
+  reconstruct a quarter the source omits, and as the TTM value at each earlier fiscal year end
+  (yearly cadence beyond the few quarters a source returns).
 
 **Out of scope (v1):**
 - Interactive UI for the CLI's static PNG/HTML/PDF export — that output stays static
