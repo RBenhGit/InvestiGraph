@@ -64,7 +64,9 @@ class _StubAdapter:
     def fetch(self, ticker, market, period, range) -> CompanyFundamentals:
         if self._fetch_error:
             raise self._fetch_error
-        return self._fundamentals
+        # Like a real adapter, hand back the period/range that was asked for: the TTM path
+        # builds from a QUARTERLY (+ ANNUAL) fetch and rejects any other period.
+        return self._fundamentals.model_copy(update={"period": period, "range": range})
 
 
 def test_render_writes_html_output(tmp_path, monkeypatch):
@@ -261,6 +263,79 @@ def test_render_attaches_fx_to_every_fetched_fundamentals_not_just_the_last(
     assert code == 0
     # revenue (annual) and margins (quarterly) are two distinct (period, range) fetches.
     assert len(attached) == 2
+
+
+def _fundamentals_with_eps() -> CompanyFundamentals:
+    # A flow metric must be present for TTM to need the annual series at all: with price-only
+    # data there is nothing to reconstruct or extend, so it (rightly) is never requested.
+    fundamentals = _fundamentals()
+    fundamentals.series["eps"] = MetricSeries(
+        metric_id="eps",
+        points=[
+            Point(
+                date=date(2025 + i // 4, 3 * (i % 4) + 3, 28),
+                value=Money(value=1.0, currency=Currency.USD, scale=Unit.ONES),
+            )
+            for i in range(5)
+        ],
+        available=True,
+    )
+    return fundamentals
+
+
+def test_render_builds_ttm_from_quarterly_and_annual_fetches_never_a_ttm_fetch(
+    tmp_path, monkeypatch
+):
+    # The EPS chart is a TTM chart. TTM is composed from the QUARTERLY and ANNUAL series
+    # (the same cache-aware fetches the other charts use), not fetched as its own entry, so a
+    # page never pays for the same statements twice.
+    monkeypatch.chdir(tmp_path)
+    fetch_calls = []
+
+    class _RecordingAdapter(_StubAdapter):
+        def fetch(self, ticker, market, period, range):
+            fetch_calls.append((period, range))
+            return super().fetch(ticker, market, period, range)
+
+    adapter = _RecordingAdapter(fundamentals=_fundamentals_with_eps())
+    with patch("investigraph.__main__.get_source", return_value=adapter):
+        code = main(["AAPL", "--charts", "eps", "--out", str(tmp_path / "o.html")])
+
+    assert code == 0
+    assert Period.TTM not in {period for period, _ in fetch_calls}
+    assert sorted(fetch_calls) == sorted(
+        [(Period.QUARTERLY, "max"), (Period.ANNUAL, "max")]
+    )
+
+
+def test_render_reuses_cached_quarterly_and_annual_for_ttm_without_refetching(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    fetch_calls = []
+
+    class _RecordingAdapter(_StubAdapter):
+        def fetch(self, ticker, market, period, range):
+            fetch_calls.append((period, range))
+            return super().fetch(ticker, market, period, range)
+
+    adapter = _RecordingAdapter(fundamentals=_fundamentals_with_eps())
+    with patch("investigraph.__main__.get_source", return_value=adapter):
+        # margins (QUARTERLY/max) and revenue (ANNUAL/max) already pull both series...
+        main(["AAPL", "--charts", "margins,revenue", "--out", str(tmp_path / "a.html")])
+        before = len(fetch_calls)
+        # ...so a TTM chart on top of them costs no further fetch at all.
+        main(
+            [
+                "AAPL",
+                "--charts",
+                "margins,revenue,eps",
+                "--out",
+                str(tmp_path / "b.html"),
+            ]
+        )
+
+    assert len(fetch_calls) == before
 
 
 def test_render_with_unknown_chart_id_returns_error(tmp_path, monkeypatch, capsys):

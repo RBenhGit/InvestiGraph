@@ -85,8 +85,10 @@ reported for the year but not on its own) is reconstructed as the fiscal-year to
 other three quarters — exact for additive metrics, approximate for per-share ones — and, since
 Twelve Data's plan returns only ~6 quarters (anything longer is Enterprise-only), the annual
 figure is added as the TTM value at each earlier fiscal year end, giving exact points at yearly
-cadence before the quarterly window. Both use the `Period.ANNUAL` fetch, so each TTM fetch costs
-one extra annual fetch. The
+cadence before the quarterly window. Both use the `Period.ANNUAL` series. TTM is composed from the cached QUARTERLY and ANNUAL
+series for the same range (`sources/ttm.py`), not fetched and cached as an entry of its own, so
+a page whose other charts already loaded those two pays no extra API call for its TTM charts —
+and the TTM charts are built from exactly the data the other charts show. The
 default `fundamentals` chart set renders 6 charts; the catalog holds 21 — use `--charts`
 (comma-separated ids) or the web UI's checkbox picker for any other combination. Tickers are
 matched by `^[A-Za-z0-9.\-]+$` — no exchange-qualified form like `AAPL:NASDAQ`; use the bare

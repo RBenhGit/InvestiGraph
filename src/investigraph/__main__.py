@@ -28,6 +28,7 @@ from investigraph.sources.commission import (
 )
 from investigraph.sources.fx_rate.adapter import attach_fx_series
 from investigraph.sources.market import is_valid_ticker, market_of, normalize_ticker
+from investigraph.sources.ttm import build_ttm_fundamentals
 from investigraph.sources.ranges import RANGES
 from investigraph.sources.registry import (
     get_capability,
@@ -210,9 +211,16 @@ def _run_render(args: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
 
+        def fetch(p: Period) -> CompanyFundamentals:
+            return _fetch_with_cache_fallback(
+                adapter, cache, ticker, source_name, market, p, range_
+            )
+
         try:
-            fundamentals = _fetch_with_cache_fallback(
-                adapter, cache, ticker, source_name, market, period, range_
+            # TTM is composed from the cached QUARTERLY + ANNUAL series (sources/ttm.py), the
+            # same way web/service.py does, rather than fetched and cached on its own.
+            fundamentals = (
+                build_ttm_fundamentals(fetch) if period == Period.TTM else fetch(period)
             )
         except TickerNotFound:
             print(f"error: ticker not found: {ticker}", file=sys.stderr)

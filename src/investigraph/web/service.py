@@ -14,14 +14,53 @@ from investigraph.sources.base import SourceUnavailable
 from investigraph.sources.fx_rate.adapter import attach_fx_series
 from investigraph.sources.market import market_of
 from investigraph.sources.registry import get_source
+from investigraph.sources.ttm import build_ttm_fundamentals
 from investigraph.sources.validation import check_request
-from investigraph.template.models import CompanyFundamentals, Period
+from investigraph.template.models import CompanyFundamentals, Market, Period
+
+
+def _fetch_cached(
+    adapter,
+    cache: TemplateCache,
+    ticker: str,
+    source_name: str,
+    market: Market,
+    period: Period,
+    range_: str,
+    today: date,
+) -> CompanyFundamentals:
+    """Cache-first fetch of one `(period, range)` series, with a stale-cache fallback when the
+    source is unavailable. Returns the **raw** adapter result: no capability limits and no
+    derived series (`load_fundamentals` adds those), so it is safe to build another series from
+    it without inheriting notes that describe this fetch rather than the new series."""
+    fundamentals = cache.get(ticker, source_name, period, range_, today)
+    if fundamentals is not None:
+        return fundamentals
+    try:
+        fundamentals = adapter.fetch(ticker, market, period, range_)
+        cache.put(ticker, source_name, period, range_, today, fundamentals)
+        return fundamentals
+    except SourceUnavailable:
+        stale = cache.latest(ticker, source_name, period, range_)
+        if stale is None:
+            raise
+        stale.source_limits.append(
+            "network/API unavailable; showing a stale cached page"
+        )
+        return stale
 
 
 def load_fundamentals(
     ticker: str, source_name: str, period: Period, range_: str
 ) -> CompanyFundamentals:
     """Resolve a ticker to a `CompanyFundamentals`, cache-first, with capability limits merged.
+
+    `Period.TTM` is **composed** from the cached QUARTERLY and ANNUAL series for the same range
+    (`sources/ttm.py`) instead of being fetched and cached as an entry of its own. A page whose
+    other charts already loaded those two series therefore pays nothing for its TTM charts
+    (previously a TTM fetch re-downloaded both, ~300 Twelve Data credits each), and the TTM
+    charts are built from exactly the data the other charts show. Deriving is cheap, so the
+    result itself is not cached.
 
     Raises the source layer's typed errors unchanged (`TickerNotFound`,
     `MissingCredentials`, `SourceUnavailable`, and `KeyError` for an unknown source).
@@ -31,19 +70,15 @@ def load_fundamentals(
     cache = TemplateCache()
     today = date.today()
 
-    fundamentals = cache.get(ticker, source_name, period, range_, today)
-    if fundamentals is None:
-        try:
-            fundamentals = adapter.fetch(ticker, market, period, range_)
-            cache.put(ticker, source_name, period, range_, today, fundamentals)
-        except SourceUnavailable:
-            stale = cache.latest(ticker, source_name, period, range_)
-            if stale is None:
-                raise
-            stale.source_limits.append(
-                "network/API unavailable; showing a stale cached page"
-            )
-            fundamentals = stale
+    def fetch(p: Period) -> CompanyFundamentals:
+        return _fetch_cached(
+            adapter, cache, ticker, source_name, market, p, range_, today
+        )
+
+    if period == Period.TTM:
+        fundamentals = build_ttm_fundamentals(fetch)
+    else:
+        fundamentals = fetch(period)
 
     # Capability limits are a cheap, deterministic function of the request, so they are
     # computed fresh on every render path (cache hit, fetch, or stale fallback) rather

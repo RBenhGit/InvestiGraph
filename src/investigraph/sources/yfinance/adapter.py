@@ -3,6 +3,7 @@ import yfinance as yf
 
 from investigraph.sources.base import Capability, SourceUnavailable, TickerNotFound
 from investigraph.sources.currency import AGOROT_CODE, map_currency
+from investigraph.sources.ttm import build_ttm_fundamentals
 from investigraph.sources.yfinance.capability import CAPABILITY
 from investigraph.template.models import (
     CompanyFundamentals,
@@ -14,7 +15,6 @@ from investigraph.template.models import (
     Point,
     Unit,
 )
-from investigraph.template.trailing import derive_ttm_fundamentals
 
 # yfinance `history(period=...)` accepts each of these directly.
 _YFINANCE_PERIODS = {
@@ -66,17 +66,9 @@ class YFinanceAdapter:
         (only the latter triggers the stale-cache fallback).
         """
         if period == Period.TTM:
-            quarterly = self.fetch(ticker, market, Period.QUARTERLY, range)
-
-            def annual_loader() -> CompanyFundamentals | None:
-                # Lazy, and only to reconstruct a quarter the source omitted; a failed
-                # annual fetch must not fail a TTM request that has its quarters.
-                try:
-                    return self.fetch(ticker, market, Period.ANNUAL, range)
-                except SourceUnavailable:
-                    return None
-
-            return derive_ttm_fundamentals(quarterly, annual_loader=annual_loader)
+            return build_ttm_fundamentals(
+                lambda p: self.fetch(ticker, market, p, range)
+            )
 
         try:
             return self._fetch(ticker, market, period, range)

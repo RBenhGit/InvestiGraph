@@ -140,3 +140,129 @@ def test_load_fundamentals_attaches_fx_even_on_a_cache_hit(tmp_path, monkeypatch
     assert adapter.fetch_calls == 1
     assert attach.call_count == 2
     attach.assert_called_with(cached)
+
+
+# --- TTM is composed from the cached QUARTERLY + ANNUAL series --------------------------------
+
+
+def _with_eps(period: Period, eps: list[tuple[date, float]]) -> CompanyFundamentals:
+    base = _fundamentals()
+    base.period = period
+    base.series["eps"] = MetricSeries(
+        metric_id="eps",
+        points=[
+            Point(
+                date=d,
+                value=Money(value=v, currency=Currency.USD, scale=Unit.ONES),
+            )
+            for d, v in eps
+        ],
+        available=True,
+    )
+    return base
+
+
+class _PeriodAdapter:
+    """A real adapter hands back the period it was asked for; counts fetches per period."""
+
+    def __init__(self, annual_error: Exception | None = None):
+        self.calls: list[Period] = []
+        self._annual_error = annual_error
+
+    def capability(self) -> Capability:
+        return Capability(
+            markets={Market.US},
+            periods={Period.ANNUAL, Period.QUARTERLY, Period.TTM},
+            # QUARTERLY is shallow on purpose: its range limit must not leak into TTM's notes.
+            max_history={Period.ANNUAL: 6, Period.QUARTERLY: 1, Period.TTM: 6},
+            metrics={"price", "eps"},
+        )
+
+    def fetch(self, ticker, market, period, range_) -> CompanyFundamentals:
+        self.calls.append(period)
+        if period == Period.TTM:
+            raise AssertionError("TTM must be composed, never fetched")
+        if period == Period.ANNUAL:
+            if self._annual_error:
+                raise self._annual_error
+            return _with_eps(
+                Period.ANNUAL, [(date(2024, 12, 31), 3.0), (date(2025, 12, 31), 4.0)]
+            )
+        return _with_eps(Period.QUARTERLY, [(d, 1.0) for d in _QUARTER_ENDS])
+
+
+_QUARTER_ENDS = [
+    date(2025, 3, 31),
+    date(2025, 6, 30),
+    date(2025, 9, 30),
+    date(2025, 12, 31),
+    date(2026, 3, 31),
+]
+
+
+def _ttm_eps(fundamentals: CompanyFundamentals) -> dict[date, float]:
+    return {p.date: p.value.value for p in fundamentals.series["eps"].points}
+
+
+def test_a_cold_ttm_load_fetches_quarterly_and_annual_once_each_and_never_ttm(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    adapter = _PeriodAdapter()
+    with patch("investigraph.web.service.get_source", return_value=adapter):
+        result = service.load_fundamentals("AAPL", "twelvedata", Period.TTM, "max")
+
+    assert result.period == Period.TTM
+    assert sorted(adapter.calls, key=lambda p: p.value) == [
+        Period.ANNUAL,
+        Period.QUARTERLY,
+    ]
+    # Real TTM content, not an empty shell: the rolling sum and the annual year end.
+    ttm = _ttm_eps(result)
+    assert ttm[date(2025, 12, 31)] == 4.0
+    assert date(2024, 12, 31) in ttm
+
+
+def test_ttm_costs_no_fetch_when_quarterly_and_annual_are_already_cached(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    adapter = _PeriodAdapter()
+    with patch("investigraph.web.service.get_source", return_value=adapter):
+        # The page's own charts load these two anyway (cache-first).
+        service.load_fundamentals("AAPL", "twelvedata", Period.QUARTERLY, "max")
+        service.load_fundamentals("AAPL", "twelvedata", Period.ANNUAL, "max")
+        assert len(adapter.calls) == 2
+
+        service.load_fundamentals("AAPL", "twelvedata", Period.TTM, "max")
+        service.load_fundamentals("AAPL", "twelvedata", Period.TTM, "max")
+
+    assert len(adapter.calls) == 2  # TTM, loaded twice, fetched nothing
+
+
+def test_ttm_notes_describe_ttm_not_the_quarterly_fetch_it_was_built_from(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    with patch("investigraph.web.service.get_source", return_value=_PeriodAdapter()):
+        result = service.load_fundamentals("AAPL", "twelvedata", Period.TTM, "max")
+
+    # "max" exceeds the declared 6y TTM depth, so a TTM limit is expected; the shallow
+    # QUARTERLY (1y) / ANNUAL limits are about other fetches and must not be inherited.
+    assert any("for ttm" in limit for limit in result.source_limits)
+    assert not any("for quarterly" in limit for limit in result.source_limits)
+    assert not any("for annual" in limit for limit in result.source_limits)
+
+
+def test_ttm_still_loads_when_the_annual_fetch_fails_and_nothing_is_cached(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    adapter = _PeriodAdapter(annual_error=SourceUnavailable("out of credits"))
+    with patch("investigraph.web.service.get_source", return_value=adapter):
+        result = service.load_fundamentals("AAPL", "twelvedata", Period.TTM, "max")
+
+    assert result.period == Period.TTM
+    assert (
+        _ttm_eps(result)[date(2026, 3, 31)] == 4.0
+    )  # the quarterly rolling sum survives

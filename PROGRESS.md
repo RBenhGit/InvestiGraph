@@ -533,10 +533,8 @@ preserved intact on `main`.
       generator still derives TTM at QUARTERLY depth on purpose (an under-claim is safe, and a
       future adapter is not guaranteed to pass the annual loader). 615 pytest + 124 vitest
       passing, ruff clean, green with DATA_SOURCE set to either source.
-      - **Cost:** the annual loader is no longer lazy-on-gap — every TTM fetch now costs one
-        extra annual fetch (~300 credits against a 610/min budget). A lighter annual fetch
-        (income + cash flow only, no balance sheet or price series) would cut it by about a
-        third; not done.
+      - **Cost:** this entry's version fetched the annual series on every TTM fetch (~300
+        credits); superseded by the next entry, where TTM is composed from the cached series.
       - **Not solved:** genuinely deeper *quarterly* history needs Twelve Data Enterprise.
 
 - [x] **2026-11-14 — Twelve Data TASE price bars in the wrong unit (QLTU.TA P/E dip).**
@@ -575,6 +573,31 @@ preserved intact on `main`.
       unchanged. 631 pytest + 124 vitest passing, ruff clean, green with either `DATA_SOURCE`.
       - **Not changed:** the "Eps" label spelling (title-cased metric id) and the fact that
         money bars plot the raw scaled value (millions) without saying so on the axis.
+
+- [x] **2026-11-14 — TTM composed from the cached QUARTERLY + ANNUAL series (no extra API calls).**
+      A TTM request used to go to the adapter, which re-downloaded QUARTERLY and, since the
+      history extension, ANNUAL as well (301 Twelve Data credits each: income 100 + balance sheet
+      100 + cash flow 100 + price 1 — measured) although the page's other charts had just loaded
+      both. `sources/ttm.py`'s `build_ttm_fundamentals(fetch_period)` now builds TTM from
+      whatever `fetch_period(QUARTERLY / ANNUAL)` returns; `web/service.py` and `__main__.py` pass
+      their cache-aware fetch (the new `_fetch_cached` returns the **raw** series, so notes about
+      the quarterly fetch's own range limit cannot leak into TTM), and both adapters pass a fetch
+      back through themselves. A cold QLTU.TA page goes from 5 fetches (~1505 credits) to 3
+      (~903); with the quarterly/annual series cached, TTM costs 0. The derived TTM is no longer
+      cached as its own entry (deriving is cheap; the old `*_ttm_*` cache files are simply unused).
+      The annual series is still requested lazily, only when a flow metric needs it. 639 pytest +
+      124 vitest passing, ruff clean, green with either `DATA_SOURCE`.
+      - **Verified not to change the data:** TTM built from the cache vs fetched fresh from the
+        API — QLTU.TA (twelvedata): all 19 financial series identical; AAPL (yfinance): same.
+        The only differences are explained and unrelated: `fx_rate` (the loader attaches it), the
+        one QLTU price bar fixed after that cache entry was written (cache staleness), and
+        1e-6-relative float noise in Yahoo's adjusted AAPL history.
+      - **Balance sheet kept where it is needed:** the eight balance-sheet charts get it from
+        their own QUARTERLY/ANNUAL series; TTM reads only flow metrics from the annual series
+        and passes balance-sheet metrics through from the quarterly one, so nothing was dropped.
+      - **Process note:** a regex used to delete three superseded adapter tests also removed an
+        unrelated test constant (`_QLTU_ROWS`); caught by lint, restored, and the removed-lines
+        diff is now only the three old tests.
 
 ## Open items carried from Phase 0
 

@@ -315,51 +315,27 @@ def test_price_params_reach_the_time_series_request():
     assert "interval" not in seen["income_statement"]
 
 
-def test_fetch_ttm_derives_from_a_quarterly_fetch():
-    # The actual trailing-four-quarters math is covered by
-    # template/trailing_test.py's derive_ttm_fundamentals tests; this only
-    # confirms the adapter wires a TTM request through a QUARTERLY fetch
-    # into that function, rather than trying to fetch TTM natively.
+def test_fetch_ttm_is_built_from_quarterly_and_annual_fetches_of_this_adapter():
+    # The TTM math lives in template/trailing_test.py and sources/ttm_test.py; this only
+    # confirms a TTM request is delegated to build_ttm_fundamentals with a per-period fetch
+    # that goes back through this adapter, rather than trying to fetch TTM natively.
     sentinel = object()
     with patch(
-        "investigraph.sources.twelvedata.adapter.derive_ttm_fundamentals",
+        "investigraph.sources.twelvedata.adapter.build_ttm_fundamentals",
         return_value=sentinel,
-    ) as mock_derive:
+    ) as mock_build:
         result = _fetch_with_fixture("aapl", "AAPL", Market.US, Period.TTM, "5y")
 
     assert result is sentinel
-    mock_derive.assert_called_once()
-    (quarterly_arg,), _ = mock_derive.call_args
-    assert quarterly_arg.period == Period.QUARTERLY
-
-
-def test_fetch_ttm_hands_derive_a_loader_that_fetches_the_annual_series():
-    # The annual series is only used to reconstruct a missing quarter; the loader is
-    # lazy so a ticker with complete quarters never pays for the extra fetch.
-    with patch(
-        "investigraph.sources.twelvedata.adapter.derive_ttm_fundamentals",
-        return_value=object(),
-    ) as mock_derive:
-        _fetch_with_fixture("aapl", "AAPL", Market.US, Period.TTM, "5y")
-
-    loader = mock_derive.call_args.kwargs["annual_loader"]
-    with patch.object(TwelveDataAdapter, "fetch", return_value="annual") as fetch:
-        assert loader() == "annual"
-    assert fetch.call_args.args[2] == Period.ANNUAL
-
-
-def test_ttm_annual_loader_degrades_to_none_when_the_source_is_unavailable():
-    with patch(
-        "investigraph.sources.twelvedata.adapter.derive_ttm_fundamentals",
-        return_value=object(),
-    ) as mock_derive:
-        _fetch_with_fixture("aapl", "AAPL", Market.US, Period.TTM, "5y")
-
-    loader = mock_derive.call_args.kwargs["annual_loader"]
-    with patch.object(
-        TwelveDataAdapter, "fetch", side_effect=SourceUnavailable("down")
-    ):
-        assert loader() is None
+    fetch_period = mock_build.call_args.args[0]
+    with patch.object(TwelveDataAdapter, "fetch", return_value="fetched") as fetch:
+        assert fetch_period(Period.QUARTERLY) == "fetched"
+        assert fetch_period(Period.ANNUAL) == "fetched"
+    assert [call.args[2] for call in fetch.call_args_list] == [
+        Period.QUARTERLY,
+        Period.ANNUAL,
+    ]
+    assert all(call.args[3] == "5y" for call in fetch.call_args_list)
 
 
 # QLTU.TA, as the API really returned it: the series is labelled ILA (agorot) and every bar is in

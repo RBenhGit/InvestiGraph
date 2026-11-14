@@ -317,10 +317,11 @@ def derive_ttm_fundamentals(
     two things: reconstructing a quarter the source omitted (`fill_missing_fourth_quarters`),
     and extending the history with the annual figure as the TTM value at each earlier fiscal
     year end (`_with_annual_year_ends`) — sources return only a few quarters, but TTM at a
-    fiscal year end *is* the annual total. It is called **at most once**, but now on every
-    call that supplies it, so each TTM fetch costs one extra annual fetch (Twelve Data bills
-    the statement endpoints heavily). Returning `None` (e.g. that fetch failed) leaves the
-    quarterly-only TTM, with a note if a gap could not be filled. Every reconstruction and the
+    fiscal year end *is* the annual total. It is called **at most once**, and only if some
+    flow metric is present. The loader decides where the annual series comes from: the web and
+    CLI loaders hand back the cache-aware series the page's other charts already loaded
+    (`sources/ttm.py`), so it normally costs nothing extra. Returning `None` (e.g. the fetch
+    failed) leaves the quarterly-only TTM, with a note if a gap could not be filled. Every reconstruction and the
     yearly cadence of the older history are disclosed in `source_limits`.
     """
     if quarterly.period != Period.QUARTERLY:
