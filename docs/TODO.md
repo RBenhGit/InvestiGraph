@@ -1,7 +1,7 @@
 # רשימת משימות פתוחות
 
 עודכן: 2026-11-14. הקשר: אחרי מיזוג `feat/per-chart-config`, תיקוני TASE (QLTU.TA) ושחזור רבעון חסר.
-מצב קוד: `main` נקי; commits מקומיים ממתינים לדחיפה ל-origin (ראה `git log origin/main..main`).
+מצב קוד: `main` נקי ומסונכרן עם origin (נכון ל-2026-11-14).
 
 ## בוצע
 - [x] טיפול בקבצים הלא-committed: זיכרון ה-reviewer ו-Publish נשמרו; `settings.json` ו-README שוחזרו.

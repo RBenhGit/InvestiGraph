@@ -79,7 +79,12 @@ its "why."
   agorot (`currency == "ILA"`; `/api/live-prices` divides by 100), and a TASE ticker can file in
   USD while trading in ILS (QLTU.TA) — `sources/fx_rate/` supplies a spot rate for EPS
   (valuation) and a per-date `fx_rate` series for the P/E chart; without a rate they refuse
-  rather than mix currencies.
+  rather than mix currencies. Two more: Twelve Data labels a TASE price series `ILA` (agorot) but
+  can return an individual bar already in shekels, or 100x too high (QLTU.TA 2025-06-19, TEVA.TA
+  2010) — it is the API mixing units, not a parsing bug; `_fix_unit_mixups` rescales a bar that is
+  70-150x off its neighbours' median and says so in `source_limits`. And a chart axis must be
+  labelled with the *series'* currency (`charts/base.py`'s `currency_label`), not the market's
+  (`currency_symbol`) — a TASE ticker can trade in ILS and file in USD.
 - **The growth-rate fallback chain must not drift between the CLI and the web UI.** It is one
   function (`analyst_estimate_5y → historical_3y → historical_1y → None`), called from both
   entry points — it has already drifted apart once in the pre-merge Eps_Evaluation codebase and
