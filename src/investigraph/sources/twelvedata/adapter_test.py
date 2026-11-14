@@ -11,7 +11,11 @@ from investigraph.sources.base import (
     TickerNotFound,
 )
 from investigraph.sources.ranges import RANGES
-from investigraph.sources.twelvedata.adapter import TwelveDataAdapter, _price_params
+from investigraph.sources.twelvedata.adapter import (
+    TwelveDataAdapter,
+    _price_params,
+    _price_series,
+)
 from investigraph.template.models import Currency, Market, Period
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -356,3 +360,98 @@ def test_ttm_annual_loader_degrades_to_none_when_the_source_is_unavailable():
         TwelveDataAdapter, "fetch", side_effect=SourceUnavailable("down")
     ):
         assert loader() is None
+
+
+# QLTU.TA, as the API really returned it: the series is labelled ILA (agorot) and every bar is in
+# agorot except 2025-06-19, which arrives already in shekels (note the decimals). Divided by
+# 100 like the rest, that one bar became 3.59 and dipped the P/E line to ~0.3 for a day.
+_QLTU_ROWS = [  # newest first, like the API
+    {"datetime": "2025-06-23", "close": "35680"},
+    {"datetime": "2025-06-22", "close": "35900"},
+    {"datetime": "2025-06-19", "close": "359"},
+    {"datetime": "2025-06-18", "close": "34270"},
+    {"datetime": "2025-06-17", "close": "35390"},
+]
+
+
+def _price_json(rows, currency="ILA"):
+    return {"meta": {"currency": currency}, "values": rows}
+
+
+def _closes(series):
+    return {str(p.date): p.value.value for p in series.points}
+
+
+def test_a_bar_returned_in_shekels_inside_an_agorot_series_is_not_divided_again():
+    limits: list[str] = []
+
+    closes = _closes(_price_series(_price_json(_QLTU_ROWS), limits))
+
+    assert closes["2025-06-19"] == pytest.approx(359.0)
+    # Every other bar is still agorot -> shekels.
+    assert closes["2025-06-18"] == pytest.approx(342.70)
+    assert closes["2025-06-22"] == pytest.approx(359.0)
+
+
+def test_the_unit_correction_is_disclosed_with_its_date():
+    limits: list[str] = []
+
+    _price_series(_price_json(_QLTU_ROWS), limits)
+
+    note = next(limit for limit in limits if "price" in limit)
+    assert "2025-06-19" in note and "100x" in note
+
+
+def test_a_clean_agorot_series_is_just_divided_by_100_with_no_note():
+    clean = [r for r in _QLTU_ROWS if r["datetime"] != "2025-06-19"]
+    limits: list[str] = []
+
+    closes = _closes(_price_series(_price_json(clean), limits))
+
+    assert closes["2025-06-18"] == pytest.approx(342.70)
+    assert limits == []
+
+
+def test_a_real_large_one_day_move_is_not_mistaken_for_a_unit_error():
+    # A genuine -60% day is nowhere near the exact ~100x gap of a unit mix-up.
+    rows = [dict(r) for r in _QLTU_ROWS]
+    rows[2] = {"datetime": "2025-06-19", "close": "14000"}  # 140 shekels vs ~350
+    limits: list[str] = []
+
+    closes = _closes(_price_series(_price_json(rows), limits))
+
+    assert closes["2025-06-19"] == pytest.approx(140.0)
+    assert limits == []
+
+
+def test_a_non_agorot_series_is_never_touched():
+    rows = [
+        {"datetime": "2025-06-19", "close": "3.5"},
+        {"datetime": "2025-06-18", "close": "350"},
+        {"datetime": "2025-06-17", "close": "351"},
+    ]
+    limits: list[str] = []
+
+    closes = _closes(_price_series(_price_json(rows, currency="USD"), limits))
+
+    assert closes["2025-06-19"] == 3.5
+    assert limits == []
+
+
+def test_a_bar_100x_too_high_inside_an_agorot_series_is_rescaled_down():
+    # TEVA.TA 2010-03-28 as the API returned it: 2380000 between 23920 and 23650 (the other
+    # direction of the same unit mix-up).
+    rows = [
+        {"datetime": "2010-03-31", "close": "23650"},
+        {"datetime": "2010-03-28", "close": "2380000"},
+        {"datetime": "2010-03-25", "close": "23920"},
+        {"datetime": "2010-03-24", "close": "23800"},
+        {"datetime": "2010-03-23", "close": "23700"},
+    ]
+    limits: list[str] = []
+
+    closes = _closes(_price_series(_price_json(rows), limits))
+
+    assert closes["2010-03-28"] == pytest.approx(238.0)
+    assert closes["2010-03-25"] == pytest.approx(239.20)
+    assert any("2010-03-28" in limit and "100x" in limit for limit in limits)

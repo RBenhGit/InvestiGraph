@@ -1,3 +1,4 @@
+from datetime import date
 import os
 import time
 
@@ -293,7 +294,75 @@ def _price_series(price_json: dict, source_limits: list[str]) -> MetricSeries:
         for row in reversed(values)
         if row.get("datetime") is not None and row.get("close") is not None
     ]
+    if is_agorot:
+        points, restored = _fix_unit_mixups(points)
+        if restored:
+            shown = ", ".join(d.isoformat() for d in restored[:5])
+            source_limits.append(
+                f"price: {len(restored)} bar(s) ({shown}) were in a unit off by exactly 100x "
+                "from the rest of the agorot-labelled series and were rescaled"
+            )
     return MetricSeries(metric_id="price", points=points, available=True)
+
+
+# A unit mix-up is exactly 100x, give or take a day's move. No exchange-traded price moves
+# 70-150x in a day, so a bar this far from its neighbours is a units error, not a price.
+_UNIT_MIXUP_RATIO = (70, 150)
+
+
+def _fix_unit_mixups(points: list[Point]) -> tuple[list[Point], list[date]]:
+    """Correct a bar whose unit disagrees with its neighbours by exactly 100x.
+
+    Twelve Data labels a TASE series `ILA` (agorot) and quotes bars in agorot, but was seen
+    returning a few bars in another unit with no marker, in both directions:
+
+    * already in shekels (QLTU.TA 2025-06-19: close `359` between `34270` and `35900`) — the
+      blanket /100 made it 3.59 and dipped the P/E line to ~0.3 for a day; restored x100;
+    * 100x too high (TEVA.TA 2010-03-28: `2380000` between `23920` and `23650`) — scaled /100.
+
+    A bar is changed only when it is 70-150x away from the median of its nearest neighbours
+    (up to two each side, so one outlier cannot move the reference), so a genuine move never
+    qualifies. Returns the points and the dates changed.
+    """
+    values = [p.value.value for p in points]
+    low, high = _UNIT_MIXUP_RATIO
+    changed: list[date] = []
+    fixed: list[Point] = []
+    for i, point in enumerate(points):
+        neighbours = sorted(
+            values[j] for j in range(max(0, i - 2), min(len(values), i + 3)) if j != i
+        )
+        factor = 1.0
+        if neighbours:
+            mid = len(neighbours) // 2
+            reference = (
+                neighbours[mid]
+                if len(neighbours) % 2
+                else (neighbours[mid - 1] + neighbours[mid]) / 2
+            )
+            if reference > 0:
+                ratio = values[i] / reference
+                if (
+                    low <= 1 / ratio <= high
+                ):  # ~1/100 of its neighbours: already shekels
+                    factor = 100.0
+                elif low <= ratio <= high:  # ~100x its neighbours
+                    factor = 0.01
+        if factor == 1.0:
+            fixed.append(point)
+            continue
+        fixed.append(
+            Point(
+                date=point.date,
+                value=Money(
+                    value=values[i] * factor,
+                    currency=point.value.currency,
+                    scale=point.value.scale,
+                ),
+            )
+        )
+        changed.append(point.date)
+    return fixed, changed
 
 
 def _field_value(row: dict, field: str | tuple[str, ...]):

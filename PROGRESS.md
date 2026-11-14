@@ -539,6 +539,27 @@ preserved intact on `main`.
         third; not done.
       - **Not solved:** genuinely deeper *quarterly* history needs Twelve Data Enterprise.
 
+- [x] **2026-11-14 — Twelve Data TASE price bars in the wrong unit (QLTU.TA P/E dip).**
+      Twelve Data labels a TASE series `ILA` (agorot) and quotes every bar in agorot, but
+      occasionally returns a single bar in another unit with no marker. QLTU.TA 2025-06-19 came
+      back as close `359` (already shekels, with float noise `342.70001`) between `34270` and
+      `35900`; the blanket /100 turned it into 3.59 and the P/E line dipped to ~0.3 for a day.
+      It was **not** a missing decimal point in our parsing: the API itself mixed units.
+      `_fix_unit_mixups` (`sources/twelvedata/adapter.py`) now rescales a bar that is 70-150x
+      away from the median of its nearest neighbours (up to two each side) — a unit mix-up is
+      exactly 100x and no real price moves that far in a day — in **both** directions, and lists
+      the dates in `source_limits`. Checked against live data (5000 bars each): QLTU.TA 1 bar,
+      SCOP.TA 2 (raw `168.39999` / `145.10001`, the same shekel signature), FBRT.TA 0, and
+      TEVA.TA 3 bars in 2010 that were 100x too *high* (`2380000` vs `23920`; max price
+      23,800 -> 271). QLTU.TA's minimum P/E went from 0.34 to 5.9. 621 pytest + 124 vitest
+      passing, ruff clean, green with either `DATA_SOURCE`.
+      - **Cache caveat:** cached entries written today still hold the old price until tomorrow;
+        delete `QLTU.TA_twelvedata_annual_*_<today>.json` (and the quarterly/ttm ones) under
+        `.cache/investigraph/` to see it sooner (costs Twelve Data credits).
+      - **Process note:** while writing this fix a slice-replace truncated the end of
+        `adapter.py` (six statement functions); caught by comparing the function list and diff
+        against `HEAD` before committing and restored, so the commit is additions only.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the
