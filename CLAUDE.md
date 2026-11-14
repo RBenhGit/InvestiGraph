@@ -3,7 +3,7 @@
 ## Commands
 
 - Build: `uv sync`
-- Test (all): `scripts/test.sh` (runs `uv run pytest -q` plus `npx vitest run` for the front-end tests; `uv run pytest -q` alone for a backend-only check)
+- Test (all): `scripts/test.sh` (runs `uv run pytest -q` plus vitest under Node ≥22.22.2, which it selects itself; bare `npx vitest run` needs that Node on PATH; `uv run pytest -q` alone for a backend-only check)
 - Test (single): `uv run pytest -q <path>::<test_name>`
 - Lint: `uv run ruff check`
 - Format: `uv run ruff format`

@@ -1,4 +1,6 @@
 # UX Notes
+Status: all items implemented 2026-11-14 (see PROGRESS.md, `feat/per-chart-config` entry).
+
 ## Chrts format and visability
 1. I want to specify the all availible chart such that I will get the most value by viewing them along side each other. for example some chart I would like in ttm and some in annual time frame, for some I would like a linear or exponential fit attached to the graph for extrapulation perposes. Also, for these type of charts I would like the calculated slope or growth rate provided the fit.
 2. the section where the chart are displaied is in-efficient. I would like to use a wider space of the screen and not only 1/3 of it.

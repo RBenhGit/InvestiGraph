@@ -27,8 +27,8 @@ uv run python -m investigraph AAPL --out out/AAPL.html   # CLI → static chart 
 Copy [.env.example](.env.example) to `.env` and fill it in (`.env` is never committed):
 
 ```sh
-DATA_SOURCE=yfinance        # or twelvedata; overridable per render with --source
-TWELVEDATA_API_KEY=         # only required when DATA_SOURCE=twelvedata
+DATA_SOURCE=twelvedata      # default; or yfinance (free, no key); overridable per render with --source
+TWELVEDATA_API_KEY=         # required with twelvedata, the default
 ```
 
 `yfinance` needs no key. The Yahoo analyst-consensus data used by the valuation panel (growth
@@ -43,7 +43,11 @@ uv run python -m investigraph.web --host 0.0.0.0 --port 8000
 ```
 
 Enter a ticker once: the chart grid (Plotly.js, interactive) and the Bear/Base/Bull fair-value
-cards render from the same fetch. Save a valuation with an evaluator name and it shows up on
+cards render from the same fetch. Each chart declares its own period (quarterly / TTM / annual)
+and range, so one page can mix, say, a TTM EPS chart with a 10-year annual revenue chart; Revenue,
+Net Income, EPS and Free Cash Flow also have a toggleable linear/exponential trend-fit overlay
+with the fitted growth rate. Charts lay out three to a row. Methodology is on
+`/static/about.html`. Save a valuation with an evaluator name and it shows up on
 `/static/valuations.html`, a sortable "all valuations" dashboard with live prices and an
 upside-% chart. Key endpoints: `GET /chart-data`, `POST /api/valuate`, `GET/POST /api/history`,
 `DELETE /api/history/<id>`, `GET /api/valuations`, `GET /api/live-prices`,
@@ -64,7 +68,8 @@ uv run python -m investigraph TEVA.TA --source twelvedata --range 10y --out out/
 ```
 
 `TICKER [--source] [--period quarterly|ttm|annual] [--range 6m|1y|3y|5y|10y|max] [--chart-set]
-[--charts price,eps,margins] [--out PATH]`. `--out` accepts `.html`, `.png`, or `.pdf`; it
+[--charts price,eps,margins] [--out PATH]`. `--period` and `--range` are optional overrides;
+omitted, each chart uses its own declared period and range. `--out` accepts `.html`, `.png`, or `.pdf`; it
 defaults to `out/<TICKER>.html`. **`--period ttm` is derived, not natively fetched from either
 source** — Twelve Data has no TTM endpoint at all, and yfinance's native TTM statements exist
 but only cover income statement / cash flow, not the balance sheet, and can disagree with a
@@ -129,7 +134,7 @@ Data flows one way — **env-configured data source → per-source adapter → c
 display** — and the display layer (charts *and* valuation) reads only the template, never a
 data source directly.
 
-- **Pluggable data sources.** `yfinance` (free) and `twelvedata` (paid), chosen by `DATA_SOURCE`.
+- **Pluggable data sources.** `yfinance` (free) and `twelvedata` (paid), chosen by `DATA_SOURCE` (default `twelvedata`).
   Adding a source = an adapter + a declared `Capability` + a registry entry.
 - **Canonical template** (`template/models.py`, Pydantic): every monetary series is a
   `Money`-style `(value, currency, scale)` value, so a TASE ticker's agorot-priced shares and
