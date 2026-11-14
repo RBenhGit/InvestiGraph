@@ -581,3 +581,56 @@ def test_chart_data_response_round_trips_every_kind():
     parsed = json.loads(response.model_dump_json())
     assert parsed["ticker"] == "TEST"
     assert len(parsed["charts"]) == len(available_charts())
+
+
+# QLTU.TA: quoted in ILS, statements filed in USD. The y-axis label must name the currency of the
+# plotted series, not the market's; price and market cap really are in the market's currency.
+
+
+def test_money_bar_y_label_uses_the_series_currency_on_a_mismatched_market():
+    fundamentals = _fundamentals_with(
+        {"revenue": _money_series("revenue", [(_D, 1.0)], currency=Currency.USD)},
+        currency=Currency.ILS,
+    )
+
+    [spec] = _specs_for(["revenue"], fundamentals)
+
+    assert spec["y_label"] == "Revenue ($)"
+
+
+def test_money_bar_y_label_matches_the_market_when_they_agree():
+    fundamentals = _fundamentals_with(
+        {"revenue": _money_series("revenue", [(_D, 1.0)], currency=Currency.ILS)},
+        currency=Currency.ILS,
+    )
+
+    [spec] = _specs_for(["revenue"], fundamentals)
+
+    assert spec["y_label"] == "Revenue (₪)"
+
+
+def test_paired_line_y_label_uses_the_series_currency_on_a_mismatched_market():
+    fundamentals = _fundamentals_with(
+        {
+            "cash_and_equivalents": _money_series(
+                "cash_and_equivalents", [(_D, 30)], currency=Currency.USD
+            ),
+            "total_debt": _money_series("total_debt", [(_D, 5)], currency=Currency.USD),
+        },
+        currency=Currency.ILS,
+    )
+
+    [spec] = _specs_for(["cash_and_debt"], fundamentals)
+
+    assert spec["y_label"] == "($)"
+
+
+def test_price_y_label_stays_in_the_market_currency():
+    fundamentals = _fundamentals_with(
+        {"price": _money_series("price", [(_D, 258.0)], currency=Currency.ILS)},
+        currency=Currency.ILS,
+    )
+
+    [spec] = _specs_for(["price"], fundamentals)
+
+    assert spec["y_label"] == "Price (₪)"

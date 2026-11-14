@@ -434,3 +434,11 @@ def test_bootstrap_skips_a_persisted_set_with_a_since_removed_chart_id(tmp_path)
     )
 
     assert 'value="picker_zeta"' not in index_body
+
+
+def test_index_page_header_says_the_currency_is_the_price_currency():
+    # The header shows the market's currency; statement charts can be in another one (a
+    # TASE ticker that files in USD), so it must say what that currency refers to.
+    html = create_app().test_client().get("/").get_data(as_text=True)
+
+    assert "— prices in ' + data.currency" in html

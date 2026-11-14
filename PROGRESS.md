@@ -560,6 +560,22 @@ preserved intact on `main`.
         `adapter.py` (six statement functions); caught by comparing the function list and diff
         against `HEAD` before committing and restored, so the commit is additions only.
 
+- [x] **2026-11-14 — Chart currency labels: name the series' own currency, not the market's.**
+      `charts/base.py`'s `currency_symbol(fundamentals)` returns the *market's* currency (ILS ->
+      ₪) and was used for every y-axis label, so for QLTU.TA (quoted in ILS, statements filed in
+      USD) Revenue / Net Income / EPS / FCF axes said "(₪)" although the data is dollars, and the
+      page header said "QLTU.TA (TASE) — ILS". New shared `currency_label(fundamentals,
+      *metric_ids)` reads the currency from the series' own `Money` tag (one currency -> its
+      symbol; paired series that disagree -> "mixed currencies"; no `Money` values -> the market's
+      symbol as before) and is used by both renderers — `web/chart_data.py` (`_money_bar`,
+      `_money_bar_with_fit`, the paired-line shaper) and `charts/base.py` (`render_money_bar`,
+      the paired-line helper) — so web and matplotlib cannot disagree. Price and Market Cap keep
+      the market symbol (they really are in it). The header now reads "… — prices in ILS".
+      Verified live: QLTU.TA Revenue/Net Income/EPS/FCF "($)", Price/Market Cap "(₪)"; AAPL
+      unchanged. 631 pytest + 124 vitest passing, ruff clean, green with either `DATA_SOURCE`.
+      - **Not changed:** the "Eps" label spelling (title-cased metric id) and the fact that
+        money bars plot the raw scaled value (millions) without saying so on the axis.
+
 ## Open items carried from Phase 0
 
 - **Node version — resolved.** Eps_Evaluation's README claimed vitest needs Node ≥20.12; the

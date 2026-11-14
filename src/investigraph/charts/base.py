@@ -2,7 +2,7 @@ from typing import Protocol
 
 from matplotlib.axes import Axes
 
-from investigraph.template.models import CompanyFundamentals, Period
+from investigraph.template.models import CompanyFundamentals, Currency, Money, Period
 
 
 class Chart(Protocol):
@@ -71,7 +71,32 @@ _UNAVAILABLE = _Unavailable()
 
 
 def currency_symbol(fundamentals: CompanyFundamentals) -> str:
+    """The *market's* currency symbol — right for `price` and anything derived from it (market
+    cap), but not for a statement series, which can be filed in another currency (a TASE ticker
+    quoted in ILS that files in USD). Use `currency_label` for those."""
     return "₪" if fundamentals.currency.value == "ILS" else "$"
+
+
+def currency_label(fundamentals: CompanyFundamentals, *metric_ids: str) -> str:
+    """Symbol for the currency the named series are actually denominated in (their `Money`
+    tag), so an axis never claims the market's currency for statement data filed in another.
+
+    One shared currency -> its symbol; the series disagree -> "mixed currencies" (they would
+    be plotted on one axis in base units, so say so rather than pick one); no `Money` values
+    at all (ratios, missing metric) -> the market's symbol, as before.
+    """
+    currencies = {
+        p.value.currency
+        for metric_id in metric_ids
+        if (series := fundamentals.series.get(metric_id)) is not None
+        for p in series.points
+        if isinstance(p.value, Money)
+    }
+    if len(currencies) > 1:
+        return "mixed currencies"
+    if currencies:
+        return "₪" if currencies.pop() == Currency.ILS else "$"
+    return currency_symbol(fundamentals)
 
 
 def render_money_bar(
@@ -84,7 +109,7 @@ def render_money_bar(
 
     ax.bar(dates, values, width=60, color="steelblue")
     ax.set_ylabel(
-        f"{metric_id.replace('_', ' ').title()} ({currency_symbol(fundamentals)})"
+        f"{metric_id.replace('_', ' ').title()} ({currency_label(fundamentals, metric_id)})"
     )
 
 
@@ -141,7 +166,9 @@ def render_money_line(
             marker="o",
             label=label,
         )
-    ax.set_ylabel(f"({currency_symbol(fundamentals)})")
+    ax.set_ylabel(
+        f"({currency_label(fundamentals, *(metric_id for metric_id, _ in series))})"
+    )
     ax.legend(fontsize=7, loc="upper left")
 
 

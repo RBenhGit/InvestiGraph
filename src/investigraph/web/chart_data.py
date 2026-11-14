@@ -24,7 +24,7 @@ from typing import Annotated, Callable, Literal
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from investigraph.charts.base import currency_symbol
+from investigraph.charts.base import currency_label, currency_symbol
 from investigraph.charts.fit import fit_exponential, fit_linear
 from investigraph.charts.registry import get_chart_set
 from investigraph.template.derived import (
@@ -155,7 +155,7 @@ def _money_bar(metric_id: str) -> Callable[[CompanyFundamentals], dict]:
         label = metric_id.replace("_", " ").title()
         return {
             "kind": "bar",
-            "y_label": f"{label} ({currency_symbol(fundamentals)})",
+            "y_label": f"{label} ({currency_label(fundamentals, metric_id)})",
             "series": [
                 {
                     "label": label,
@@ -206,7 +206,7 @@ def _money_bar_with_fit(metric_id: str) -> Callable[[CompanyFundamentals], dict]
         values = [p.value.value for p in points]
         return {
             "kind": "bar",
-            "y_label": f"{label} ({currency_symbol(fundamentals)})",
+            "y_label": f"{label} ({currency_label(fundamentals, metric_id)})",
             "series": [
                 {
                     "label": label,
@@ -253,7 +253,7 @@ def _money_line(
             )
         return {
             "kind": "line",
-            "y_label": f"({currency_symbol(fundamentals)})",
+            "y_label": f"({currency_label(fundamentals, *(metric_id for metric_id, _ in pairs))})",
             "series": series,
         }
 
