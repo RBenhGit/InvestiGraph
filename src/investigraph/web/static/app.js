@@ -1114,7 +1114,7 @@ if (delEvaluatorBtn) {
   delEvaluatorBtn.addEventListener('click', async () => {
     const name = evaluatorSelect.value;
     if (!name) return;
-    if (!confirm(`Remove ${name} from the dropdown? (History files are not deleted)`)) return;
+    if (!confirm(`Remove ${name} from the dropdown? Saved valuations are never deleted, so an evaluator that has any stays in the list.`)) return;
     try {
       const response = await fetch(`/api/evaluators/${encodeURIComponent(name)}`, {
         method: 'DELETE',
@@ -1126,6 +1126,11 @@ if (delEvaluatorBtn) {
       }
       applyEvaluatorState(body.data);
       evaluatorSelect.dispatchEvent(new Event('change'));
+      // The server re-lists any evaluator that still has saved valuations; say so rather
+      // than leaving a click that appears to have done nothing.
+      if (Array.isArray(body.data && body.data.evaluators) && body.data.evaluators.includes(name)) {
+        alert(`${name} was kept in the list because it has saved valuations. Its valuations were not deleted.`);
+      }
     } catch (err) {
       alert(`Could not remove evaluator: ${err.message}`);
     }

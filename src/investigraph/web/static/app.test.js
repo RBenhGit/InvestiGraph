@@ -1458,6 +1458,49 @@ describe('app.js frontend', () => {
       expect(del.url).toBe('/api/evaluators/Aviv%20Cohen');
     });
 
+    it('tells the user why an evaluator with saved valuations stays in the list', async () => {
+      // The server keeps an evaluator that still has saved valuations (it is re-listed from
+      // the valuation files). Without a message the click looked like it did nothing.
+      let alerted = '';
+      window.alert = (msg) => {
+        alerted = msg;
+      };
+      window.confirm = () => true;
+      evaluatorSelectEl.innerHTML = '<option value="Dana" selected>Dana</option>';
+      evaluatorSelectEl.value = 'Dana';
+      global.fetch = () =>
+        Promise.resolve({
+          json: () =>
+            Promise.resolve({ ok: true, data: { evaluators: ['Dana'], selected: 'Dana' } }),
+        });
+
+      delBtnEl.dispatchEvent(new window.Event('click'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(alerted).toContain('Dana');
+      expect(alerted).toContain('saved valuations');
+    });
+
+    it('shows no notice when the evaluator was actually removed', async () => {
+      let alerted = '';
+      window.alert = (msg) => {
+        alerted = msg;
+      };
+      window.confirm = () => true;
+      evaluatorSelectEl.innerHTML = '<option value="Dana" selected>Dana</option>';
+      evaluatorSelectEl.value = 'Dana';
+      global.fetch = () =>
+        Promise.resolve({
+          json: () =>
+            Promise.resolve({ ok: true, data: { evaluators: ['Bob'], selected: 'Bob' } }),
+        });
+
+      delBtnEl.dispatchEvent(new window.Event('click'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(alerted).toBe('');
+    });
+
     it('does not DELETE when the confirm is declined', async () => {
       const calls = [];
       window.confirm = () => false;
